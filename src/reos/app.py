@@ -101,7 +101,7 @@ def reflections(window_minutes: int = 30) -> ReflectionsResponse:
 
 @app.get("/time", response_model=HealthResponse)
 def time_now() -> HealthResponse:
-    # Minimal endpoint to check clock skew from VS Code extension if needed.
+    # Minimal endpoint to check clock skew from a local observer if needed.
     return HealthResponse(timestamp=datetime.now(UTC))
 
 

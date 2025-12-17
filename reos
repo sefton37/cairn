@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_source="${BASH_SOURCE[0]}"
+if command -v readlink >/dev/null 2>&1; then
+  resolved="$(readlink -f "$script_source" 2>/dev/null || true)"
+  if [[ -n "$resolved" ]]; then
+    script_source="$resolved"
+  fi
+elif command -v realpath >/dev/null 2>&1; then
+  resolved="$(realpath "$script_source" 2>/dev/null || true)"
+  if [[ -n "$resolved" ]]; then
+    script_source="$resolved"
+  fi
+fi
+
+repo_root="$(cd "$(dirname "$script_source")" && pwd)"
+
+python_bin="$repo_root/.venv/bin/python"
+if [[ ! -x "$python_bin" ]]; then
+  echo "ReOS: missing venv interpreter at $python_bin" >&2
+  echo "Create it with: python3.12 -m venv .venv && .venv/bin/python -m pip install -e ." >&2
+  exit 1
+fi
+
+# Default: start GUI. Use `--service` to start the FastAPI service.
+mode="gui"
+if [[ "${1:-}" == "--service" ]]; then
+  mode="service"
+  shift
+fi
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  cat <<'EOF'
+Usage:
+  ./reos            # launch ReOS desktop GUI
+  ./reos --service  # launch ReOS local service (FastAPI)
+
+Notes:
+  - Set REOS_REPO_PATH=/path/to/repo to choose which repo to observe.
+  - Set REOS_LOG_LEVEL=DEBUG for more verbose logs.
+EOF
+  exit 0
+fi
+
+if [[ "$mode" == "gui" ]]; then
+  if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
+    echo "ReOS: no GUI display detected (DISPLAY/WAYLAND_DISPLAY is empty)." >&2
+    echo "Run the service instead: ./reos --service" >&2
+    exit 2
+  fi
+
+  # Qt xcb platform plugin depends on libxcb-cursor on many Debian/Ubuntu installs.
+  # If it's missing, PySide6 will abort with: "Could not load the Qt platform plugin xcb".
+  if command -v ldconfig >/dev/null 2>&1; then
+    if ! ldconfig -p 2>/dev/null | grep -qi 'libxcb-cursor\.so\.0'; then
+      if command -v apt-get >/dev/null 2>&1; then
+        echo "ReOS: missing system dependency for GUI (libxcb-cursor)." >&2
+        echo "Fix: sudo apt update && sudo apt install -y libxcb-cursor0" >&2
+        echo "Or run without GUI: ./reos --service" >&2
+        exit 3
+      fi
+    fi
+  fi
+
+  exec "$python_bin" -m reos.gui "$@"
+else
+  exec "$python_bin" -m reos "$@"
+fi

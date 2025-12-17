@@ -3,7 +3,7 @@
 ## Overview
 M1b is now implemented as a **Git-first companion**: ReOS observes local Git repo state and reflects scope/alignment signals against the charter and roadmap.
 
-ReOS is not an editor plugin and does not require a VS Code extension.
+ReOS is not an editor plugin.
 
 ## Architecture Implemented
 

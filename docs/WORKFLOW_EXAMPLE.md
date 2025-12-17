@@ -2,7 +2,7 @@
 
 ## Conceptual Overview
 
-ReOS is a companion to a **Git repository**, not a VS Code extension.
+ReOS is a companion to a **Git repository**.
 
 It observes repo state locally (working tree + commits) and quietly evaluates two plan-anchored questions in the background:
 
