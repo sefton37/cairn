@@ -181,6 +181,12 @@ class ProjectsWidget(QWidget):
         left.addWidget(header)
 
         self.project_list = QListWidget()
+        self.project_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self.project_list.setStyleSheet(
+            "QListWidget::item:selected { "
+            "background-color: #2b6cb0; color: white; font-weight: 600; "
+            "}"
+        )
         self.project_list.itemClicked.connect(self._on_project_clicked)
         left.addWidget(self.project_list, stretch=1)
 
@@ -284,12 +290,20 @@ class ProjectsWidget(QWidget):
 
     def _load_projects(self) -> None:
         self.project_list.clear()
+        selected_item: QListWidgetItem | None = None
         for row in self._db.iter_project_charters():
             project_id = str(row.get("project_id"))
             name = str(row.get("project_name"))
             item = QListWidgetItem(name)
             item.setData(Qt.ItemDataRole.UserRole, project_id)
             self.project_list.addItem(item)
+
+            if self._selected_project_id is not None and project_id == self._selected_project_id:
+                selected_item = item
+
+        if selected_item is not None:
+            self.project_list.setCurrentItem(selected_item)
+            selected_item.setSelected(True)
 
     def _clear_form(self) -> None:
         self._selected_project_id = None
@@ -407,7 +421,10 @@ class ProjectsWidget(QWidget):
         confirm = QMessageBox.question(
             self,
             "Reaffirm charter",
-            "Reaffirming is an explicit human confirmation that this project is still worth attention.\n\nProceed?",
+            (
+                "Reaffirming is an explicit human confirmation that this project is still "
+                "worth attention.\n\nProceed?"
+            ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
