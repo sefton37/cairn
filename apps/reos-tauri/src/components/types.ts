@@ -84,3 +84,99 @@ export function smallButton(text: string): HTMLButtonElement {
   btn.style.padding = '4px 8px';
   return btn;
 }
+
+// Tab system helpers
+export interface Tab {
+  id: string;
+  label: string;
+  content: () => HTMLElement;
+}
+
+export function createTabs(tabs: Tab[], onTabChange?: (tabId: string) => void): {
+  container: HTMLDivElement;
+  setActiveTab: (tabId: string) => void;
+} {
+  const container = el('div');
+  container.style.display = 'flex';
+  container.style.flexDirection = 'column';
+  container.style.height = '100%';
+
+  // Tab bar
+  const tabBar = el('div');
+  tabBar.style.display = 'flex';
+  tabBar.style.borderBottom = '1px solid #ddd';
+  tabBar.style.marginBottom = '12px';
+  tabBar.style.gap = '4px';
+
+  // Tab content area
+  const tabContent = el('div');
+  tabContent.style.flex = '1';
+  tabContent.style.overflow = 'auto';
+
+  let activeTabId = tabs[0]?.id || '';
+
+  const tabButtons: Map<string, HTMLButtonElement> = new Map();
+
+  function setActiveTab(tabId: string): void {
+    activeTabId = tabId;
+
+    // Update button styles
+    tabButtons.forEach((btn, id) => {
+      if (id === tabId) {
+        btn.style.backgroundColor = '#fff';
+        btn.style.borderBottom = '2px solid #0066cc';
+        btn.style.fontWeight = '600';
+      } else {
+        btn.style.backgroundColor = 'transparent';
+        btn.style.borderBottom = '2px solid transparent';
+        btn.style.fontWeight = '400';
+      }
+    });
+
+    // Render content
+    tabContent.innerHTML = '';
+    const tab = tabs.find(t => t.id === tabId);
+    if (tab) {
+      tabContent.appendChild(tab.content());
+    }
+
+    if (onTabChange) {
+      onTabChange(tabId);
+    }
+  }
+
+  // Create tab buttons
+  tabs.forEach(tab => {
+    const btn = el('button');
+    btn.textContent = tab.label;
+    btn.style.padding = '8px 16px';
+    btn.style.fontSize = '13px';
+    btn.style.border = 'none';
+    btn.style.cursor = 'pointer';
+    btn.style.background = 'transparent';
+    btn.style.transition = 'all 0.2s';
+
+    btn.addEventListener('click', () => setActiveTab(tab.id));
+    btn.addEventListener('mouseenter', () => {
+      if (activeTabId !== tab.id) {
+        btn.style.backgroundColor = '#f5f5f5';
+      }
+    });
+    btn.addEventListener('mouseleave', () => {
+      if (activeTabId !== tab.id) {
+        btn.style.backgroundColor = 'transparent';
+      }
+    });
+
+    tabButtons.set(tab.id, btn);
+    tabBar.appendChild(btn);
+  });
+
+  container.appendChild(tabBar);
+  container.appendChild(tabContent);
+
+  // Set initial active tab
+  setActiveTab(activeTabId);
+
+  return { container, setActiveTab };
+}
