@@ -20,6 +20,7 @@ class Act:
     title: str
     active: bool = False
     notes: str = ""
+    charter: str = ""
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,7 @@ class Scene:
     status: str
     time_horizon: str
     notes: str
+    charter: str = ""
 
 
 @dataclass(frozen=True)
@@ -39,6 +41,16 @@ class Beat:
     status: str
     notes: str
     link: str | None = None
+    charter: str = ""
+
+
+@dataclass(frozen=True)
+class Todo:
+    todo_id: str
+    title: str
+    status: str
+    notes: str = ""
+    completed: bool = False
 
 
 def play_root() -> Path:
@@ -124,6 +136,7 @@ def list_acts() -> tuple[list[Act], str | None]:
         title = item.get("title")
         active = bool(item.get("active", False))
         notes = item.get("notes")
+        charter = item.get("charter")
 
         if not isinstance(act_id, str) or not act_id:
             continue
@@ -131,17 +144,27 @@ def list_acts() -> tuple[list[Act], str | None]:
             continue
         if not isinstance(notes, str):
             notes = ""
+        if not isinstance(charter, str):
+            charter = ""
 
         if active and active_id is None:
             active_id = act_id
 
-        acts.append(Act(act_id=act_id, title=title, active=active, notes=notes))
+        acts.append(Act(act_id=act_id, title=title, active=active, notes=notes, charter=charter))
 
     # Enforce single-active invariant if the file has drifted.
     if active_id is not None:
         normalized: list[Act] = []
         for a in acts:
-            normalized.append(Act(act_id=a.act_id, title=a.title, active=(a.act_id == active_id), notes=a.notes))
+            normalized.append(
+                Act(
+                    act_id=a.act_id,
+                    title=a.title,
+                    active=(a.act_id == active_id),
+                    notes=a.notes,
+                    charter=a.charter,
+                )
+            )
         acts = normalized
         _write_acts(acts)
 
@@ -151,7 +174,13 @@ def list_acts() -> tuple[list[Act], str | None]:
 def _write_acts(acts: list[Act]) -> None:
     payload = {
         "acts": [
-            {"act_id": a.act_id, "title": a.title, "active": bool(a.active), "notes": a.notes}
+            {
+                "act_id": a.act_id,
+                "title": a.title,
+                "active": bool(a.active),
+                "notes": a.notes,
+                "charter": a.charter,
+            }
             for a in acts
         ]
     }
@@ -163,7 +192,10 @@ def set_active_act_id(*, act_id: str) -> tuple[list[Act], str]:
     if not any(a.act_id == act_id for a in acts):
         raise ValueError("unknown act_id")
 
-    updated = [Act(act_id=a.act_id, title=a.title, active=(a.act_id == act_id), notes=a.notes) for a in acts]
+    updated = [
+        Act(act_id=a.act_id, title=a.title, active=(a.act_id == act_id), notes=a.notes, charter=a.charter)
+        for a in acts
+    ]
     _write_acts(updated)
     return updated, act_id
 
@@ -190,6 +222,7 @@ def list_scenes(*, act_id: str) -> list[Scene]:
         status = item.get("status")
         time_horizon = item.get("time_horizon")
         notes = item.get("notes")
+        charter = item.get("charter")
 
         if not isinstance(scene_id, str) or not scene_id:
             continue
@@ -204,6 +237,7 @@ def list_scenes(*, act_id: str) -> list[Scene]:
                 status=str(status or ""),
                 time_horizon=str(time_horizon or ""),
                 notes=str(notes or ""),
+                charter=str(charter or ""),
             )
         )
 
@@ -239,6 +273,7 @@ def list_beats(*, act_id: str, scene_id: str) -> list[Beat]:
             status = b.get("status")
             notes = b.get("notes")
             link = b.get("link")
+            charter = b.get("charter")
 
             if not isinstance(beat_id, str) or not beat_id:
                 continue
@@ -254,6 +289,7 @@ def list_beats(*, act_id: str, scene_id: str) -> list[Beat]:
                     status=str(status or ""),
                     notes=str(notes or ""),
                     link=link,
+                    charter=str(charter or ""),
                 )
             )
         return beats
@@ -272,7 +308,7 @@ def _new_id(prefix: str) -> str:
     return f"{prefix}-{uuid4().hex[:12]}"
 
 
-def create_act(*, title: str, notes: str = "") -> tuple[list[Act], str]:
+def create_act(*, title: str, notes: str = "", charter: str = "") -> tuple[list[Act], str]:
     """Create a new Act.
 
     - Generates a stable act_id.
@@ -283,12 +319,14 @@ def create_act(*, title: str, notes: str = "") -> tuple[list[Act], str]:
         raise ValueError("title is required")
     if not isinstance(notes, str):
         raise ValueError("notes must be a string")
+    if not isinstance(charter, str):
+        raise ValueError("charter must be a string")
 
     acts, active_id = list_acts()
     act_id = _new_id("act")
 
     is_active = active_id is None
-    acts.append(Act(act_id=act_id, title=title.strip(), active=is_active, notes=notes))
+    acts.append(Act(act_id=act_id, title=title.strip(), active=is_active, notes=notes, charter=charter))
     _write_acts(acts)
 
     # Ensure the act directory exists for scenes/kb.
@@ -297,7 +335,9 @@ def create_act(*, title: str, notes: str = "") -> tuple[list[Act], str]:
     return acts, act_id
 
 
-def update_act(*, act_id: str, title: str | None = None, notes: str | None = None) -> tuple[list[Act], str | None]:
+def update_act(
+    *, act_id: str, title: str | None = None, notes: str | None = None, charter: str | None = None
+) -> tuple[list[Act], str | None]:
     """Update an Act's user-editable fields."""
 
     _validate_id(name="act_id", value=act_id)
@@ -306,6 +346,8 @@ def update_act(*, act_id: str, title: str | None = None, notes: str | None = Non
         raise ValueError("title must be a non-empty string")
     if notes is not None and not isinstance(notes, str):
         raise ValueError("notes must be a string")
+    if charter is not None and not isinstance(charter, str):
+        raise ValueError("charter must be a string")
 
     acts, active_id = list_acts()
     found = False
@@ -321,6 +363,7 @@ def update_act(*, act_id: str, title: str | None = None, notes: str | None = Non
                 title=(title.strip() if isinstance(title, str) else a.title),
                 active=bool(a.active),
                 notes=(notes if isinstance(notes, str) else a.notes),
+                charter=(charter if isinstance(charter, str) else a.charter),
             )
         )
 
@@ -350,6 +393,7 @@ def create_scene(
     status: str = "",
     time_horizon: str = "",
     notes: str = "",
+    charter: str = "",
 ) -> list[Scene]:
     """Create a Scene under an Act."""
 
@@ -364,6 +408,8 @@ def create_scene(
         raise ValueError("time_horizon must be a string")
     if not isinstance(notes, str):
         raise ValueError("notes must be a string")
+    if not isinstance(charter, str):
+        raise ValueError("charter must be a string")
 
     scenes_path = _ensure_scenes_file(act_id=act_id)
     data = _load_json(scenes_path)
@@ -380,6 +426,7 @@ def create_scene(
             "status": status,
             "time_horizon": time_horizon,
             "notes": notes,
+            "charter": charter,
             "beats": [],
         }
     )
@@ -396,6 +443,7 @@ def update_scene(
     status: str | None = None,
     time_horizon: str | None = None,
     notes: str | None = None,
+    charter: str | None = None,
 ) -> list[Scene]:
     """Update a Scene's fields (beats preserved)."""
 
@@ -434,6 +482,7 @@ def update_scene(
                     time_horizon if isinstance(time_horizon, str) else str(item.get("time_horizon") or "")
                 ),
                 "notes": (notes if isinstance(notes, str) else str(item.get("notes") or "")),
+                "charter": (charter if isinstance(charter, str) else str(item.get("charter") or "")),
                 "beats": beats,
             }
         )
@@ -453,6 +502,7 @@ def create_beat(
     status: str = "",
     notes: str = "",
     link: str | None = None,
+    charter: str = "",
 ) -> list[Beat]:
     """Create a Beat under a Scene."""
 
@@ -466,6 +516,8 @@ def create_beat(
         raise ValueError("notes must be a string")
     if link is not None and not isinstance(link, str):
         raise ValueError("link must be a string or null")
+    if not isinstance(charter, str):
+        raise ValueError("charter must be a string")
 
     scenes_path = _ensure_scenes_file(act_id=act_id)
     data = _load_json(scenes_path)
@@ -494,6 +546,8 @@ def create_beat(
                 "status": status,
                 "notes": notes,
                 "link": link,
+                "charter": charter,
+                "todos": [],
             }
         )
         item = dict(item)
@@ -516,8 +570,9 @@ def update_beat(
     status: str | None = None,
     notes: str | None = None,
     link: str | None = None,
+    charter: str | None = None,
 ) -> list[Beat]:
-    """Update a Beat's fields."""
+    """Update a Beat's fields (todos preserved)."""
 
     _validate_id(name="act_id", value=act_id)
     _validate_id(name="scene_id", value=scene_id)
@@ -530,6 +585,8 @@ def update_beat(
         raise ValueError("notes must be a string")
     if link is not None and not isinstance(link, str):
         raise ValueError("link must be a string or null")
+    if charter is not None and not isinstance(charter, str):
+        raise ValueError("charter must be a string")
 
     scenes_path = _ensure_scenes_file(act_id=act_id)
     data = _load_json(scenes_path)
@@ -563,6 +620,11 @@ def update_beat(
             if not new_title.strip():
                 raise ValueError("title must be a non-empty string")
 
+            # Preserve todos
+            todos = b.get("todos")
+            if not isinstance(todos, list):
+                todos = []
+
             out_beats.append(
                 {
                     "beat_id": beat_id,
@@ -570,6 +632,8 @@ def update_beat(
                     "status": (status if isinstance(status, str) else str(b.get("status") or "")),
                     "notes": (notes if isinstance(notes, str) else str(b.get("notes") or "")),
                     "link": (link if isinstance(link, str) else b.get("link")),
+                    "charter": (charter if isinstance(charter, str) else str(b.get("charter") or "")),
+                    "todos": todos,
                 }
             )
 
@@ -584,6 +648,332 @@ def update_beat(
 
     _write_json(scenes_path, {"scenes": out_scenes})
     return list_beats(act_id=act_id, scene_id=scene_id)
+
+
+def list_todos(*, act_id: str, scene_id: str, beat_id: str) -> list[Todo]:
+    """List all todos for a Beat."""
+    ensure_play_skeleton()
+    scenes_path = _scenes_path(act_id)
+    if not scenes_path.exists():
+        return []
+
+    data = _load_json(scenes_path)
+    scenes_raw = data.get("scenes")
+    if not isinstance(scenes_raw, list):
+        return []
+
+    for scene in scenes_raw:
+        if not isinstance(scene, dict):
+            continue
+        if scene.get("scene_id") != scene_id:
+            continue
+        beats_raw = scene.get("beats")
+        if not isinstance(beats_raw, list):
+            return []
+
+        for beat in beats_raw:
+            if not isinstance(beat, dict):
+                continue
+            if beat.get("beat_id") != beat_id:
+                continue
+            todos_raw = beat.get("todos")
+            if not isinstance(todos_raw, list):
+                return []
+
+            todos: list[Todo] = []
+            for t in todos_raw:
+                if not isinstance(t, dict):
+                    continue
+                todo_id = t.get("todo_id")
+                title = t.get("title")
+                status = t.get("status")
+                notes = t.get("notes")
+                completed = t.get("completed")
+
+                if not isinstance(todo_id, str) or not todo_id:
+                    continue
+                if not isinstance(title, str) or not title:
+                    continue
+
+                todos.append(
+                    Todo(
+                        todo_id=todo_id,
+                        title=title,
+                        status=str(status or ""),
+                        notes=str(notes or ""),
+                        completed=bool(completed),
+                    )
+                )
+            return todos
+
+    return []
+
+
+def create_todo(
+    *,
+    act_id: str,
+    scene_id: str,
+    beat_id: str,
+    title: str,
+    status: str = "",
+    notes: str = "",
+    completed: bool = False,
+) -> list[Todo]:
+    """Create a Todo under a Beat."""
+
+    _validate_id(name="act_id", value=act_id)
+    _validate_id(name="scene_id", value=scene_id)
+    _validate_id(name="beat_id", value=beat_id)
+    if not isinstance(title, str) or not title.strip():
+        raise ValueError("title is required")
+    if not isinstance(status, str):
+        raise ValueError("status must be a string")
+    if not isinstance(notes, str):
+        raise ValueError("notes must be a string")
+    if not isinstance(completed, bool):
+        raise ValueError("completed must be a boolean")
+
+    scenes_path = _ensure_scenes_file(act_id=act_id)
+    data = _load_json(scenes_path)
+    scenes_raw = data.get("scenes")
+    if not isinstance(scenes_raw, list):
+        scenes_raw = []
+
+    todo_id = _new_id("todo")
+    found_scene = False
+    found_beat = False
+    out_scenes: list[dict[str, Any]] = []
+
+    for scene in scenes_raw:
+        if not isinstance(scene, dict):
+            continue
+        if scene.get("scene_id") != scene_id:
+            out_scenes.append(scene)
+            continue
+        found_scene = True
+
+        beats = scene.get("beats")
+        if not isinstance(beats, list):
+            beats = []
+
+        out_beats: list[dict[str, Any]] = []
+        for beat in beats:
+            if not isinstance(beat, dict):
+                continue
+            if beat.get("beat_id") != beat_id:
+                out_beats.append(beat)
+                continue
+            found_beat = True
+
+            todos = beat.get("todos")
+            if not isinstance(todos, list):
+                todos = []
+            todos.append(
+                {
+                    "todo_id": todo_id,
+                    "title": title.strip(),
+                    "status": status,
+                    "notes": notes,
+                    "completed": completed,
+                }
+            )
+            beat = dict(beat)
+            beat["todos"] = todos
+            out_beats.append(beat)
+
+        scene = dict(scene)
+        scene["beats"] = out_beats
+        out_scenes.append(scene)
+
+    if not found_scene:
+        raise ValueError("unknown scene_id")
+    if not found_beat:
+        raise ValueError("unknown beat_id")
+
+    _write_json(scenes_path, {"scenes": out_scenes})
+    return list_todos(act_id=act_id, scene_id=scene_id, beat_id=beat_id)
+
+
+def update_todo(
+    *,
+    act_id: str,
+    scene_id: str,
+    beat_id: str,
+    todo_id: str,
+    title: str | None = None,
+    status: str | None = None,
+    notes: str | None = None,
+    completed: bool | None = None,
+) -> list[Todo]:
+    """Update a Todo's fields."""
+
+    _validate_id(name="act_id", value=act_id)
+    _validate_id(name="scene_id", value=scene_id)
+    _validate_id(name="beat_id", value=beat_id)
+    _validate_id(name="todo_id", value=todo_id)
+    if title is not None and (not isinstance(title, str) or not title.strip()):
+        raise ValueError("title must be a non-empty string")
+    if status is not None and not isinstance(status, str):
+        raise ValueError("status must be a string")
+    if notes is not None and not isinstance(notes, str):
+        raise ValueError("notes must be a string")
+    if completed is not None and not isinstance(completed, bool):
+        raise ValueError("completed must be a boolean")
+
+    scenes_path = _ensure_scenes_file(act_id=act_id)
+    data = _load_json(scenes_path)
+    scenes_raw = data.get("scenes")
+    if not isinstance(scenes_raw, list):
+        scenes_raw = []
+
+    found_scene = False
+    found_beat = False
+    found_todo = False
+    out_scenes: list[dict[str, Any]] = []
+
+    for scene in scenes_raw:
+        if not isinstance(scene, dict):
+            continue
+        if scene.get("scene_id") != scene_id:
+            out_scenes.append(scene)
+            continue
+        found_scene = True
+
+        beats = scene.get("beats")
+        if not isinstance(beats, list):
+            beats = []
+
+        out_beats: list[dict[str, Any]] = []
+        for beat in beats:
+            if not isinstance(beat, dict):
+                continue
+            if beat.get("beat_id") != beat_id:
+                out_beats.append(beat)
+                continue
+            found_beat = True
+
+            todos = beat.get("todos")
+            if not isinstance(todos, list):
+                todos = []
+
+            out_todos: list[dict[str, Any]] = []
+            for todo in todos:
+                if not isinstance(todo, dict):
+                    continue
+                if todo.get("todo_id") != todo_id:
+                    out_todos.append(todo)
+                    continue
+                found_todo = True
+
+                new_title = title.strip() if isinstance(title, str) else str(todo.get("title") or "")
+                if not new_title.strip():
+                    raise ValueError("title must be a non-empty string")
+
+                out_todos.append(
+                    {
+                        "todo_id": todo_id,
+                        "title": new_title,
+                        "status": (status if isinstance(status, str) else str(todo.get("status") or "")),
+                        "notes": (notes if isinstance(notes, str) else str(todo.get("notes") or "")),
+                        "completed": (completed if isinstance(completed, bool) else bool(todo.get("completed", False))),
+                    }
+                )
+
+            beat = dict(beat)
+            beat["todos"] = out_todos
+            out_beats.append(beat)
+
+        scene = dict(scene)
+        scene["beats"] = out_beats
+        out_scenes.append(scene)
+
+    if not found_scene:
+        raise ValueError("unknown scene_id")
+    if not found_beat:
+        raise ValueError("unknown beat_id")
+    if not found_todo:
+        raise ValueError("unknown todo_id")
+
+    _write_json(scenes_path, {"scenes": out_scenes})
+    return list_todos(act_id=act_id, scene_id=scene_id, beat_id=beat_id)
+
+
+def delete_todo(
+    *,
+    act_id: str,
+    scene_id: str,
+    beat_id: str,
+    todo_id: str,
+) -> list[Todo]:
+    """Delete a Todo."""
+
+    _validate_id(name="act_id", value=act_id)
+    _validate_id(name="scene_id", value=scene_id)
+    _validate_id(name="beat_id", value=beat_id)
+    _validate_id(name="todo_id", value=todo_id)
+
+    scenes_path = _ensure_scenes_file(act_id=act_id)
+    data = _load_json(scenes_path)
+    scenes_raw = data.get("scenes")
+    if not isinstance(scenes_raw, list):
+        scenes_raw = []
+
+    found_scene = False
+    found_beat = False
+    found_todo = False
+    out_scenes: list[dict[str, Any]] = []
+
+    for scene in scenes_raw:
+        if not isinstance(scene, dict):
+            continue
+        if scene.get("scene_id") != scene_id:
+            out_scenes.append(scene)
+            continue
+        found_scene = True
+
+        beats = scene.get("beats")
+        if not isinstance(beats, list):
+            beats = []
+
+        out_beats: list[dict[str, Any]] = []
+        for beat in beats:
+            if not isinstance(beat, dict):
+                continue
+            if beat.get("beat_id") != beat_id:
+                out_beats.append(beat)
+                continue
+            found_beat = True
+
+            todos = beat.get("todos")
+            if not isinstance(todos, list):
+                todos = []
+
+            out_todos: list[dict[str, Any]] = []
+            for todo in todos:
+                if not isinstance(todo, dict):
+                    continue
+                if todo.get("todo_id") == todo_id:
+                    found_todo = True
+                    continue  # Skip this todo (delete it)
+                out_todos.append(todo)
+
+            beat = dict(beat)
+            beat["todos"] = out_todos
+            out_beats.append(beat)
+
+        scene = dict(scene)
+        scene["beats"] = out_beats
+        out_scenes.append(scene)
+
+    if not found_scene:
+        raise ValueError("unknown scene_id")
+    if not found_beat:
+        raise ValueError("unknown beat_id")
+    if not found_todo:
+        raise ValueError("unknown todo_id")
+
+    _write_json(scenes_path, {"scenes": out_scenes})
+    return list_todos(act_id=act_id, scene_id=scene_id, beat_id=beat_id)
 
 
 def _kb_root_for(*, act_id: str, scene_id: str | None = None, beat_id: str | None = None) -> Path:

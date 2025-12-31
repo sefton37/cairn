@@ -38,6 +38,10 @@ from .play_fs import read_me_markdown as play_read_me_markdown
 from .play_fs import set_active_act_id as play_set_active_act_id
 from .play_fs import update_act as play_update_act
 from .play_fs import update_beat as play_update_beat
+from .play_fs import list_todos as play_list_todos
+from .play_fs import create_todo as play_create_todo
+from .play_fs import update_todo as play_update_todo
+from .play_fs import delete_todo as play_delete_todo
 from .play_fs import update_scene as play_update_scene
 from .settings import settings
 
@@ -210,7 +214,13 @@ def _handle_play_acts_list(_db: Database) -> dict[str, Any]:
     return {
         "active_act_id": active_id,
         "acts": [
-            {"act_id": a.act_id, "title": a.title, "active": bool(a.active), "notes": a.notes}
+            {
+                "act_id": a.act_id,
+                "title": a.title,
+                "active": bool(a.active),
+                "notes": a.notes,
+                "charter": a.charter,
+            }
             for a in acts
         ],
     }
@@ -224,7 +234,13 @@ def _handle_play_acts_set_active(_db: Database, *, act_id: str) -> dict[str, Any
     return {
         "active_act_id": active_id,
         "acts": [
-            {"act_id": a.act_id, "title": a.title, "active": bool(a.active), "notes": a.notes}
+            {
+                "act_id": a.act_id,
+                "title": a.title,
+                "active": bool(a.active),
+                "notes": a.notes,
+                "charter": a.charter,
+            }
             for a in acts
         ],
     }
@@ -241,6 +257,7 @@ def _handle_play_scenes_list(_db: Database, *, act_id: str) -> dict[str, Any]:
                 "status": s.status,
                 "time_horizon": s.time_horizon,
                 "notes": s.notes,
+                "charter": s.charter,
             }
             for s in scenes
         ]
@@ -257,21 +274,30 @@ def _handle_play_beats_list(_db: Database, *, act_id: str, scene_id: str) -> dic
                 "status": b.status,
                 "notes": b.notes,
                 "link": b.link,
+                "charter": b.charter,
             }
             for b in beats
         ]
     }
 
 
-def _handle_play_acts_create(_db: Database, *, title: str, notes: str | None = None) -> dict[str, Any]:
+def _handle_play_acts_create(
+    _db: Database, *, title: str, notes: str | None = None, charter: str | None = None
+) -> dict[str, Any]:
     try:
-        acts, created_id = play_create_act(title=title, notes=notes or "")
+        acts, created_id = play_create_act(title=title, notes=notes or "", charter=charter or "")
     except ValueError as exc:
         raise RpcError(code=-32602, message=str(exc)) from exc
     return {
         "created_act_id": created_id,
         "acts": [
-            {"act_id": a.act_id, "title": a.title, "active": bool(a.active), "notes": a.notes}
+            {
+                "act_id": a.act_id,
+                "title": a.title,
+                "active": bool(a.active),
+                "notes": a.notes,
+                "charter": a.charter,
+            }
             for a in acts
         ],
     }
@@ -283,15 +309,22 @@ def _handle_play_acts_update(
     act_id: str,
     title: str | None = None,
     notes: str | None = None,
+    charter: str | None = None,
 ) -> dict[str, Any]:
     try:
-        acts, active_id = play_update_act(act_id=act_id, title=title, notes=notes)
+        acts, active_id = play_update_act(act_id=act_id, title=title, notes=notes, charter=charter)
     except ValueError as exc:
         raise RpcError(code=-32602, message=str(exc)) from exc
     return {
         "active_act_id": active_id,
         "acts": [
-            {"act_id": a.act_id, "title": a.title, "active": bool(a.active), "notes": a.notes}
+            {
+                "act_id": a.act_id,
+                "title": a.title,
+                "active": bool(a.active),
+                "notes": a.notes,
+                "charter": a.charter,
+            }
             for a in acts
         ],
     }
@@ -306,6 +339,7 @@ def _handle_play_scenes_create(
     status: str | None = None,
     time_horizon: str | None = None,
     notes: str | None = None,
+    charter: str | None = None,
 ) -> dict[str, Any]:
     try:
         scenes = play_create_scene(
@@ -315,6 +349,7 @@ def _handle_play_scenes_create(
             status=status or "",
             time_horizon=time_horizon or "",
             notes=notes or "",
+            charter=charter or "",
         )
     except ValueError as exc:
         raise RpcError(code=-32602, message=str(exc)) from exc
@@ -327,6 +362,7 @@ def _handle_play_scenes_create(
                 "status": s.status,
                 "time_horizon": s.time_horizon,
                 "notes": s.notes,
+                "charter": s.charter,
             }
             for s in scenes
         ]
@@ -343,6 +379,7 @@ def _handle_play_scenes_update(
     status: str | None = None,
     time_horizon: str | None = None,
     notes: str | None = None,
+    charter: str | None = None,
 ) -> dict[str, Any]:
     try:
         scenes = play_update_scene(
@@ -353,6 +390,7 @@ def _handle_play_scenes_update(
             status=status,
             time_horizon=time_horizon,
             notes=notes,
+            charter=charter,
         )
     except ValueError as exc:
         raise RpcError(code=-32602, message=str(exc)) from exc
@@ -365,6 +403,7 @@ def _handle_play_scenes_update(
                 "status": s.status,
                 "time_horizon": s.time_horizon,
                 "notes": s.notes,
+                "charter": s.charter,
             }
             for s in scenes
         ]
@@ -380,6 +419,7 @@ def _handle_play_beats_create(
     status: str | None = None,
     notes: str | None = None,
     link: str | None = None,
+    charter: str | None = None,
 ) -> dict[str, Any]:
     try:
         beats = play_create_beat(
@@ -389,6 +429,7 @@ def _handle_play_beats_create(
             status=status or "",
             notes=notes or "",
             link=link,
+            charter=charter or "",
         )
     except ValueError as exc:
         raise RpcError(code=-32602, message=str(exc)) from exc
@@ -400,6 +441,7 @@ def _handle_play_beats_create(
                 "status": b.status,
                 "notes": b.notes,
                 "link": b.link,
+                "charter": b.charter,
             }
             for b in beats
         ]
@@ -416,6 +458,7 @@ def _handle_play_beats_update(
     status: str | None = None,
     notes: str | None = None,
     link: str | None = None,
+    charter: str | None = None,
 ) -> dict[str, Any]:
     try:
         beats = play_update_beat(
@@ -426,6 +469,7 @@ def _handle_play_beats_update(
             status=status,
             notes=notes,
             link=link,
+            charter=charter,
         )
     except ValueError as exc:
         raise RpcError(code=-32602, message=str(exc)) from exc
@@ -437,8 +481,134 @@ def _handle_play_beats_update(
                 "status": b.status,
                 "notes": b.notes,
                 "link": b.link,
+                "charter": b.charter,
             }
             for b in beats
+        ]
+    }
+
+
+def _handle_play_todos_list(
+    _db: Database, *, act_id: str, scene_id: str, beat_id: str
+) -> dict[str, Any]:
+    todos = play_list_todos(act_id=act_id, scene_id=scene_id, beat_id=beat_id)
+    return {
+        "todos": [
+            {
+                "todo_id": t.todo_id,
+                "title": t.title,
+                "status": t.status,
+                "notes": t.notes,
+                "completed": t.completed,
+            }
+            for t in todos
+        ]
+    }
+
+
+def _handle_play_todos_create(
+    _db: Database,
+    *,
+    act_id: str,
+    scene_id: str,
+    beat_id: str,
+    title: str,
+    status: str | None = None,
+    notes: str | None = None,
+    completed: bool | None = None,
+) -> dict[str, Any]:
+    try:
+        todos = play_create_todo(
+            act_id=act_id,
+            scene_id=scene_id,
+            beat_id=beat_id,
+            title=title,
+            status=status or "",
+            notes=notes or "",
+            completed=completed or False,
+        )
+    except ValueError as exc:
+        raise RpcError(code=-32602, message=str(exc)) from exc
+    return {
+        "todos": [
+            {
+                "todo_id": t.todo_id,
+                "title": t.title,
+                "status": t.status,
+                "notes": t.notes,
+                "completed": t.completed,
+            }
+            for t in todos
+        ]
+    }
+
+
+def _handle_play_todos_update(
+    _db: Database,
+    *,
+    act_id: str,
+    scene_id: str,
+    beat_id: str,
+    todo_id: str,
+    title: str | None = None,
+    status: str | None = None,
+    notes: str | None = None,
+    completed: bool | None = None,
+) -> dict[str, Any]:
+    try:
+        todos = play_update_todo(
+            act_id=act_id,
+            scene_id=scene_id,
+            beat_id=beat_id,
+            todo_id=todo_id,
+            title=title,
+            status=status,
+            notes=notes,
+            completed=completed,
+        )
+    except ValueError as exc:
+        raise RpcError(code=-32602, message=str(exc)) from exc
+    return {
+        "todos": [
+            {
+                "todo_id": t.todo_id,
+                "title": t.title,
+                "status": t.status,
+                "notes": t.notes,
+                "completed": t.completed,
+            }
+            for t in todos
+        ]
+    }
+
+
+def _handle_play_todos_delete(
+    _db: Database,
+    *,
+    act_id: str,
+    scene_id: str,
+    beat_id: str,
+    todo_id: str,
+) -> dict[str, Any]:
+    try:
+        todos = play_delete_todo(
+            act_id=act_id,
+            scene_id=scene_id,
+            beat_id=beat_id,
+            todo_id=todo_id,
+        )
+    except ValueError as exc:
+        raise RpcError(code=-32602, message=str(exc)) from exc
+    return {
+        "todos": [
+            {
+                "todo_id": t.todo_id,
+                "title": t.title,
+                "status": t.status,
+                "notes": t.notes,
+                "completed": t.completed,
+            }
+            for t in todos
         ]
     }
 
@@ -820,6 +990,124 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                     status=status,
                     notes=notes,
                     link=link,
+                ),
+            )
+
+        if method == "play/todos/list":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            act_id = params.get("act_id")
+            scene_id = params.get("scene_id")
+            beat_id = params.get("beat_id")
+            if not isinstance(act_id, str) or not act_id:
+                raise RpcError(code=-32602, message="act_id is required")
+            if not isinstance(scene_id, str) or not scene_id:
+                raise RpcError(code=-32602, message="scene_id is required")
+            if not isinstance(beat_id, str) or not beat_id:
+                raise RpcError(code=-32602, message="beat_id is required")
+            return _jsonrpc_result(
+                req_id=req_id, result=_handle_play_todos_list(db, act_id=act_id, scene_id=scene_id, beat_id=beat_id)
+            )
+
+        if method == "play/todos/create":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            act_id = params.get("act_id")
+            scene_id = params.get("scene_id")
+            beat_id = params.get("beat_id")
+            title = params.get("title")
+            if not isinstance(act_id, str) or not act_id:
+                raise RpcError(code=-32602, message="act_id is required")
+            if not isinstance(scene_id, str) or not scene_id:
+                raise RpcError(code=-32602, message="scene_id is required")
+            if not isinstance(beat_id, str) or not beat_id:
+                raise RpcError(code=-32602, message="beat_id is required")
+            if not isinstance(title, str) or not title.strip():
+                raise RpcError(code=-32602, message="title is required")
+            status = params.get("status")
+            notes = params.get("notes")
+            completed = params.get("completed")
+            if status is not None and not isinstance(status, str):
+                raise RpcError(code=-32602, message="status must be a string or null")
+            if notes is not None and not isinstance(notes, str):
+                raise RpcError(code=-32602, message="notes must be a string or null")
+            if completed is not None and not isinstance(completed, bool):
+                raise RpcError(code=-32602, message="completed must be a boolean or null")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_play_todos_create(
+                    db,
+                    act_id=act_id,
+                    scene_id=scene_id,
+                    beat_id=beat_id,
+                    title=title,
+                    status=status,
+                    notes=notes,
+                    completed=completed,
+                ),
+            )
+
+        if method == "play/todos/update":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            act_id = params.get("act_id")
+            scene_id = params.get("scene_id")
+            beat_id = params.get("beat_id")
+            todo_id = params.get("todo_id")
+            if not isinstance(act_id, str) or not act_id:
+                raise RpcError(code=-32602, message="act_id is required")
+            if not isinstance(scene_id, str) or not scene_id:
+                raise RpcError(code=-32602, message="scene_id is required")
+            if not isinstance(beat_id, str) or not beat_id:
+                raise RpcError(code=-32602, message="beat_id is required")
+            if not isinstance(todo_id, str) or not todo_id:
+                raise RpcError(code=-32602, message="todo_id is required")
+            title = params.get("title")
+            status = params.get("status")
+            notes = params.get("notes")
+            completed = params.get("completed")
+            if title is not None and not isinstance(title, str):
+                raise RpcError(code=-32602, message="title must be a string or null")
+            if status is not None and not isinstance(status, str):
+                raise RpcError(code=-32602, message="status must be a string or null")
+            if notes is not None and not isinstance(notes, str):
+                raise RpcError(code=-32602, message="notes must be a string or null")
+            if completed is not None and not isinstance(completed, bool):
+                raise RpcError(code=-32602, message="completed must be a boolean or null")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_play_todos_update(
+                    db,
+                    act_id=act_id,
+                    scene_id=scene_id,
+                    beat_id=beat_id,
+                    todo_id=todo_id,
+                    title=title,
+                    status=status,
+                    notes=notes,
+                    completed=completed,
+                ),
+            )
+
+        if method == "play/todos/delete":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            act_id = params.get("act_id")
+            scene_id = params.get("scene_id")
+            beat_id = params.get("beat_id")
+            todo_id = params.get("todo_id")
+            if not isinstance(act_id, str) or not act_id:
+                raise RpcError(code=-32602, message="act_id is required")
+            if not isinstance(scene_id, str) or not scene_id:
+                raise RpcError(code=-32602, message="scene_id is required")
+            if not isinstance(beat_id, str) or not beat_id:
+                raise RpcError(code=-32602, message="beat_id is required")
+            if not isinstance(todo_id, str) or not todo_id:
+                raise RpcError(code=-32602, message="todo_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_play_todos_delete(
+                    db, act_id=act_id, scene_id=scene_id, beat_id=beat_id, todo_id=todo_id
                 ),
             )
 
