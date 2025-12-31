@@ -47,7 +47,7 @@ export class Settings implements Component {
 
   private async loadSettings(): Promise<void> {
     try {
-      const result = await this.kernelRequest('settings_get', {});
+      const result = await this.kernelRequest('settings/get', {});
       this.settingsData = result as SettingsData;
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -65,7 +65,7 @@ export class Settings implements Component {
 
   private async loadPersonas(): Promise<void> {
     try {
-      const result = await this.kernelRequest('personas_list', {});
+      const result = await this.kernelRequest('personas/list', {});
       this.personas = (result as { personas: PersonaData[] }).personas || [];
     } catch (error) {
       console.error('Failed to load personas:', error);
@@ -113,7 +113,7 @@ export class Settings implements Component {
       testResult.textContent = 'Testing...';
       testResult.style.color = '#666';
       try {
-        await this.kernelRequest('ollama_health', {});
+        await this.kernelRequest('ollama/health', {});
         testResult.textContent = '✓ Connection successful';
         testResult.style.color = 'green';
       } catch (error) {
@@ -226,7 +226,7 @@ export class Settings implements Component {
       saveStatus.style.color = '#666';
 
       try {
-        await this.kernelRequest('settings_update', newSettings);
+        await this.kernelRequest('settings/update', newSettings);
         this.settingsData = newSettings;
         saveStatus.textContent = '✓ Settings saved successfully';
         saveStatus.style.color = 'green';

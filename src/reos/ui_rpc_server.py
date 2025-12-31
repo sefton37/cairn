@@ -18,12 +18,12 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
-from pathlib import Path
 from typing import Any
 
 from .agent import ChatAgent
 from .db import Database, get_db
 from .mcp_tools import ToolError, call_tool, list_tools
+from .ollama import check_ollama
 from .play_fs import create_act as play_create_act
 from .play_fs import create_beat as play_create_beat
 from .play_fs import create_scene as play_create_scene
@@ -39,6 +39,7 @@ from .play_fs import set_active_act_id as play_set_active_act_id
 from .play_fs import update_act as play_update_act
 from .play_fs import update_beat as play_update_beat
 from .play_fs import update_scene as play_update_scene
+from .settings import settings
 
 _JSON = dict[str, Any]
 
@@ -155,6 +156,45 @@ def _handle_persona_set_active(db: Database, *, persona_id: str | None) -> dict[
         raise RpcError(code=-32602, message="persona_id must be a string or null")
     db.set_active_persona_id(persona_id=persona_id)
     return {"ok": True}
+
+
+def _handle_settings_get(db: Database) -> dict[str, Any]:
+    """Get current settings (environment variables merged with database overrides)."""
+    # Get stored settings from database (if any)
+    stored_json = db.get_state(key="user_settings")
+    stored = json.loads(stored_json) if stored_json else {}
+
+    # Merge with environment defaults
+    return {
+        "ollama_url": stored.get("ollama_url", settings.ollama_url),
+        "ollama_model": stored.get("ollama_model", settings.ollama_model or ""),
+        "repo_path": stored.get("repo_path", str(settings.repo_path) if settings.repo_path else ""),
+        "poll_interval_seconds": stored.get("poll_interval_seconds", 30),
+        "commit_review_enabled": stored.get("commit_review_enabled", settings.auto_review_commits),
+        "default_persona_id": db.get_active_persona_id(),
+    }
+
+
+def _handle_settings_update(db: Database, *, user_settings: dict[str, Any]) -> dict[str, Any]:
+    """Update user settings in database."""
+    # Store the settings as JSON in app_state
+    db.set_state(key="user_settings", value=json.dumps(user_settings))
+
+    # If default_persona_id is provided, update it separately
+    if "default_persona_id" in user_settings:
+        db.set_active_persona_id(persona_id=user_settings["default_persona_id"])
+
+    return {"ok": True}
+
+
+def _handle_ollama_health() -> dict[str, Any]:
+    """Check Ollama health status."""
+    health = check_ollama()
+    return {
+        "reachable": health.reachable,
+        "model_count": health.model_count,
+        "error": health.error,
+    }
 
 
 def _sha256_text(text: str) -> str:
@@ -543,6 +583,19 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
             if value is not None and not isinstance(value, str):
                 raise RpcError(code=-32602, message="value must be a string or null")
             return _jsonrpc_result(req_id=req_id, result=_handle_state_set(db, key=key, value=value))
+
+        if method == "settings/get":
+            return _jsonrpc_result(req_id=req_id, result=_handle_settings_get(db))
+
+        if method == "settings/update":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            user_settings = params
+            result = _handle_settings_update(db, user_settings=user_settings)
+            return _jsonrpc_result(req_id=req_id, result=result)
+
+        if method == "ollama/health":
+            return _jsonrpc_result(req_id=req_id, result=_handle_ollama_health())
 
         if method == "personas/list":
             return _jsonrpc_result(req_id=req_id, result=_handle_personas_list(db))
