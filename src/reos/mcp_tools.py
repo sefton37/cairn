@@ -305,6 +305,27 @@ def list_tools() -> list[Tool]:
                 },
             },
         ),
+        # GPU monitoring tools (NVIDIA)
+        Tool(
+            name="reos_gpu_info",
+            description="Get NVIDIA GPU information (model, driver version, VRAM, PCIe info).",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="reos_gpu_usage",
+            description="Get current NVIDIA GPU utilization, memory usage, temperature, power draw, and fan speed.",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="reos_gpu_processes",
+            description="Get processes currently using the NVIDIA GPU with their memory consumption.",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="reos_gpu_summary",
+            description="Get a quick summary of GPU status (availability, utilization, temperature).",
+            input_schema={"type": "object", "properties": {}},
+        ),
     ]
 
 
@@ -770,6 +791,36 @@ def call_tool(db: Database, *, name: str, arguments: dict[str, Any] | None) -> A
             return get_last_logins(limit=limit)
         except SystemMonitorError as exc:
             raise ToolError(code="system_error", message=str(exc)) from exc
+
+    # GPU monitoring tool handlers
+    if name == "reos_gpu_info":
+        from .system_monitor import SystemMonitorError, get_gpu_info
+
+        try:
+            return get_gpu_info()
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_gpu_usage":
+        from .system_monitor import SystemMonitorError, get_gpu_usage
+
+        try:
+            return get_gpu_usage()
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_gpu_processes":
+        from .system_monitor import SystemMonitorError, get_gpu_processes
+
+        try:
+            return get_gpu_processes()
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_gpu_summary":
+        from .system_monitor import get_gpu_summary
+
+        return get_gpu_summary()
 
     raise ToolError(code="unknown_tool", message=f"Unknown tool: {name}")
 

@@ -16,12 +16,14 @@ from reos.system_monitor import (
     docker_available,
     get_cpu_info,
     get_disk_usage,
+    get_gpu_summary,
     get_logged_in_users,
     get_memory_info,
     get_network_interfaces,
     get_process_details,
     get_system_overview,
     list_processes,
+    nvidia_smi_available,
     systemd_available,
 )
 
@@ -271,3 +273,68 @@ class TestErrorHandling:
         except SystemMonitorError:
             # This is also acceptable
             pass
+
+
+class TestGPUMonitoring:
+    def test_nvidia_smi_available_returns_bool(self) -> None:
+        """nvidia_smi_available should return a boolean."""
+        result = nvidia_smi_available()
+        assert isinstance(result, bool)
+
+    def test_get_gpu_summary_structure(self) -> None:
+        """get_gpu_summary should return proper structure."""
+        summary = get_gpu_summary()
+        assert isinstance(summary, dict)
+        assert "available" in summary
+        assert "gpus" in summary
+        # If available, should have gpu_count
+        if summary["available"]:
+            assert "gpu_count" in summary
+
+    def test_get_gpu_summary_not_available(self) -> None:
+        """Test GPU summary when nvidia-smi not available."""
+        with patch("reos.system_monitor.nvidia_smi_available", return_value=False):
+            summary = get_gpu_summary()
+            assert summary["available"] is False
+            assert summary["driver"] is None
+            assert summary["gpus"] == []
+
+    def test_get_gpu_summary_with_mock(self) -> None:
+        """Test GPU summary parsing with mocked helper functions."""
+        mock_info = [
+            {
+                "index": 0,
+                "name": "NVIDIA GeForce RTX 4070",
+                "driver_version": "535.183.01",
+                "memory_total_mb": 12288,
+                "pcie_gen": 4,
+            }
+        ]
+        mock_usage = [
+            {
+                "index": 0,
+                "name": "NVIDIA GeForce RTX 4070",
+                "gpu_utilization_percent": 50,
+                "memory_used_mb": 4096,
+                "memory_total_mb": 12288,
+                "temperature_c": 55,
+                "power_draw_w": 120.5,
+            }
+        ]
+        mock_processes: list[dict[str, Any]] = []
+
+        with patch("reos.system_monitor.nvidia_smi_available", return_value=True):
+            with patch("reos.system_monitor.get_gpu_info", return_value=mock_info):
+                with patch("reos.system_monitor.get_gpu_usage", return_value=mock_usage):
+                    with patch("reos.system_monitor.get_gpu_processes", return_value=mock_processes):
+                        summary = get_gpu_summary()
+                        assert summary["available"] is True
+                        assert summary["gpu_count"] == 1
+                        assert summary["driver"] == "535.183.01"
+                        assert len(summary["gpus"]) == 1
+                        gpu = summary["gpus"][0]
+                        assert gpu["name"] == "NVIDIA GeForce RTX 4070"
+                        assert gpu["gpu_util"] == 50
+                        assert gpu["memory_used_mb"] == 4096
+                        assert gpu["memory_total_mb"] == 12288
+                        assert gpu["temperature_c"] == 55

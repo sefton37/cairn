@@ -939,4 +939,209 @@ def get_system_status() -> dict[str, Any]:
     except SystemMonitorError:
         status["failed_services"] = None
 
+    # GPU
+    status["nvidia_gpu_available"] = nvidia_smi_available()
+    if status["nvidia_gpu_available"]:
+        try:
+            status["gpu"] = get_gpu_usage()
+        except SystemMonitorError:
+            status["gpu"] = None
+
     return status
+
+
+# =============================================================================
+# GPU Monitoring (NVIDIA)
+# =============================================================================
+
+
+def nvidia_smi_available() -> bool:
+    """Check if nvidia-smi is available (NVIDIA GPU with drivers)."""
+    return _command_exists("nvidia-smi")
+
+
+def get_gpu_info() -> list[dict[str, Any]]:
+    """Get NVIDIA GPU information.
+
+    Returns:
+        List of GPU info dicts with model, driver, memory, etc.
+    """
+    if not nvidia_smi_available():
+        raise SystemMonitorError("nvidia-smi not available (no NVIDIA GPU or drivers)")
+
+    cmd = [
+        "nvidia-smi",
+        "--query-gpu=index,name,driver_version,memory.total,memory.free,memory.used,pcie.link.gen.current,pcie.link.width.current,compute_mode",
+        "--format=csv,noheader,nounits",
+    ]
+    result = _run_command(cmd)
+    if result.returncode != 0:
+        raise SystemMonitorError(f"nvidia-smi failed: {result.stderr}")
+
+    gpus = []
+    for line in result.stdout.strip().split("\n"):
+        if not line.strip():
+            continue
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) >= 6:
+            gpus.append({
+                "index": int(parts[0]) if parts[0].isdigit() else 0,
+                "name": parts[1],
+                "driver_version": parts[2],
+                "memory_total_mb": int(parts[3]) if parts[3].isdigit() else parts[3],
+                "memory_free_mb": int(parts[4]) if parts[4].isdigit() else parts[4],
+                "memory_used_mb": int(parts[5]) if parts[5].isdigit() else parts[5],
+                "pcie_gen": parts[6] if len(parts) > 6 else None,
+                "pcie_width": parts[7] if len(parts) > 7 else None,
+                "compute_mode": parts[8] if len(parts) > 8 else None,
+            })
+
+    return gpus
+
+
+def get_gpu_usage() -> list[dict[str, Any]]:
+    """Get current NVIDIA GPU utilization and status.
+
+    Returns:
+        List of GPU status dicts with utilization, memory, temperature, power.
+    """
+    if not nvidia_smi_available():
+        raise SystemMonitorError("nvidia-smi not available (no NVIDIA GPU or drivers)")
+
+    cmd = [
+        "nvidia-smi",
+        "--query-gpu=index,name,utilization.gpu,utilization.memory,memory.total,memory.used,memory.free,temperature.gpu,power.draw,power.limit,fan.speed,pstate",
+        "--format=csv,noheader,nounits",
+    ]
+    result = _run_command(cmd)
+    if result.returncode != 0:
+        raise SystemMonitorError(f"nvidia-smi failed: {result.stderr}")
+
+    gpus = []
+    for line in result.stdout.strip().split("\n"):
+        if not line.strip():
+            continue
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) >= 7:
+            gpu: dict[str, Any] = {
+                "index": int(parts[0]) if parts[0].isdigit() else 0,
+                "name": parts[1],
+                "gpu_utilization_percent": _parse_int_or_na(parts[2]),
+                "memory_utilization_percent": _parse_int_or_na(parts[3]),
+                "memory_total_mb": _parse_int_or_na(parts[4]),
+                "memory_used_mb": _parse_int_or_na(parts[5]),
+                "memory_free_mb": _parse_int_or_na(parts[6]),
+            }
+            if len(parts) > 7:
+                gpu["temperature_c"] = _parse_int_or_na(parts[7])
+            if len(parts) > 8:
+                gpu["power_draw_w"] = _parse_float_or_na(parts[8])
+            if len(parts) > 9:
+                gpu["power_limit_w"] = _parse_float_or_na(parts[9])
+            if len(parts) > 10:
+                gpu["fan_speed_percent"] = _parse_int_or_na(parts[10])
+            if len(parts) > 11:
+                gpu["performance_state"] = parts[11]
+
+            gpus.append(gpu)
+
+    return gpus
+
+
+def _parse_int_or_na(value: str) -> int | None:
+    """Parse an integer value, returning None for N/A or errors."""
+    value = value.strip()
+    if value.lower() in ("[not supported]", "n/a", "[n/a]", ""):
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _parse_float_or_na(value: str) -> float | None:
+    """Parse a float value, returning None for N/A or errors."""
+    value = value.strip()
+    if value.lower() in ("[not supported]", "n/a", "[n/a]", ""):
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def get_gpu_processes() -> list[dict[str, Any]]:
+    """Get processes currently using NVIDIA GPU.
+
+    Returns:
+        List of process info dicts with PID, name, GPU memory usage.
+    """
+    if not nvidia_smi_available():
+        raise SystemMonitorError("nvidia-smi not available (no NVIDIA GPU or drivers)")
+
+    cmd = [
+        "nvidia-smi",
+        "--query-compute-apps=pid,process_name,used_memory,gpu_uuid",
+        "--format=csv,noheader,nounits",
+    ]
+    result = _run_command(cmd)
+    if result.returncode != 0:
+        raise SystemMonitorError(f"nvidia-smi failed: {result.stderr}")
+
+    processes = []
+    for line in result.stdout.strip().split("\n"):
+        if not line.strip():
+            continue
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) >= 3:
+            processes.append({
+                "pid": int(parts[0]) if parts[0].isdigit() else parts[0],
+                "process_name": parts[1],
+                "gpu_memory_mb": _parse_int_or_na(parts[2]),
+                "gpu_uuid": parts[3] if len(parts) > 3 else None,
+            })
+
+    return processes
+
+
+def get_gpu_summary() -> dict[str, Any]:
+    """Get a summary of GPU status for quick overview.
+
+    Returns:
+        Dict with GPU availability, count, and basic usage stats.
+    """
+    if not nvidia_smi_available():
+        return {
+            "available": False,
+            "driver": None,
+            "gpus": [],
+        }
+
+    try:
+        info = get_gpu_info()
+        usage = get_gpu_usage()
+        processes = get_gpu_processes()
+
+        return {
+            "available": True,
+            "driver": info[0]["driver_version"] if info else None,
+            "gpu_count": len(info),
+            "gpus": [
+                {
+                    "name": u["name"],
+                    "gpu_util": u.get("gpu_utilization_percent"),
+                    "memory_used_mb": u.get("memory_used_mb"),
+                    "memory_total_mb": u.get("memory_total_mb"),
+                    "temperature_c": u.get("temperature_c"),
+                    "power_draw_w": u.get("power_draw_w"),
+                }
+                for u in usage
+            ],
+            "process_count": len(processes),
+        }
+    except SystemMonitorError:
+        return {
+            "available": True,
+            "error": "Failed to query GPU",
+            "gpus": [],
+        }
