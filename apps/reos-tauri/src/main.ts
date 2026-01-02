@@ -167,6 +167,38 @@ type SystemContainersResult = {
   containers: ContainerInfo[];
 };
 
+// Bash execution types
+type BashProposal = {
+  proposal_id: string;
+  command: string;
+  description: string;
+  risk_level: 'low' | 'medium' | 'high' | 'critical';
+  warnings: string[];
+  created_at: string;
+  approved: boolean;
+  executed: boolean;
+};
+
+type BashExecuteResult = {
+  proposal_id: string;
+  command: string;
+  exit_code: number;
+  stdout: string;
+  stderr: string;
+  duration_ms: number;
+  success: boolean;
+};
+
+type BashSuggestResult = {
+  found: boolean;
+  template_name?: string;
+  command_template?: string;
+  description?: string;
+  requires_params?: string[];
+  optional_params?: Record<string, string>;
+  message?: string;
+};
+
 class KernelError extends Error {
   code: number;
 
@@ -349,6 +381,293 @@ function buildUi() {
     chatLog.appendChild(row);
     chatLog.scrollTop = chatLog.scrollHeight;
     return { row, bubble };
+  }
+
+  function appendCommandProposal(proposal: BashProposal): void {
+    const row = el('div');
+    row.className = 'chat-row reos';
+
+    const bubble = el('div');
+    bubble.className = 'chat-bubble reos';
+    bubble.style.background = 'linear-gradient(135deg, #1e293b 0%, #334155 100%)';
+    bubble.style.color = '#f1f5f9';
+    bubble.style.padding = '16px';
+    bubble.style.borderRadius = '12px';
+    bubble.style.maxWidth = '500px';
+
+    // Header with risk badge
+    const header = el('div');
+    header.style.display = 'flex';
+    header.style.justifyContent = 'space-between';
+    header.style.alignItems = 'center';
+    header.style.marginBottom = '12px';
+
+    const title = el('span');
+    title.textContent = 'Command Proposal';
+    title.style.fontWeight = '600';
+    title.style.fontSize = '14px';
+
+    const riskBadge = el('span');
+    riskBadge.textContent = proposal.risk_level.toUpperCase();
+    riskBadge.style.padding = '2px 8px';
+    riskBadge.style.borderRadius = '9999px';
+    riskBadge.style.fontSize = '10px';
+    riskBadge.style.fontWeight = '600';
+    const riskColors: Record<string, { bg: string; text: string }> = {
+      low: { bg: '#dcfce7', text: '#166534' },
+      medium: { bg: '#fef3c7', text: '#92400e' },
+      high: { bg: '#fee2e2', text: '#991b1b' },
+      critical: { bg: '#7f1d1d', text: '#fecaca' }
+    };
+    const colors = riskColors[proposal.risk_level] || riskColors.medium;
+    riskBadge.style.background = colors.bg;
+    riskBadge.style.color = colors.text;
+
+    header.appendChild(title);
+    header.appendChild(riskBadge);
+    bubble.appendChild(header);
+
+    // Description
+    const desc = el('div');
+    desc.textContent = proposal.description;
+    desc.style.fontSize = '13px';
+    desc.style.marginBottom = '12px';
+    desc.style.color = '#cbd5e1';
+    bubble.appendChild(desc);
+
+    // Command box
+    const cmdBox = el('div');
+    cmdBox.style.background = '#0f172a';
+    cmdBox.style.padding = '12px';
+    cmdBox.style.borderRadius = '8px';
+    cmdBox.style.marginBottom = '12px';
+    cmdBox.style.fontFamily = 'ui-monospace, monospace';
+    cmdBox.style.fontSize = '12px';
+    cmdBox.style.whiteSpace = 'pre-wrap';
+    cmdBox.style.wordBreak = 'break-all';
+    cmdBox.textContent = proposal.command;
+    bubble.appendChild(cmdBox);
+
+    // Warnings
+    if (proposal.warnings.length > 0) {
+      const warningsBox = el('div');
+      warningsBox.style.background = '#451a03';
+      warningsBox.style.padding = '10px';
+      warningsBox.style.borderRadius = '8px';
+      warningsBox.style.marginBottom = '12px';
+      warningsBox.style.fontSize = '12px';
+
+      const warnTitle = el('div');
+      warnTitle.textContent = 'Warnings:';
+      warnTitle.style.fontWeight = '600';
+      warnTitle.style.color = '#fbbf24';
+      warnTitle.style.marginBottom = '4px';
+      warningsBox.appendChild(warnTitle);
+
+      for (const w of proposal.warnings) {
+        const warnItem = el('div');
+        warnItem.textContent = `• ${w}`;
+        warnItem.style.color = '#fed7aa';
+        warningsBox.appendChild(warnItem);
+      }
+      bubble.appendChild(warningsBox);
+    }
+
+    // Action buttons
+    const actions = el('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '8px';
+
+    const approveBtn = el('button');
+    approveBtn.textContent = 'Approve & Run';
+    approveBtn.style.flex = '1';
+    approveBtn.style.padding = '10px 16px';
+    approveBtn.style.borderRadius = '8px';
+    approveBtn.style.border = 'none';
+    approveBtn.style.background = '#22c55e';
+    approveBtn.style.color = 'white';
+    approveBtn.style.fontWeight = '600';
+    approveBtn.style.cursor = 'pointer';
+    approveBtn.style.fontSize = '13px';
+
+    const rejectBtn = el('button');
+    rejectBtn.textContent = 'Reject';
+    rejectBtn.style.padding = '10px 16px';
+    rejectBtn.style.borderRadius = '8px';
+    rejectBtn.style.border = '1px solid #475569';
+    rejectBtn.style.background = 'transparent';
+    rejectBtn.style.color = '#94a3b8';
+    rejectBtn.style.cursor = 'pointer';
+    rejectBtn.style.fontSize = '13px';
+
+    actions.appendChild(approveBtn);
+    actions.appendChild(rejectBtn);
+    bubble.appendChild(actions);
+
+    // Result container (hidden initially)
+    const resultContainer = el('div');
+    resultContainer.style.display = 'none';
+    resultContainer.style.marginTop = '12px';
+    bubble.appendChild(resultContainer);
+
+    // Handle approve
+    approveBtn.addEventListener('click', () => {
+      approveBtn.disabled = true;
+      rejectBtn.disabled = true;
+      approveBtn.textContent = 'Running...';
+      approveBtn.style.background = '#64748b';
+
+      void (async () => {
+        try {
+          // Approve the proposal
+          await kernelRequest('bash/approve', { proposal_id: proposal.proposal_id });
+
+          // Execute it
+          const result = (await kernelRequest('bash/execute', {
+            proposal_id: proposal.proposal_id,
+            timeout: 60
+          })) as BashExecuteResult;
+
+          // Show result
+          actions.style.display = 'none';
+          resultContainer.style.display = 'block';
+
+          const resultHeader = el('div');
+          resultHeader.style.display = 'flex';
+          resultHeader.style.justifyContent = 'space-between';
+          resultHeader.style.alignItems = 'center';
+          resultHeader.style.marginBottom = '8px';
+
+          const resultTitle = el('span');
+          resultTitle.textContent = result.success ? 'Success' : 'Failed';
+          resultTitle.style.fontWeight = '600';
+          resultTitle.style.color = result.success ? '#22c55e' : '#ef4444';
+
+          const exitCode = el('span');
+          exitCode.textContent = `Exit code: ${result.exit_code}`;
+          exitCode.style.fontSize = '11px';
+          exitCode.style.color = '#94a3b8';
+
+          resultHeader.appendChild(resultTitle);
+          resultHeader.appendChild(exitCode);
+          resultContainer.appendChild(resultHeader);
+
+          if (result.stdout) {
+            const stdoutLabel = el('div');
+            stdoutLabel.textContent = 'Output:';
+            stdoutLabel.style.fontSize = '11px';
+            stdoutLabel.style.color = '#94a3b8';
+            stdoutLabel.style.marginBottom = '4px';
+            resultContainer.appendChild(stdoutLabel);
+
+            const stdout = el('pre');
+            stdout.textContent = result.stdout;
+            stdout.style.background = '#0f172a';
+            stdout.style.padding = '10px';
+            stdout.style.borderRadius = '6px';
+            stdout.style.fontSize = '11px';
+            stdout.style.margin = '0 0 8px 0';
+            stdout.style.whiteSpace = 'pre-wrap';
+            stdout.style.maxHeight = '200px';
+            stdout.style.overflow = 'auto';
+            resultContainer.appendChild(stdout);
+          }
+
+          if (result.stderr) {
+            const stderrLabel = el('div');
+            stderrLabel.textContent = 'Errors:';
+            stderrLabel.style.fontSize = '11px';
+            stderrLabel.style.color = '#f87171';
+            stderrLabel.style.marginBottom = '4px';
+            resultContainer.appendChild(stderrLabel);
+
+            const stderr = el('pre');
+            stderr.textContent = result.stderr;
+            stderr.style.background = '#450a0a';
+            stderr.style.padding = '10px';
+            stderr.style.borderRadius = '6px';
+            stderr.style.fontSize = '11px';
+            stderr.style.margin = '0';
+            stderr.style.whiteSpace = 'pre-wrap';
+            stderr.style.color = '#fca5a5';
+            resultContainer.appendChild(stderr);
+          }
+
+          const duration = el('div');
+          duration.textContent = `Completed in ${result.duration_ms}ms`;
+          duration.style.fontSize = '10px';
+          duration.style.color = '#64748b';
+          duration.style.marginTop = '8px';
+          resultContainer.appendChild(duration);
+
+        } catch (e) {
+          actions.style.display = 'none';
+          resultContainer.style.display = 'block';
+          resultContainer.innerHTML = '';
+
+          const errorBox = el('div');
+          errorBox.style.background = '#450a0a';
+          errorBox.style.padding = '12px';
+          errorBox.style.borderRadius = '8px';
+          errorBox.style.color = '#fca5a5';
+          errorBox.textContent = `Error: ${String(e)}`;
+          resultContainer.appendChild(errorBox);
+        }
+      })();
+    });
+
+    // Handle reject
+    rejectBtn.addEventListener('click', () => {
+      actions.style.display = 'none';
+      resultContainer.style.display = 'block';
+
+      const rejected = el('div');
+      rejected.textContent = 'Command rejected';
+      rejected.style.color = '#94a3b8';
+      rejected.style.fontStyle = 'italic';
+      resultContainer.appendChild(rejected);
+    });
+
+    row.appendChild(bubble);
+    chatLog.appendChild(row);
+    chatLog.scrollTop = chatLog.scrollHeight;
+  }
+
+  function appendCommandResult(result: BashExecuteResult): void {
+    const row = el('div');
+    row.className = 'chat-row reos';
+
+    const bubble = el('div');
+    bubble.className = 'chat-bubble reos';
+    bubble.style.background = result.success ? '#14532d' : '#450a0a';
+    bubble.style.color = '#f1f5f9';
+    bubble.style.padding = '12px';
+    bubble.style.borderRadius = '12px';
+    bubble.style.maxWidth = '500px';
+
+    const header = el('div');
+    header.style.marginBottom = '8px';
+    header.style.fontWeight = '600';
+    header.textContent = result.success ? 'Command Succeeded' : 'Command Failed';
+    bubble.appendChild(header);
+
+    if (result.stdout) {
+      const stdout = el('pre');
+      stdout.textContent = result.stdout;
+      stdout.style.background = 'rgba(0,0,0,0.3)';
+      stdout.style.padding = '8px';
+      stdout.style.borderRadius = '6px';
+      stdout.style.fontSize = '11px';
+      stdout.style.margin = '0';
+      stdout.style.whiteSpace = 'pre-wrap';
+      stdout.style.maxHeight = '200px';
+      stdout.style.overflow = 'auto';
+      bubble.appendChild(stdout);
+    }
+
+    row.appendChild(bubble);
+    chatLog.appendChild(row);
+    chatLog.scrollTop = chatLog.scrollHeight;
   }
 
   let activeActId: string | null = null;
@@ -1042,6 +1361,29 @@ function buildUi() {
   }
 
 
+  // Patterns that suggest user wants to run a system command
+  const systemCommandPatterns = [
+    /\b(what('?s| is) my) ip/i,
+    /\b(show|get|find|check|list|display|tell me)\b.*\b(ip|port|process|service|disk|memory|cpu|file|folder|log|container)/i,
+    /\b(kill|stop|start|restart|disable|enable)\b.*\b(process|service|daemon)/i,
+    /\b(open|listening|running)\b.*\b(port|process|service)/i,
+    /\bhow (much|many)\b.*\b(memory|ram|disk|space|storage|cpu)/i,
+    /\b(disk|memory|cpu|ram)\s*(usage|space|info)/i,
+    /\buptime\b/i,
+    /\b(system|machine) info/i,
+    /\bwho am i\b/i,
+    /\bcurrent user\b/i,
+    /\b(find|search|locate|grep)\b.*(file|text|string|pattern)/i,
+    /\bdocker\b.*(container|image|ps|log)/i,
+    /\bsystemd?\b.*(service|status|unit)/i,
+    /\brun\s+['"`]?[a-z]/i,  // "run ls", "run 'ls -la'"
+    /^!.+/,  // starts with ! like a shell command
+  ];
+
+  function looksLikeSystemCommand(text: string): boolean {
+    return systemCommandPatterns.some(pattern => pattern.test(text));
+  }
+
   async function onSend() {
     const text = input.value.trim();
     if (!text) return;
@@ -1058,9 +1400,54 @@ function buildUi() {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
     try {
-      const res = (await kernelRequest('chat/respond', { text })) as ChatRespondResult;
-      pending.bubble.classList.remove('thinking');
-      pending.bubble.textContent = res.answer ?? '(no answer)';
+      // Check if this looks like a system command request
+      if (looksLikeSystemCommand(text)) {
+        // Try to suggest a command
+        const suggestion = (await kernelRequest('bash/suggest', { intent: text })) as BashSuggestResult;
+
+        if (suggestion.found && suggestion.command_template) {
+          // Check if we need parameters
+          const needsParams = (suggestion.requires_params ?? []).length > 0;
+
+          if (needsParams) {
+            // Ask for parameters through chat
+            pending.bubble.classList.remove('thinking');
+            pending.bubble.textContent = `I found a matching command template: ${suggestion.description}\n\nCommand: ${suggestion.command_template}\n\nThis command needs the following parameters: ${suggestion.requires_params?.join(', ')}\n\nPlease provide the values or type the full command you want to run.`;
+          } else {
+            // Propose the command directly
+            const proposal = (await kernelRequest('bash/propose', {
+              command: suggestion.command_template,
+              description: suggestion.description || 'Execute system command'
+            })) as BashProposal;
+
+            // Remove thinking bubble and show proposal
+            pending.row.remove();
+            appendCommandProposal(proposal);
+          }
+        } else {
+          // Check if user typed a direct command with ! prefix
+          if (text.startsWith('!')) {
+            const command = text.slice(1).trim();
+            const proposal = (await kernelRequest('bash/propose', {
+              command,
+              description: 'User-specified command'
+            })) as BashProposal;
+
+            pending.row.remove();
+            appendCommandProposal(proposal);
+          } else {
+            // Fall back to chat for suggestions
+            const res = (await kernelRequest('chat/respond', { text })) as ChatRespondResult;
+            pending.bubble.classList.remove('thinking');
+            pending.bubble.textContent = res.answer ?? '(no answer)';
+          }
+        }
+      } else {
+        // Normal chat response
+        const res = (await kernelRequest('chat/respond', { text })) as ChatRespondResult;
+        pending.bubble.classList.remove('thinking');
+        pending.bubble.textContent = res.answer ?? '(no answer)';
+      }
     } catch (e) {
       pending.bubble.classList.remove('thinking');
       pending.bubble.textContent = `Error: ${String(e)}`;

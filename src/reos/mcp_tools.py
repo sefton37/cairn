@@ -18,6 +18,14 @@ from pathlib import Path
 from typing import Any
 
 from .alignment import get_git_summary, is_git_repo
+from .bash_executor import (
+    approve_proposal,
+    build_command_from_template,
+    create_proposal,
+    execute_proposal,
+    get_proposal,
+    suggest_command_from_intent,
+)
 from .db import Database
 from .repo_discovery import discover_git_repos
 from .repo_sandbox import RepoSandboxError, safe_repo_path
@@ -89,6 +97,47 @@ def list_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {"glob": {"type": "string"}},
                 "required": ["glob"],
+            },
+        ),
+        Tool(
+            name="reos_bash_suggest",
+            description=(
+                "Suggest a bash command from natural language intent. "
+                "Returns a command template that may need parameters filled in."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {"intent": {"type": "string", "description": "Natural language description of what to do"}},
+                "required": ["intent"],
+            },
+        ),
+        Tool(
+            name="reos_bash_propose",
+            description=(
+                "Propose a bash command for user approval. The command will be analyzed for risk "
+                "and the user must approve before execution. Returns a proposal_id."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "description": "The bash command to execute"},
+                    "description": {"type": "string", "description": "Human-readable description of what the command does"},
+                },
+                "required": ["command", "description"],
+            },
+        ),
+        Tool(
+            name="reos_bash_execute",
+            description=(
+                "Execute an approved bash command. Requires a valid proposal_id that has been approved by the user."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "proposal_id": {"type": "string", "description": "The ID of the approved proposal"},
+                    "timeout": {"type": "number", "description": "Timeout in seconds (default 30)"},
+                },
+                "required": ["proposal_id"],
             },
         ),
     ]
@@ -219,6 +268,67 @@ def call_tool(db: Database, *, name: str, arguments: dict[str, Any] | None) -> A
                         return results
 
         return results
+
+    if name == "reos_bash_suggest":
+        intent = args.get("intent")
+        if not isinstance(intent, str) or not intent.strip():
+            raise ToolError(code="invalid_args", message="intent is required")
+
+        suggestion = suggest_command_from_intent(intent)
+        if suggestion:
+            return {
+                "found": True,
+                "template_name": suggestion["template_name"],
+                "command_template": suggestion["command"],
+                "description": suggestion["description"],
+                "requires_params": suggestion["requires"],
+                "optional_params": suggestion.get("optional", {}),
+            }
+        return {
+            "found": False,
+            "message": "No matching command template found. You can still propose a custom command.",
+        }
+
+    if name == "reos_bash_propose":
+        command = args.get("command")
+        description = args.get("description")
+
+        if not isinstance(command, str) or not command.strip():
+            raise ToolError(code="invalid_args", message="command is required")
+        if not isinstance(description, str) or not description.strip():
+            raise ToolError(code="invalid_args", message="description is required")
+
+        proposal = create_proposal(command=command.strip(), description=description.strip())
+        return proposal.to_dict()
+
+    if name == "reos_bash_execute":
+        proposal_id = args.get("proposal_id")
+        timeout = int(args.get("timeout", 30))
+
+        if not isinstance(proposal_id, str) or not proposal_id:
+            raise ToolError(code="invalid_args", message="proposal_id is required")
+
+        if timeout < 1 or timeout > 300:
+            raise ToolError(code="invalid_args", message="timeout must be between 1 and 300 seconds")
+
+        proposal = get_proposal(proposal_id)
+        if not proposal:
+            raise ToolError(code="proposal_not_found", message="Proposal not found or expired")
+
+        if not proposal.approved:
+            raise ToolError(
+                code="not_approved",
+                message="Command has not been approved by user. Wait for user to click 'Approve' button.",
+            )
+
+        if proposal.executed:
+            raise ToolError(code="already_executed", message="This command has already been executed")
+
+        result = execute_proposal(proposal_id, timeout=timeout)
+        if not result:
+            raise ToolError(code="execution_failed", message="Failed to execute command")
+
+        return result.to_dict()
 
     raise ToolError(code="unknown_tool", message=f"Unknown tool: {name}")
 

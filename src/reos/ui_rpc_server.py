@@ -32,6 +32,13 @@ from .system_monitor import (
     get_system_summary,
     get_systemd_services,
 )
+from .bash_executor import (
+    approve_proposal,
+    create_proposal,
+    execute_proposal,
+    get_proposal,
+    suggest_command_from_intent,
+)
 from .play_fs import create_beat as play_create_beat
 from .play_fs import create_scene as play_create_scene
 from .play_fs import kb_list_files as play_kb_list_files
@@ -522,6 +529,65 @@ def _handle_system_containers(_db: Database) -> dict[str, Any]:
     }
 
 
+def _handle_bash_suggest(_db: Database, *, intent: str) -> dict[str, Any]:
+    """Suggest a bash command from natural language intent."""
+    suggestion = suggest_command_from_intent(intent)
+    if suggestion:
+        return {
+            "found": True,
+            "template_name": suggestion["template_name"],
+            "command_template": suggestion["command"],
+            "description": suggestion["description"],
+            "requires_params": suggestion["requires"],
+            "optional_params": suggestion.get("optional", {}),
+        }
+    return {
+        "found": False,
+        "message": "No matching command template found. You can still propose a custom command.",
+    }
+
+
+def _handle_bash_propose(_db: Database, *, command: str, description: str) -> dict[str, Any]:
+    """Propose a bash command for user approval."""
+    proposal = create_proposal(command=command, description=description)
+    return proposal.to_dict()
+
+
+def _handle_bash_approve(_db: Database, *, proposal_id: str) -> dict[str, Any]:
+    """Approve a pending bash command proposal."""
+    proposal = approve_proposal(proposal_id)
+    if not proposal:
+        raise RpcError(code=-32602, message="Proposal not found or expired")
+    return proposal.to_dict()
+
+
+def _handle_bash_execute(_db: Database, *, proposal_id: str, timeout: int = 30) -> dict[str, Any]:
+    """Execute an approved bash command."""
+    proposal = get_proposal(proposal_id)
+    if not proposal:
+        raise RpcError(code=-32602, message="Proposal not found or expired")
+
+    if not proposal.approved:
+        raise RpcError(code=-32602, message="Command has not been approved by user")
+
+    if proposal.executed:
+        raise RpcError(code=-32602, message="This command has already been executed")
+
+    result = execute_proposal(proposal_id, timeout=timeout)
+    if not result:
+        raise RpcError(code=-32000, message="Failed to execute command")
+
+    return result.to_dict()
+
+
+def _handle_bash_get_proposal(_db: Database, *, proposal_id: str) -> dict[str, Any]:
+    """Get details of a pending proposal."""
+    proposal = get_proposal(proposal_id)
+    if not proposal:
+        raise RpcError(code=-32602, message="Proposal not found or expired")
+    return proposal.to_dict()
+
+
 def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any] | None:
     method = req.get("method")
     req_id = req.get("id")
@@ -920,6 +986,58 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
 
         if method == "system/containers":
             return _jsonrpc_result(req_id=req_id, result=_handle_system_containers(db))
+
+        if method == "bash/suggest":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            intent = params.get("intent")
+            if not isinstance(intent, str) or not intent.strip():
+                raise RpcError(code=-32602, message="intent is required")
+            return _jsonrpc_result(req_id=req_id, result=_handle_bash_suggest(db, intent=intent))
+
+        if method == "bash/propose":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            command = params.get("command")
+            description = params.get("description")
+            if not isinstance(command, str) or not command.strip():
+                raise RpcError(code=-32602, message="command is required")
+            if not isinstance(description, str) or not description.strip():
+                raise RpcError(code=-32602, message="description is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_bash_propose(db, command=command, description=description),
+            )
+
+        if method == "bash/approve":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            proposal_id = params.get("proposal_id")
+            if not isinstance(proposal_id, str) or not proposal_id:
+                raise RpcError(code=-32602, message="proposal_id is required")
+            return _jsonrpc_result(req_id=req_id, result=_handle_bash_approve(db, proposal_id=proposal_id))
+
+        if method == "bash/execute":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            proposal_id = params.get("proposal_id")
+            timeout = int(params.get("timeout", 30))
+            if not isinstance(proposal_id, str) or not proposal_id:
+                raise RpcError(code=-32602, message="proposal_id is required")
+            if timeout < 1 or timeout > 300:
+                raise RpcError(code=-32602, message="timeout must be between 1 and 300 seconds")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_bash_execute(db, proposal_id=proposal_id, timeout=timeout),
+            )
+
+        if method == "bash/get_proposal":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            proposal_id = params.get("proposal_id")
+            if not isinstance(proposal_id, str) or not proposal_id:
+                raise RpcError(code=-32602, message="proposal_id is required")
+            return _jsonrpc_result(req_id=req_id, result=_handle_bash_get_proposal(db, proposal_id=proposal_id))
 
         raise RpcError(code=-32601, message=f"Method not found: {method}")
 
