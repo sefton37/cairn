@@ -81,6 +81,92 @@ type PlayKbWriteApplyResult = {
   sha256_current: string;
 };
 
+// System monitoring types
+type SystemSummary = {
+  hostname: string;
+  os_name: string;
+  os_version: string;
+  kernel: string;
+  uptime: string;
+  uptime_seconds: number;
+  process_count: number;
+  service_count: number;
+  running_services: number;
+  container_count: number;
+  running_containers: number;
+  cpu_percent: number;
+  memory_percent: number;
+  disk_percent: number;
+  load_avg: string;
+};
+
+type SystemResources = {
+  cpu_percent: number;
+  cpu_count: number;
+  memory_total_mb: number;
+  memory_used_mb: number;
+  memory_percent: number;
+  swap_total_mb: number;
+  swap_used_mb: number;
+  swap_percent: number;
+  disk_total_gb: number;
+  disk_used_gb: number;
+  disk_percent: number;
+  load_avg_1: number;
+  load_avg_5: number;
+  load_avg_15: number;
+};
+
+type SystemOverviewResult = {
+  summary: SystemSummary;
+  resources: SystemResources;
+};
+
+type SystemdService = {
+  unit: string;
+  load_state: string;
+  active_state: string;
+  sub_state: string;
+  description: string;
+};
+
+type SystemServicesResult = {
+  services: SystemdService[];
+};
+
+type ProcessInfo = {
+  pid: number;
+  user: string;
+  cpu_percent: number;
+  mem_percent: number;
+  vsz_kb: number;
+  rss_kb: number;
+  tty: string;
+  stat: string;
+  started: string;
+  time: string;
+  command: string;
+  friendly_name: string;
+};
+
+type SystemProcessesResult = {
+  processes: ProcessInfo[];
+};
+
+type ContainerInfo = {
+  id: string;
+  name: string;
+  image: string;
+  status: string;
+  ports: string;
+  created: string;
+  runtime: string;
+};
+
+type SystemContainersResult = {
+  containers: ContainerInfo[];
+};
+
 class KernelError extends Error {
   code: number;
 
@@ -111,6 +197,10 @@ function buildUi() {
   const query = new URLSearchParams(window.location.search);
   if (query.get('view') === 'me') {
     void buildMeWindow();
+    return;
+  }
+  if (query.get('view') === 'command-dashboard') {
+    void buildCommandDashboardWindow();
     return;
   }
 
@@ -155,7 +245,17 @@ function buildUi() {
   actsList.style.flexDirection = 'column';
   actsList.style.gap = '6px';
 
+  const systemHeader = el('div');
+  systemHeader.textContent = 'System';
+  systemHeader.style.marginTop = '12px';
+  systemHeader.style.fontWeight = '600';
+
+  const cmdDashBtn = el('button');
+  cmdDashBtn.textContent = 'Command Dashboard';
+
   nav.appendChild(navTitle);
+  nav.appendChild(systemHeader);
+  nav.appendChild(cmdDashBtn);
   nav.appendChild(meHeader);
   nav.appendChild(meBtn);
   nav.appendChild(actsHeader);
@@ -292,6 +392,27 @@ function buildUi() {
     void w;
   }
 
+  async function openCommandDashboardWindow() {
+    try {
+      const existing = await WebviewWindow.getByLabel('command-dashboard');
+      if (existing) {
+        await existing.setFocus();
+        return;
+      }
+    } catch {
+      // Best effort: if getByLabel fails, fall through and create a new window.
+    }
+
+    const w = new WebviewWindow('command-dashboard', {
+      title: 'Command Dashboard — ReOS',
+      url: '/?view=command-dashboard',
+      width: 1200,
+      height: 800
+    });
+    void w;
+  }
+
+  cmdDashBtn.addEventListener('click', () => void openCommandDashboardWindow());
   meBtn.addEventListener('click', () => void openMeWindow());
 
   function rowHeader(title: string) {
@@ -992,6 +1113,687 @@ async function buildMeWindow() {
   } catch (e) {
     body.textContent = `Error: ${String(e)}`;
   }
+}
+
+async function buildCommandDashboardWindow() {
+  const root = document.getElementById('app');
+  if (!root) return;
+  root.innerHTML = '';
+
+  // Utility functions for the dashboard
+  function createCard(title: string): { card: HTMLDivElement; body: HTMLDivElement } {
+    const card = el('div') as HTMLDivElement;
+    card.style.background = 'rgba(255, 255, 255, 0.7)';
+    card.style.borderRadius = '12px';
+    card.style.padding = '16px';
+    card.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)';
+
+    const header = el('div');
+    header.textContent = title;
+    header.style.fontWeight = '600';
+    header.style.fontSize = '14px';
+    header.style.marginBottom = '12px';
+    header.style.color = '#374151';
+
+    const body = el('div') as HTMLDivElement;
+    card.appendChild(header);
+    card.appendChild(body);
+
+    return { card, body };
+  }
+
+  function createProgressBar(percent: number, color: string = '#3b82f6'): HTMLDivElement {
+    const wrap = el('div') as HTMLDivElement;
+    wrap.style.height = '8px';
+    wrap.style.background = '#e5e7eb';
+    wrap.style.borderRadius = '4px';
+    wrap.style.overflow = 'hidden';
+
+    const bar = el('div') as HTMLDivElement;
+    bar.style.height = '100%';
+    bar.style.width = `${Math.min(100, percent)}%`;
+    bar.style.background = percent > 90 ? '#ef4444' : percent > 70 ? '#f59e0b' : color;
+    bar.style.borderRadius = '4px';
+    bar.style.transition = 'width 0.3s ease';
+
+    wrap.appendChild(bar);
+    return wrap;
+  }
+
+  function createStatRow(label: string, value: string, subValue?: string): HTMLDivElement {
+    const row = el('div') as HTMLDivElement;
+    row.style.display = 'flex';
+    row.style.justifyContent = 'space-between';
+    row.style.alignItems = 'center';
+    row.style.padding = '4px 0';
+
+    const labelEl = el('span');
+    labelEl.textContent = label;
+    labelEl.style.color = '#6b7280';
+    labelEl.style.fontSize = '13px';
+
+    const valueWrap = el('div');
+    valueWrap.style.textAlign = 'right';
+
+    const valueEl = el('span');
+    valueEl.textContent = value;
+    valueEl.style.fontWeight = '500';
+    valueEl.style.fontSize = '13px';
+
+    valueWrap.appendChild(valueEl);
+
+    if (subValue) {
+      const subEl = el('div');
+      subEl.textContent = subValue;
+      subEl.style.fontSize = '11px';
+      subEl.style.color = '#9ca3af';
+      valueWrap.appendChild(subEl);
+    }
+
+    row.appendChild(labelEl);
+    row.appendChild(valueWrap);
+    return row;
+  }
+
+  function createStatusBadge(status: string, isActive: boolean): HTMLSpanElement {
+    const badge = el('span') as HTMLSpanElement;
+    badge.textContent = status;
+    badge.style.padding = '2px 8px';
+    badge.style.borderRadius = '9999px';
+    badge.style.fontSize = '11px';
+    badge.style.fontWeight = '500';
+    if (isActive) {
+      badge.style.background = '#dcfce7';
+      badge.style.color = '#166534';
+    } else {
+      badge.style.background = '#fef2f2';
+      badge.style.color = '#991b1b';
+    }
+    return badge;
+  }
+
+  // Main container
+  const container = el('div');
+  container.style.padding = '20px';
+  container.style.height = '100vh';
+  container.style.boxSizing = 'border-box';
+  container.style.overflow = 'auto';
+  container.style.background = 'linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%)';
+  container.style.fontFamily = 'system-ui, -apple-system, sans-serif';
+
+  // Header
+  const header = el('div');
+  header.style.display = 'flex';
+  header.style.justifyContent = 'space-between';
+  header.style.alignItems = 'center';
+  header.style.marginBottom = '20px';
+
+  const titleEl = el('h1');
+  titleEl.textContent = 'Command Dashboard';
+  titleEl.style.margin = '0';
+  titleEl.style.fontSize = '24px';
+  titleEl.style.fontWeight = '600';
+  titleEl.style.color = '#1f2937';
+
+  const refreshBtn = el('button');
+  refreshBtn.textContent = 'Refresh';
+  refreshBtn.style.padding = '8px 16px';
+  refreshBtn.style.borderRadius = '8px';
+  refreshBtn.style.border = '1px solid #d1d5db';
+  refreshBtn.style.background = 'white';
+  refreshBtn.style.cursor = 'pointer';
+  refreshBtn.style.fontSize = '13px';
+
+  header.appendChild(titleEl);
+  header.appendChild(refreshBtn);
+  container.appendChild(header);
+
+  // Grid layout for dashboard
+  const grid = el('div');
+  grid.style.display = 'grid';
+  grid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(350px, 1fr))';
+  grid.style.gap = '16px';
+  container.appendChild(grid);
+
+  // System Summary Card
+  const { card: summaryCard, body: summaryBody } = createCard('System Overview');
+  grid.appendChild(summaryCard);
+
+  // Resources Card
+  const { card: resourcesCard, body: resourcesBody } = createCard('Resource Utilization');
+  grid.appendChild(resourcesCard);
+
+  // Services Card (full width)
+  const { card: servicesCard, body: servicesBody } = createCard('Systemd Services');
+  servicesCard.style.gridColumn = '1 / -1';
+
+  const servicesControls = el('div');
+  servicesControls.style.display = 'flex';
+  servicesControls.style.gap = '8px';
+  servicesControls.style.marginBottom = '12px';
+
+  const serviceFilter = el('select') as HTMLSelectElement;
+  serviceFilter.innerHTML = `
+    <option value="all">All Services</option>
+    <option value="active">Active Only</option>
+    <option value="failed">Failed Only</option>
+    <option value="inactive">Inactive Only</option>
+  `;
+  serviceFilter.style.padding = '6px 10px';
+  serviceFilter.style.borderRadius = '6px';
+  serviceFilter.style.border = '1px solid #d1d5db';
+  serviceFilter.style.fontSize = '12px';
+
+  const serviceSearch = el('input') as HTMLInputElement;
+  serviceSearch.type = 'text';
+  serviceSearch.placeholder = 'Search services...';
+  serviceSearch.style.padding = '6px 10px';
+  serviceSearch.style.borderRadius = '6px';
+  serviceSearch.style.border = '1px solid #d1d5db';
+  serviceSearch.style.fontSize = '12px';
+  serviceSearch.style.flex = '1';
+
+  servicesControls.appendChild(serviceFilter);
+  servicesControls.appendChild(serviceSearch);
+  servicesBody.appendChild(servicesControls);
+
+  const servicesTable = el('div');
+  servicesTable.style.maxHeight = '300px';
+  servicesTable.style.overflow = 'auto';
+  servicesBody.appendChild(servicesTable);
+
+  grid.appendChild(servicesCard);
+
+  // Processes Card
+  const { card: processesCard, body: processesBody } = createCard('Running Processes');
+  processesCard.style.gridColumn = '1 / -1';
+
+  const processesTable = el('div');
+  processesTable.style.maxHeight = '300px';
+  processesTable.style.overflow = 'auto';
+  processesBody.appendChild(processesTable);
+
+  grid.appendChild(processesCard);
+
+  // Containers Card
+  const { card: containersCard, body: containersBody } = createCard('Containers');
+  containersCard.style.gridColumn = '1 / -1';
+
+  const containersTable = el('div');
+  containersBody.appendChild(containersTable);
+
+  grid.appendChild(containersCard);
+
+  root.appendChild(container);
+
+  // Data storage
+  let servicesData: SystemdService[] = [];
+
+  // Render functions
+  function renderSummary(summary: SystemSummary) {
+    summaryBody.innerHTML = '';
+
+    const hostRow = el('div');
+    hostRow.style.marginBottom = '16px';
+    hostRow.style.padding = '12px';
+    hostRow.style.background = '#f3f4f6';
+    hostRow.style.borderRadius = '8px';
+
+    const hostname = el('div');
+    hostname.textContent = summary.hostname;
+    hostname.style.fontSize = '18px';
+    hostname.style.fontWeight = '600';
+    hostname.style.color = '#1f2937';
+
+    const osInfo = el('div');
+    osInfo.textContent = `${summary.os_name}`;
+    osInfo.style.fontSize = '12px';
+    osInfo.style.color = '#6b7280';
+    osInfo.style.marginTop = '4px';
+
+    const kernelInfo = el('div');
+    kernelInfo.textContent = `Kernel: ${summary.kernel}`;
+    kernelInfo.style.fontSize = '12px';
+    kernelInfo.style.color = '#6b7280';
+
+    hostRow.appendChild(hostname);
+    hostRow.appendChild(osInfo);
+    hostRow.appendChild(kernelInfo);
+    summaryBody.appendChild(hostRow);
+
+    summaryBody.appendChild(createStatRow('Uptime', summary.uptime));
+    summaryBody.appendChild(createStatRow('Load Average', summary.load_avg));
+    summaryBody.appendChild(createStatRow('Processes', String(summary.process_count)));
+    summaryBody.appendChild(createStatRow('Services', `${summary.running_services} / ${summary.service_count} active`));
+    summaryBody.appendChild(createStatRow('Containers', `${summary.running_containers} / ${summary.container_count} running`));
+  }
+
+  function renderResources(resources: SystemResources) {
+    resourcesBody.innerHTML = '';
+
+    // CPU
+    const cpuSection = el('div');
+    cpuSection.style.marginBottom = '16px';
+
+    const cpuHeader = el('div');
+    cpuHeader.style.display = 'flex';
+    cpuHeader.style.justifyContent = 'space-between';
+    cpuHeader.style.marginBottom = '6px';
+
+    const cpuLabel = el('span');
+    cpuLabel.textContent = `CPU (${resources.cpu_count} cores)`;
+    cpuLabel.style.fontSize = '13px';
+    cpuLabel.style.color = '#374151';
+
+    const cpuValue = el('span');
+    cpuValue.textContent = `${resources.cpu_percent}%`;
+    cpuValue.style.fontSize = '13px';
+    cpuValue.style.fontWeight = '600';
+
+    cpuHeader.appendChild(cpuLabel);
+    cpuHeader.appendChild(cpuValue);
+    cpuSection.appendChild(cpuHeader);
+    cpuSection.appendChild(createProgressBar(resources.cpu_percent, '#3b82f6'));
+
+    const loadInfo = el('div');
+    loadInfo.textContent = `Load: ${resources.load_avg_1.toFixed(2)}, ${resources.load_avg_5.toFixed(2)}, ${resources.load_avg_15.toFixed(2)}`;
+    loadInfo.style.fontSize = '11px';
+    loadInfo.style.color = '#9ca3af';
+    loadInfo.style.marginTop = '4px';
+    cpuSection.appendChild(loadInfo);
+
+    resourcesBody.appendChild(cpuSection);
+
+    // Memory
+    const memSection = el('div');
+    memSection.style.marginBottom = '16px';
+
+    const memHeader = el('div');
+    memHeader.style.display = 'flex';
+    memHeader.style.justifyContent = 'space-between';
+    memHeader.style.marginBottom = '6px';
+
+    const memLabel = el('span');
+    memLabel.textContent = 'Memory';
+    memLabel.style.fontSize = '13px';
+    memLabel.style.color = '#374151';
+
+    const memValue = el('span');
+    memValue.textContent = `${resources.memory_used_mb} / ${resources.memory_total_mb} MB (${resources.memory_percent}%)`;
+    memValue.style.fontSize = '13px';
+    memValue.style.fontWeight = '600';
+
+    memHeader.appendChild(memLabel);
+    memHeader.appendChild(memValue);
+    memSection.appendChild(memHeader);
+    memSection.appendChild(createProgressBar(resources.memory_percent, '#8b5cf6'));
+
+    resourcesBody.appendChild(memSection);
+
+    // Swap
+    if (resources.swap_total_mb > 0) {
+      const swapSection = el('div');
+      swapSection.style.marginBottom = '16px';
+
+      const swapHeader = el('div');
+      swapHeader.style.display = 'flex';
+      swapHeader.style.justifyContent = 'space-between';
+      swapHeader.style.marginBottom = '6px';
+
+      const swapLabel = el('span');
+      swapLabel.textContent = 'Swap';
+      swapLabel.style.fontSize = '13px';
+      swapLabel.style.color = '#374151';
+
+      const swapValue = el('span');
+      swapValue.textContent = `${resources.swap_used_mb} / ${resources.swap_total_mb} MB (${resources.swap_percent}%)`;
+      swapValue.style.fontSize = '13px';
+      swapValue.style.fontWeight = '600';
+
+      swapHeader.appendChild(swapLabel);
+      swapHeader.appendChild(swapValue);
+      swapSection.appendChild(swapHeader);
+      swapSection.appendChild(createProgressBar(resources.swap_percent, '#f59e0b'));
+
+      resourcesBody.appendChild(swapSection);
+    }
+
+    // Disk
+    const diskSection = el('div');
+
+    const diskHeader = el('div');
+    diskHeader.style.display = 'flex';
+    diskHeader.style.justifyContent = 'space-between';
+    diskHeader.style.marginBottom = '6px';
+
+    const diskLabel = el('span');
+    diskLabel.textContent = 'Disk (/)';
+    diskLabel.style.fontSize = '13px';
+    diskLabel.style.color = '#374151';
+
+    const diskValue = el('span');
+    diskValue.textContent = `${resources.disk_used_gb} / ${resources.disk_total_gb} GB (${resources.disk_percent}%)`;
+    diskValue.style.fontSize = '13px';
+    diskValue.style.fontWeight = '600';
+
+    diskHeader.appendChild(diskLabel);
+    diskHeader.appendChild(diskValue);
+    diskSection.appendChild(diskHeader);
+    diskSection.appendChild(createProgressBar(resources.disk_percent, '#10b981'));
+
+    resourcesBody.appendChild(diskSection);
+  }
+
+  function renderServices(filter: string, search: string) {
+    servicesTable.innerHTML = '';
+
+    let filtered = servicesData;
+
+    if (filter === 'active') {
+      filtered = filtered.filter(s => s.active_state === 'active');
+    } else if (filter === 'failed') {
+      filtered = filtered.filter(s => s.active_state === 'failed');
+    } else if (filter === 'inactive') {
+      filtered = filtered.filter(s => s.active_state === 'inactive');
+    }
+
+    if (search) {
+      const lowerSearch = search.toLowerCase();
+      filtered = filtered.filter(s =>
+        s.unit.toLowerCase().includes(lowerSearch) ||
+        s.description.toLowerCase().includes(lowerSearch)
+      );
+    }
+
+    if (filtered.length === 0) {
+      const empty = el('div');
+      empty.textContent = 'No services match the filter';
+      empty.style.padding = '20px';
+      empty.style.textAlign = 'center';
+      empty.style.color = '#9ca3af';
+      servicesTable.appendChild(empty);
+      return;
+    }
+
+    // Table header
+    const headerRow = el('div');
+    headerRow.style.display = 'grid';
+    headerRow.style.gridTemplateColumns = '2fr 1fr 3fr';
+    headerRow.style.gap = '12px';
+    headerRow.style.padding = '8px 12px';
+    headerRow.style.borderBottom = '1px solid #e5e7eb';
+    headerRow.style.fontWeight = '600';
+    headerRow.style.fontSize = '12px';
+    headerRow.style.color = '#6b7280';
+    headerRow.style.position = 'sticky';
+    headerRow.style.top = '0';
+    headerRow.style.background = 'rgba(255,255,255,0.95)';
+
+    const colService = el('span');
+    colService.textContent = 'Service';
+    const colStatus = el('span');
+    colStatus.textContent = 'Status';
+    const colDesc = el('span');
+    colDesc.textContent = 'Description';
+
+    headerRow.appendChild(colService);
+    headerRow.appendChild(colStatus);
+    headerRow.appendChild(colDesc);
+    servicesTable.appendChild(headerRow);
+
+    for (const service of filtered) {
+      const row = el('div');
+      row.style.display = 'grid';
+      row.style.gridTemplateColumns = '2fr 1fr 3fr';
+      row.style.gap = '12px';
+      row.style.padding = '8px 12px';
+      row.style.borderBottom = '1px solid #f3f4f6';
+      row.style.fontSize = '12px';
+      row.style.alignItems = 'center';
+
+      const unitName = el('span');
+      unitName.textContent = service.unit.replace('.service', '');
+      unitName.style.fontFamily = 'monospace';
+      unitName.style.color = '#374151';
+
+      const statusCell = el('span');
+      statusCell.appendChild(createStatusBadge(
+        service.sub_state,
+        service.active_state === 'active'
+      ));
+
+      const desc = el('span');
+      desc.textContent = service.description;
+      desc.style.color = '#6b7280';
+      desc.style.overflow = 'hidden';
+      desc.style.textOverflow = 'ellipsis';
+      desc.style.whiteSpace = 'nowrap';
+
+      row.appendChild(unitName);
+      row.appendChild(statusCell);
+      row.appendChild(desc);
+      servicesTable.appendChild(row);
+    }
+  }
+
+  function renderProcesses(processes: ProcessInfo[]) {
+    processesTable.innerHTML = '';
+
+    if (processes.length === 0) {
+      const empty = el('div');
+      empty.textContent = 'No processes found';
+      empty.style.padding = '20px';
+      empty.style.textAlign = 'center';
+      empty.style.color = '#9ca3af';
+      processesTable.appendChild(empty);
+      return;
+    }
+
+    // Table header
+    const headerRow = el('div');
+    headerRow.style.display = 'grid';
+    headerRow.style.gridTemplateColumns = '60px 80px 60px 60px 2fr 2fr';
+    headerRow.style.gap = '12px';
+    headerRow.style.padding = '8px 12px';
+    headerRow.style.borderBottom = '1px solid #e5e7eb';
+    headerRow.style.fontWeight = '600';
+    headerRow.style.fontSize = '12px';
+    headerRow.style.color = '#6b7280';
+    headerRow.style.position = 'sticky';
+    headerRow.style.top = '0';
+    headerRow.style.background = 'rgba(255,255,255,0.95)';
+
+    ['PID', 'User', 'CPU %', 'Mem %', 'What is this?', 'Command'].forEach(text => {
+      const col = el('span');
+      col.textContent = text;
+      headerRow.appendChild(col);
+    });
+    processesTable.appendChild(headerRow);
+
+    for (const proc of processes) {
+      const row = el('div');
+      row.style.display = 'grid';
+      row.style.gridTemplateColumns = '60px 80px 60px 60px 2fr 2fr';
+      row.style.gap = '12px';
+      row.style.padding = '8px 12px';
+      row.style.borderBottom = '1px solid #f3f4f6';
+      row.style.fontSize = '12px';
+      row.style.alignItems = 'center';
+
+      const pid = el('span');
+      pid.textContent = String(proc.pid);
+      pid.style.fontFamily = 'monospace';
+
+      const user = el('span');
+      user.textContent = proc.user;
+      user.style.color = '#6b7280';
+
+      const cpu = el('span');
+      cpu.textContent = `${proc.cpu_percent.toFixed(1)}`;
+      cpu.style.color = proc.cpu_percent > 50 ? '#ef4444' : proc.cpu_percent > 20 ? '#f59e0b' : '#374151';
+      cpu.style.fontWeight = proc.cpu_percent > 20 ? '600' : 'normal';
+
+      const mem = el('span');
+      mem.textContent = `${proc.mem_percent.toFixed(1)}`;
+      mem.style.color = proc.mem_percent > 50 ? '#ef4444' : proc.mem_percent > 20 ? '#f59e0b' : '#374151';
+      mem.style.fontWeight = proc.mem_percent > 20 ? '600' : 'normal';
+
+      const friendly = el('span');
+      friendly.textContent = proc.friendly_name;
+      friendly.style.color = '#3b82f6';
+      friendly.style.fontWeight = '500';
+
+      const cmd = el('span');
+      cmd.textContent = proc.command.length > 60 ? proc.command.slice(0, 60) + '...' : proc.command;
+      cmd.style.fontFamily = 'monospace';
+      cmd.style.fontSize = '11px';
+      cmd.style.color = '#6b7280';
+      cmd.style.overflow = 'hidden';
+      cmd.style.textOverflow = 'ellipsis';
+      cmd.style.whiteSpace = 'nowrap';
+      cmd.title = proc.command;
+
+      row.appendChild(pid);
+      row.appendChild(user);
+      row.appendChild(cpu);
+      row.appendChild(mem);
+      row.appendChild(friendly);
+      row.appendChild(cmd);
+      processesTable.appendChild(row);
+    }
+  }
+
+  function renderContainers(containers: ContainerInfo[]) {
+    containersTable.innerHTML = '';
+
+    if (containers.length === 0) {
+      const empty = el('div');
+      empty.textContent = 'No containers found (Docker/Podman not available or no containers)';
+      empty.style.padding = '20px';
+      empty.style.textAlign = 'center';
+      empty.style.color = '#9ca3af';
+      containersTable.appendChild(empty);
+      return;
+    }
+
+    // Table header
+    const headerRow = el('div');
+    headerRow.style.display = 'grid';
+    headerRow.style.gridTemplateColumns = '100px 150px 200px 120px 150px 80px';
+    headerRow.style.gap = '12px';
+    headerRow.style.padding = '8px 12px';
+    headerRow.style.borderBottom = '1px solid #e5e7eb';
+    headerRow.style.fontWeight = '600';
+    headerRow.style.fontSize = '12px';
+    headerRow.style.color = '#6b7280';
+
+    ['Container ID', 'Name', 'Image', 'Status', 'Ports', 'Runtime'].forEach(text => {
+      const col = el('span');
+      col.textContent = text;
+      headerRow.appendChild(col);
+    });
+    containersTable.appendChild(headerRow);
+
+    for (const container of containers) {
+      const row = el('div');
+      row.style.display = 'grid';
+      row.style.gridTemplateColumns = '100px 150px 200px 120px 150px 80px';
+      row.style.gap = '12px';
+      row.style.padding = '8px 12px';
+      row.style.borderBottom = '1px solid #f3f4f6';
+      row.style.fontSize = '12px';
+      row.style.alignItems = 'center';
+
+      const id = el('span');
+      id.textContent = container.id;
+      id.style.fontFamily = 'monospace';
+      id.style.color = '#6b7280';
+
+      const name = el('span');
+      name.textContent = container.name;
+      name.style.fontWeight = '500';
+      name.style.color = '#374151';
+
+      const image = el('span');
+      image.textContent = container.image.length > 30 ? container.image.slice(0, 30) + '...' : container.image;
+      image.style.fontFamily = 'monospace';
+      image.style.fontSize = '11px';
+      image.style.color = '#6b7280';
+      image.title = container.image;
+
+      const status = el('span');
+      const isUp = container.status.toLowerCase().includes('up');
+      status.appendChild(createStatusBadge(
+        container.status.split(' ')[0],
+        isUp
+      ));
+
+      const ports = el('span');
+      ports.textContent = container.ports || '-';
+      ports.style.fontSize = '11px';
+      ports.style.color = '#6b7280';
+
+      const runtime = el('span');
+      runtime.textContent = container.runtime;
+      runtime.style.color = container.runtime === 'docker' ? '#2563eb' : '#7c3aed';
+      runtime.style.fontWeight = '500';
+
+      row.appendChild(id);
+      row.appendChild(name);
+      row.appendChild(image);
+      row.appendChild(status);
+      row.appendChild(ports);
+      row.appendChild(runtime);
+      containersTable.appendChild(row);
+    }
+  }
+
+  // Fetch and render data
+  async function loadData() {
+    try {
+      // Load overview (summary + resources)
+      const overview = (await kernelRequest('system/overview', {})) as SystemOverviewResult;
+      renderSummary(overview.summary);
+      renderResources(overview.resources);
+
+      // Load services
+      const servicesResult = (await kernelRequest('system/services', {})) as SystemServicesResult;
+      servicesData = servicesResult.services;
+      renderServices(serviceFilter.value, serviceSearch.value);
+
+      // Load processes
+      const processesResult = (await kernelRequest('system/processes', { limit: 50 })) as SystemProcessesResult;
+      renderProcesses(processesResult.processes);
+
+      // Load containers
+      const containersResult = (await kernelRequest('system/containers', {})) as SystemContainersResult;
+      renderContainers(containersResult.containers);
+
+    } catch (e) {
+      summaryBody.innerHTML = `<div style="color: #ef4444;">Error loading data: ${String(e)}</div>`;
+    }
+  }
+
+  // Event handlers
+  serviceFilter.addEventListener('change', () => {
+    renderServices(serviceFilter.value, serviceSearch.value);
+  });
+
+  serviceSearch.addEventListener('input', () => {
+    renderServices(serviceFilter.value, serviceSearch.value);
+  });
+
+  refreshBtn.addEventListener('click', () => {
+    refreshBtn.textContent = 'Refreshing...';
+    refreshBtn.disabled = true;
+    void loadData().finally(() => {
+      refreshBtn.textContent = 'Refresh';
+      refreshBtn.disabled = false;
+    });
+  });
+
+  // Initial load
+  void loadData();
 }
 
 buildUi();

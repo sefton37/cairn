@@ -25,6 +25,13 @@ from .agent import ChatAgent
 from .db import Database, get_db
 from .mcp_tools import ToolError, call_tool, list_tools
 from .play_fs import create_act as play_create_act
+from .system_monitor import (
+    get_containers,
+    get_resource_usage,
+    get_running_processes,
+    get_system_summary,
+    get_systemd_services,
+)
 from .play_fs import create_beat as play_create_beat
 from .play_fs import create_scene as play_create_scene
 from .play_fs import kb_list_files as play_kb_list_files
@@ -481,6 +488,40 @@ def _handle_play_kb_write_apply(
     return {"path": path, **res}
 
 
+def _handle_system_overview(_db: Database) -> dict[str, Any]:
+    """Get system overview including resources and summary."""
+    summary = get_system_summary()
+    resources = get_resource_usage()
+    return {
+        "summary": summary,
+        "resources": resources.to_dict(),
+    }
+
+
+def _handle_system_services(_db: Database) -> dict[str, Any]:
+    """Get list of systemd services."""
+    services = get_systemd_services()
+    return {
+        "services": [s.to_dict() for s in services],
+    }
+
+
+def _handle_system_processes(_db: Database, *, limit: int = 50) -> dict[str, Any]:
+    """Get list of running processes."""
+    processes = get_running_processes(limit=limit)
+    return {
+        "processes": [p.to_dict() for p in processes],
+    }
+
+
+def _handle_system_containers(_db: Database) -> dict[str, Any]:
+    """Get list of containers (Docker/Podman)."""
+    containers = get_containers()
+    return {
+        "containers": [c.to_dict() for c in containers],
+    }
+
+
 def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any] | None:
     method = req.get("method")
     req_id = req.get("id")
@@ -864,6 +905,21 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                     expected_sha256_current=expected_sha256_current,
                 ),
             )
+
+        if method == "system/overview":
+            return _jsonrpc_result(req_id=req_id, result=_handle_system_overview(db))
+
+        if method == "system/services":
+            return _jsonrpc_result(req_id=req_id, result=_handle_system_services(db))
+
+        if method == "system/processes":
+            limit = 50
+            if isinstance(params, dict) and "limit" in params:
+                limit = int(params["limit"])
+            return _jsonrpc_result(req_id=req_id, result=_handle_system_processes(db, limit=limit))
+
+        if method == "system/containers":
+            return _jsonrpc_result(req_id=req_id, result=_handle_system_containers(db))
 
         raise RpcError(code=-32601, message=f"Method not found: {method}")
 
