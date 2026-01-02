@@ -137,3 +137,91 @@ def test_storage_append_and_iter() -> None:
         assert retrieved[0]["source"] == "test"
 
         db.close()
+
+
+def test_db_transaction_commit(temp_db: Database) -> None:
+    """Verify that transaction commits multiple operations atomically."""
+    with temp_db.transaction():
+        temp_db.insert_event(
+            event_id="tx-1",
+            source="test",
+            kind="tx_test",
+            ts="2025-12-17T10:00:00Z",
+            payload_metadata=None,
+            note="first",
+        )
+        temp_db.insert_event(
+            event_id="tx-2",
+            source="test",
+            kind="tx_test",
+            ts="2025-12-17T10:00:01Z",
+            payload_metadata=None,
+            note="second",
+        )
+
+    # Both should be committed
+    rows = temp_db.iter_events_recent(limit=10)
+    assert len(rows) == 2
+    notes = {row["note"] for row in rows}
+    assert notes == {"first", "second"}
+
+
+def test_db_transaction_rollback(temp_db: Database) -> None:
+    """Verify that transaction rolls back on error."""
+    # First insert one event outside transaction
+    temp_db.insert_event(
+        event_id="pre-tx",
+        source="test",
+        kind="pre_tx",
+        ts="2025-12-17T09:00:00Z",
+        payload_metadata=None,
+        note="before transaction",
+    )
+
+    # Now try a transaction that fails
+    try:
+        with temp_db.transaction():
+            temp_db.insert_event(
+                event_id="tx-fail-1",
+                source="test",
+                kind="tx_fail",
+                ts="2025-12-17T10:00:00Z",
+                payload_metadata=None,
+                note="should be rolled back",
+            )
+            # Simulate an error
+            raise ValueError("Simulated error")
+    except ValueError:
+        pass  # Expected
+
+    # Only the pre-transaction event should exist
+    rows = temp_db.iter_events_recent(limit=10)
+    assert len(rows) == 1
+    assert rows[0]["note"] == "before transaction"
+
+
+def test_db_transaction_nested(temp_db: Database) -> None:
+    """Verify that nested transactions work (inner is no-op)."""
+    with temp_db.transaction():
+        temp_db.insert_event(
+            event_id="outer-1",
+            source="test",
+            kind="outer",
+            ts="2025-12-17T10:00:00Z",
+            payload_metadata=None,
+            note="outer",
+        )
+        # Nested transaction
+        with temp_db.transaction():
+            temp_db.insert_event(
+                event_id="inner-1",
+                source="test",
+                kind="inner",
+                ts="2025-12-17T10:00:01Z",
+                payload_metadata=None,
+                note="inner",
+            )
+
+    # Both should be committed
+    rows = temp_db.iter_events_recent(limit=10)
+    assert len(rows) == 2

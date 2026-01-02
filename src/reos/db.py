@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import logging
 import sqlite3
 import threading
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Generator
 
 from .settings import settings
+
+logger = logging.getLogger(__name__)
 
 
 class Database:
@@ -14,6 +19,50 @@ class Database:
     def __init__(self, db_path: Path | None = None) -> None:
         self.db_path = db_path or settings.data_dir / "reos.db"
         self._local = threading.local()
+
+    @property
+    def _in_transaction(self) -> bool:
+        """Check if we're currently inside a transaction context."""
+        return getattr(self._local, "in_transaction", False)
+
+    @_in_transaction.setter
+    def _in_transaction(self, value: bool) -> None:
+        self._local.in_transaction = value
+
+    @contextmanager
+    def transaction(self) -> Generator[None, None, None]:
+        """Context manager for database transactions with automatic rollback on error.
+
+        Usage:
+            with db.transaction():
+                db.insert_event(...)
+                db.set_state(...)
+                # Both committed atomically, or both rolled back on error
+
+        Nested transactions are supported (inner transactions are no-ops).
+        """
+        if self._in_transaction:
+            # Already in a transaction, just yield (nested call)
+            yield
+            return
+
+        conn = self.connect()
+        self._in_transaction = True
+        try:
+            yield
+            conn.commit()
+            logger.debug("Transaction committed successfully")
+        except Exception as exc:
+            conn.rollback()
+            logger.warning("Transaction rolled back due to error: %s", exc)
+            raise
+        finally:
+            self._in_transaction = False
+
+    def _maybe_commit(self) -> None:
+        """Commit if not inside a transaction context."""
+        if not self._in_transaction:
+            self.connect().commit()
 
     def connect(self) -> sqlite3.Connection:
         """Open or return an existing connection."""
@@ -156,7 +205,7 @@ class Database:
             """
         )
 
-        conn.commit()
+        self._maybe_commit()
 
     def set_active_persona_id(self, *, persona_id: str | None) -> None:
         """Set the active agent persona id."""
@@ -212,7 +261,7 @@ class Database:
                 now,
             ),
         )
-        self.connect().commit()
+        self._maybe_commit()
 
     def get_agent_persona(self, *, persona_id: str) -> dict[str, object] | None:
         row = self._execute(
@@ -238,7 +287,7 @@ class Database:
             """,
             (key, value, now),
         )
-        self.connect().commit()
+        self._maybe_commit()
 
     def get_state(self, *, key: str) -> str | None:
         """Get a small piece of app state."""
@@ -276,7 +325,7 @@ class Database:
                 (remote_summary, now, now, existing_id),
             )
 
-        self.connect().commit()
+        self._maybe_commit()
 
     def iter_repos(self) -> list[dict[str, object]]:
         """Return discovered repos (most recently seen first)."""
@@ -315,7 +364,7 @@ class Database:
             """,
             (event_id, source, kind, ts, payload_metadata, note, now, now),
         )
-        self.connect().commit()
+        self._maybe_commit()
 
     def iter_events_recent(self, limit: int | None = None) -> list[dict[str, object]]:
         """Retrieve recent events from the database."""
@@ -347,7 +396,7 @@ class Database:
             """,
             (session_id, workspace_folder, started_at, event_count, switch_count, now),
         )
-        self.connect().commit()
+        self._maybe_commit()
 
     def insert_classification(
         self,
@@ -367,7 +416,7 @@ class Database:
             """,
             (classification_id, session_id, kind, severity, explanation, now),
         )
-        self.connect().commit()
+        self._maybe_commit()
 
     def iter_classifications_for_session(self, session_id: str) -> list[dict[str, object]]:
         """Get all classifications for a session."""
