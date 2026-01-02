@@ -152,6 +152,159 @@ def list_tools() -> list[Tool]:
             description="List available calendars in Thunderbird.",
             input_schema={"type": "object", "properties": {}},
         ),
+        # System monitoring tools
+        Tool(
+            name="reos_system_status",
+            description="Get comprehensive system status overview including CPU, memory, disk, and service health.",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="reos_list_processes",
+            description="List running processes with CPU/memory usage. Can sort by cpu, mem, pid, or time.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "sort_by": {"type": "string", "enum": ["cpu", "mem", "pid", "time"], "description": "Sort field"},
+                    "limit": {"type": "number", "description": "Max results (default 50)"},
+                    "user": {"type": "string", "description": "Filter by username"},
+                    "filter_command": {"type": "string", "description": "Filter by command substring"},
+                },
+            },
+        ),
+        Tool(
+            name="reos_process_details",
+            description="Get detailed information about a specific process by PID.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "pid": {"type": "number", "description": "Process ID"},
+                },
+                "required": ["pid"],
+            },
+        ),
+        Tool(
+            name="reos_list_containers",
+            description="List Docker containers. Shows running containers by default.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "all": {"type": "boolean", "description": "Include stopped containers"},
+                },
+            },
+        ),
+        Tool(
+            name="reos_container_stats",
+            description="Get resource usage stats (CPU, memory, I/O) for running Docker containers.",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="reos_container_logs",
+            description="Get recent logs from a Docker container.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "container": {"type": "string", "description": "Container name or ID"},
+                    "lines": {"type": "number", "description": "Number of lines (default 100)"},
+                },
+                "required": ["container"],
+            },
+        ),
+        Tool(
+            name="reos_list_docker_images",
+            description="List Docker images on the system.",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="reos_list_services",
+            description="List systemd services. Can filter by state (running, failed, inactive).",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "state": {"type": "string", "description": "Filter by state (running, failed, inactive)"},
+                },
+            },
+        ),
+        Tool(
+            name="reos_service_status",
+            description="Get detailed status of a specific systemd service.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "service": {"type": "string", "description": "Service name (e.g., nginx, docker)"},
+                },
+                "required": ["service"],
+            },
+        ),
+        Tool(
+            name="reos_failed_services",
+            description="List all failed systemd services.",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="reos_disk_usage",
+            description="Get disk usage for mounted filesystems.",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="reos_memory_info",
+            description="Get memory usage information.",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="reos_cpu_info",
+            description="Get CPU information including load averages and uptime.",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="reos_network_connections",
+            description="Get network connections. Can filter by state (LISTEN, ESTABLISHED) and protocol (tcp, udp).",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "state": {"type": "string", "description": "Filter by state (LISTEN, ESTABLISHED, etc.)"},
+                    "protocol": {"type": "string", "description": "Filter by protocol (tcp, udp)"},
+                },
+            },
+        ),
+        Tool(
+            name="reos_listening_ports",
+            description="Get all listening ports on the system.",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="reos_network_interfaces",
+            description="Get network interface information including IP addresses.",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="reos_journal_logs",
+            description="Get system logs from journalctl. Can filter by unit, priority, time, and pattern.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "unit": {"type": "string", "description": "Filter by systemd unit (e.g., nginx.service)"},
+                    "priority": {"type": "string", "description": "Filter by priority (err, warning, info, debug)"},
+                    "since": {"type": "string", "description": "Time filter (e.g., '1 hour ago', 'today')"},
+                    "lines": {"type": "number", "description": "Max lines (default 100)"},
+                    "grep": {"type": "string", "description": "Filter by pattern"},
+                },
+            },
+        ),
+        Tool(
+            name="reos_logged_in_users",
+            description="Get currently logged in users.",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="reos_last_logins",
+            description="Get recent login history.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "number", "description": "Max results (default 20)"},
+                },
+            },
+        ),
     ]
 
 
@@ -405,6 +558,218 @@ def call_tool(db: Database, *, name: str, arguments: dict[str, Any] | None) -> A
             return client.list_calendars()
         except ThunderbirdError as exc:
             raise ToolError(code="thunderbird_error", message=str(exc)) from exc
+
+    # System monitoring tool handlers
+    if name == "reos_system_status":
+        from .system_monitor import SystemMonitorError, get_system_status
+
+        try:
+            return get_system_status()
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_list_processes":
+        from .system_monitor import SystemMonitorError, list_processes
+
+        sort_by = args.get("sort_by", "cpu")
+        limit = int(args.get("limit", 50))
+        user = args.get("user")
+        filter_command = args.get("filter_command")
+
+        if limit < 1 or limit > 500:
+            limit = 50
+
+        try:
+            processes = list_processes(
+                sort_by=sort_by, limit=limit, user=user, filter_command=filter_command
+            )
+            return [
+                {
+                    "pid": p.pid,
+                    "ppid": p.ppid,
+                    "user": p.user,
+                    "cpu_percent": p.cpu_percent,
+                    "mem_percent": p.mem_percent,
+                    "rss_mb": round(p.rss_kb / 1024, 1),
+                    "stat": p.stat,
+                    "command": p.command,
+                }
+                for p in processes
+            ]
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_process_details":
+        from .system_monitor import SystemMonitorError, get_process_details
+
+        pid = args.get("pid")
+        if not isinstance(pid, (int, float)):
+            raise ToolError(code="invalid_args", message="pid is required")
+
+        try:
+            return get_process_details(int(pid))
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_list_containers":
+        from .system_monitor import SystemMonitorError, list_containers
+
+        all_containers = bool(args.get("all", False))
+
+        try:
+            return list_containers(all_containers=all_containers)
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_container_stats":
+        from .system_monitor import SystemMonitorError, get_container_stats
+
+        try:
+            return get_container_stats()
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_container_logs":
+        from .system_monitor import SystemMonitorError, get_container_logs
+
+        container = args.get("container")
+        if not isinstance(container, str) or not container.strip():
+            raise ToolError(code="invalid_args", message="container is required")
+
+        lines = int(args.get("lines", 100))
+        if lines < 1 or lines > 1000:
+            lines = 100
+
+        try:
+            return {"container": container, "logs": get_container_logs(container, lines=lines)}
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_list_docker_images":
+        from .system_monitor import SystemMonitorError, list_docker_images
+
+        try:
+            return list_docker_images()
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_list_services":
+        from .system_monitor import SystemMonitorError, list_services
+
+        state = args.get("state")
+
+        try:
+            return list_services(state=state)
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_service_status":
+        from .system_monitor import SystemMonitorError, get_service_status
+
+        service = args.get("service")
+        if not isinstance(service, str) or not service.strip():
+            raise ToolError(code="invalid_args", message="service is required")
+
+        try:
+            return get_service_status(service)
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_failed_services":
+        from .system_monitor import SystemMonitorError, get_failed_services
+
+        try:
+            return get_failed_services()
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_disk_usage":
+        from .system_monitor import SystemMonitorError, get_disk_usage
+
+        try:
+            return get_disk_usage()
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_memory_info":
+        from .system_monitor import SystemMonitorError, get_memory_info
+
+        try:
+            return get_memory_info()
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_cpu_info":
+        from .system_monitor import SystemMonitorError, get_cpu_info
+
+        try:
+            return get_cpu_info()
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_network_connections":
+        from .system_monitor import SystemMonitorError, get_network_connections
+
+        state = args.get("state")
+        protocol = args.get("protocol")
+
+        try:
+            return get_network_connections(state=state, protocol=protocol)
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_listening_ports":
+        from .system_monitor import SystemMonitorError, get_listening_ports
+
+        try:
+            return get_listening_ports()
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_network_interfaces":
+        from .system_monitor import SystemMonitorError, get_network_interfaces
+
+        try:
+            return get_network_interfaces()
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_journal_logs":
+        from .system_monitor import SystemMonitorError, get_journal_logs
+
+        unit = args.get("unit")
+        priority = args.get("priority")
+        since = args.get("since")
+        lines = int(args.get("lines", 100))
+        grep = args.get("grep")
+
+        if lines < 1 or lines > 1000:
+            lines = 100
+
+        try:
+            return get_journal_logs(unit=unit, priority=priority, since=since, lines=lines, grep=grep)
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_logged_in_users":
+        from .system_monitor import SystemMonitorError, get_logged_in_users
+
+        try:
+            return get_logged_in_users()
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
+
+    if name == "reos_last_logins":
+        from .system_monitor import SystemMonitorError, get_last_logins
+
+        limit = int(args.get("limit", 20))
+        if limit < 1 or limit > 100:
+            limit = 20
+
+        try:
+            return get_last_logins(limit=limit)
+        except SystemMonitorError as exc:
+            raise ToolError(code="system_error", message=str(exc)) from exc
 
     raise ToolError(code="unknown_tool", message=f"Unknown tool: {name}")
 
