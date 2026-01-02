@@ -392,6 +392,77 @@ def list_tools() -> list[Tool]:
             description="Get a comprehensive overview of filesystem and storage (drives, partitions, mount points, total storage).",
             input_schema={"type": "object", "properties": {}},
         ),
+        # Firefox browser integration
+        Tool(
+            name="reos_firefox_status",
+            description="Check if Firefox is installed and get profile information.",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="reos_firefox_history",
+            description="Get Firefox browsing history. Returns recent URLs visited with titles and timestamps.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Max entries to return (default: 50)"},
+                    "days": {"type": "integer", "description": "Only entries from last N days"},
+                    "query": {"type": "string", "description": "Filter by URL or title containing this string"},
+                },
+            },
+        ),
+        Tool(
+            name="reos_firefox_most_visited",
+            description="Get most visited domains from Firefox history.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Max domains to return (default: 20)"},
+                    "days": {"type": "integer", "description": "Only consider last N days (default: 7)"},
+                },
+            },
+        ),
+        Tool(
+            name="reos_firefox_bookmarks",
+            description="Get Firefox bookmarks.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Max bookmarks to return (default: 50)"},
+                    "query": {"type": "string", "description": "Filter by URL or title"},
+                    "folder": {"type": "string", "description": "Filter by folder name"},
+                },
+            },
+        ),
+        Tool(
+            name="reos_firefox_open_tabs",
+            description="Get currently open Firefox tabs. Shows all tabs across all windows with URLs and titles.",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="reos_open_url",
+            description="Open a URL in Firefox browser. Can open in new tab, new window, or private window.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "URL to open (or search query)"},
+                    "new_window": {"type": "boolean", "description": "Open in new window (default: false)"},
+                    "private": {"type": "boolean", "description": "Open in private/incognito window (default: false)"},
+                },
+                "required": ["url"],
+            },
+        ),
+        Tool(
+            name="reos_web_search",
+            description="Perform a web search and open results in Firefox.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "engine": {"type": "string", "description": "Search engine: google, duckduckgo, bing, github, stackoverflow (default: google)"},
+                },
+                "required": ["query"],
+            },
+        ),
     ]
 
 
@@ -962,6 +1033,80 @@ def call_tool(db: Database, *, name: str, arguments: dict[str, Any] | None) -> A
         from .system_monitor import get_filesystem_overview
 
         return get_filesystem_overview()
+
+    # Firefox browser integration
+    if name == "reos_firefox_status":
+        from .firefox import get_firefox_status
+
+        return get_firefox_status()
+
+    if name == "reos_firefox_history":
+        from .firefox import FirefoxError, get_history
+
+        limit = int(args.get("limit", 50))
+        days = args.get("days")
+        query = args.get("query")
+
+        try:
+            entries = get_history(
+                limit=limit,
+                days=int(days) if days is not None else None,
+                query=query,
+            )
+            return [e.to_dict() for e in entries]
+        except FirefoxError as exc:
+            raise ToolError(code="browser_error", message=str(exc)) from exc
+
+    if name == "reos_firefox_most_visited":
+        from .firefox import FirefoxError, get_most_visited
+
+        limit = int(args.get("limit", 20))
+        days = args.get("days", 7)
+
+        try:
+            return get_most_visited(limit=limit, days=int(days) if days else 7)
+        except FirefoxError as exc:
+            raise ToolError(code="browser_error", message=str(exc)) from exc
+
+    if name == "reos_firefox_bookmarks":
+        from .firefox import FirefoxError, get_bookmarks
+
+        limit = int(args.get("limit", 50))
+        query = args.get("query")
+        folder = args.get("folder")
+
+        try:
+            bookmarks = get_bookmarks(limit=limit, query=query, folder=folder)
+            return [b.to_dict() for b in bookmarks]
+        except FirefoxError as exc:
+            raise ToolError(code="browser_error", message=str(exc)) from exc
+
+    if name == "reos_firefox_open_tabs":
+        from .firefox import get_open_tabs_summary
+
+        return get_open_tabs_summary()
+
+    if name == "reos_open_url":
+        from .firefox import open_url
+
+        url = args.get("url")
+        if not url:
+            raise ToolError(code="invalid_args", message="url is required")
+
+        new_window = bool(args.get("new_window", False))
+        private = bool(args.get("private", False))
+
+        return open_url(url, new_window=new_window, private=private)
+
+    if name == "reos_web_search":
+        from .firefox import search_web
+
+        query = args.get("query")
+        if not query:
+            raise ToolError(code="invalid_args", message="query is required")
+
+        engine = args.get("engine", "google")
+        return search_web(query, engine=engine)
 
     raise ToolError(code="unknown_tool", message=f"Unknown tool: {name}")
 
