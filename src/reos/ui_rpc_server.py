@@ -47,71 +47,28 @@ from .play_fs import set_active_act_id as play_set_active_act_id
 from .play_fs import update_act as play_update_act
 from .play_fs import update_beat as play_update_beat
 from .play_fs import update_scene as play_update_scene
+from .rpc_validation import (
+    JSON,
+    MAX_ID_LENGTH,
+    MAX_NOTES_LENGTH,
+    MAX_PATH_LENGTH,
+    MAX_SYSTEM_PROMPT_LENGTH,
+    MAX_TEXT_LENGTH,
+    MAX_TITLE_LENGTH,
+    RpcError,
+    jsonrpc_error,
+    jsonrpc_result,
+    validate_optional_string,
+    validate_required_string,
+    validate_string_length,
+)
 
-_JSON = dict[str, Any]
-
-# Input validation limits to prevent resource exhaustion
-MAX_TITLE_LENGTH = 500
-MAX_NOTES_LENGTH = 50_000  # 50KB
-MAX_TEXT_LENGTH = 500_000  # 500KB for KB files
-MAX_PATH_LENGTH = 1000
-MAX_ID_LENGTH = 200
-MAX_SYSTEM_PROMPT_LENGTH = 100_000  # 100KB
-MAX_LIST_LIMIT = 10_000
-
-
-class RpcError(RuntimeError):
-    def __init__(self, code: int, message: str, data: Any | None = None) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.data = data
-
-
-def _validate_string_length(value: str, max_length: int, field_name: str) -> None:
-    """Validate that a string doesn't exceed the maximum length."""
-    if len(value) > max_length:
-        raise RpcError(
-            code=-32602,
-            message=f"{field_name} exceeds maximum length of {max_length} characters",
-        )
-
-
-def _validate_required_string(
-    params: dict[str, Any], key: str, max_length: int, *, allow_empty: bool = False
-) -> str:
-    """Extract and validate a required string parameter."""
-    value = params.get(key)
-    if not isinstance(value, str):
-        raise RpcError(code=-32602, message=f"{key} is required")
-    if not allow_empty and not value.strip():
-        raise RpcError(code=-32602, message=f"{key} is required")
-    _validate_string_length(value, max_length, key)
-    return value
-
-
-def _validate_optional_string(
-    params: dict[str, Any], key: str, max_length: int, *, default: str | None = None
-) -> str | None:
-    """Extract and validate an optional string parameter."""
-    value = params.get(key, default)
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise RpcError(code=-32602, message=f"{key} must be a string or null")
-    _validate_string_length(value, max_length, key)
-    return value
-
-
-def _jsonrpc_error(*, req_id: Any, code: int, message: str, data: Any | None = None) -> _JSON:
-    err: _JSON = {"code": code, "message": message}
-    if data is not None:
-        err["data"] = data
-    return {"jsonrpc": "2.0", "id": req_id, "error": err}
-
-
-def _jsonrpc_result(*, req_id: Any, result: Any) -> _JSON:
-    return {"jsonrpc": "2.0", "id": req_id, "result": result}
+# Alias for private use (backward compat)
+_validate_string_length = validate_string_length
+_validate_required_string = validate_required_string
+_validate_optional_string = validate_optional_string
+_jsonrpc_error = jsonrpc_error
+_jsonrpc_result = jsonrpc_result
 
 
 def _readline() -> str | None:
