@@ -7,6 +7,7 @@ dependency management and risk assessment.
 from __future__ import annotations
 
 import logging
+import shlex
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -71,8 +72,20 @@ class TaskStep:
     # Human-readable explanation
     explanation: str = ""
 
-    def is_ready(self, completed_steps: set[str]) -> bool:
-        """Check if this step's dependencies are satisfied."""
+    def is_ready(self, completed_steps: set[str], failed_steps: set[str] | None = None) -> bool:
+        """Check if this step's dependencies are satisfied.
+
+        Args:
+            completed_steps: Set of step IDs that have completed successfully
+            failed_steps: Set of step IDs that have failed (optional)
+
+        Returns:
+            True if all dependencies are completed and none have failed
+        """
+        # If any dependency failed, this step cannot proceed
+        if failed_steps and any(dep in failed_steps for dep in self.depends_on):
+            return False
+        # All dependencies must be completed
         return all(dep in completed_steps for dep in self.depends_on)
 
 
@@ -102,17 +115,26 @@ class TaskPlan:
     failed_steps: set[str] = field(default_factory=set)
 
     def get_next_step(self) -> TaskStep | None:
-        """Get the next step ready for execution."""
+        """Get the next step ready for execution.
+
+        Returns the next PENDING step whose dependencies are all completed
+        and none have failed. Steps with failed dependencies are marked BLOCKED.
+        """
         for step in self.steps:
             if step.status == StepStatus.PENDING:
-                if step.is_ready(self.completed_steps):
+                # Check if any dependency has failed
+                if any(dep in self.failed_steps for dep in step.depends_on):
+                    step.status = StepStatus.BLOCKED
+                    continue
+                # Check if all dependencies are completed
+                if step.is_ready(self.completed_steps, self.failed_steps):
                     return step
         return None
 
     def is_complete(self) -> bool:
-        """Check if all steps are done (completed or skipped)."""
+        """Check if all steps are done (completed, skipped, or blocked)."""
         return all(
-            s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
+            s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED, StepStatus.BLOCKED)
             for s in self.steps
         )
 
@@ -322,18 +344,30 @@ class TaskPlanner:
 
         return steps
 
-    def _substitute(self, text: str, subs: dict[str, str]) -> str:
-        """Substitute {variables} in text."""
+    def _substitute(self, text: str, subs: dict[str, str], shell_escape: bool = False) -> str:
+        """Substitute {variables} in text.
+
+        Args:
+            text: Text with {variable} placeholders
+            subs: Substitution mapping
+            shell_escape: If True, escape values for safe shell usage
+        """
         for key, value in subs.items():
-            text = text.replace(f"{{{key}}}", str(value))
+            safe_value = shlex.quote(str(value)) if shell_escape else str(value)
+            text = text.replace(f"{{{key}}}", safe_value)
         return text
 
     def _substitute_dict(self, d: dict, subs: dict[str, str]) -> dict:
-        """Recursively substitute variables in a dict."""
+        """Recursively substitute variables in a dict.
+
+        Uses shell escaping for 'command' keys to prevent injection.
+        """
         result = {}
         for key, value in d.items():
             if isinstance(value, str):
-                result[key] = self._substitute(value, subs)
+                # Shell-escape values in command strings to prevent injection
+                shell_escape = key == "command"
+                result[key] = self._substitute(value, subs, shell_escape=shell_escape)
             elif isinstance(value, dict):
                 result[key] = self._substitute_dict(value, subs)
             else:
@@ -413,7 +447,7 @@ class TaskPlanner:
                 step.risk = self.safety.assess_command_risk(command)
                 total_duration += step.risk.estimated_duration_seconds
 
-                if step.risk.level.value > highest_risk.value:
+                if step.risk.level > highest_risk:
                     highest_risk = step.risk.level
 
                 if step.risk.requires_reboot:

@@ -669,16 +669,20 @@ class AdaptiveReplanner:
         )
         self.memory.resolution_history.append(attempt)
 
-        # Update patterns
+        # Update patterns with proper timestamp for pruning
         pattern_key = f"{diagnosis.category.value}:{fix[:50]}"
+        pattern_entry = {
+            "timestamp": datetime.now().isoformat(),
+            "message": message[:100],
+        }
         if success:
             if pattern_key not in self.memory.successful_patterns:
                 self.memory.successful_patterns[pattern_key] = []
-            self.memory.successful_patterns[pattern_key].append(message[:100])
+            self.memory.successful_patterns[pattern_key].append(pattern_entry)
         else:
             if pattern_key not in self.memory.failed_patterns:
                 self.memory.failed_patterns[pattern_key] = []
-            self.memory.failed_patterns[pattern_key].append(message[:100])
+            self.memory.failed_patterns[pattern_key].append(pattern_entry)
 
     def suggest_alternatives(
         self,

@@ -1,0 +1,421 @@
+"""Integration tests for ChatAgent.
+
+These tests verify the core functionality of the ChatAgent class,
+including tool calling, error handling, and persona management.
+"""
+from __future__ import annotations
+
+import json
+from typing import Any
+
+import pytest
+
+from reos.agent import ChatAgent, ToolCall
+from reos.db import get_db
+from reos.mcp_tools import ToolError
+
+
+class FakeOllama:
+    """Fake Ollama client for testing."""
+
+    def __init__(
+        self,
+        *,
+        tool_plan_json: str = '{"tool_calls": []}',
+        answer_text: str = "Test response",
+        chat_json_error: Exception | None = None,
+        chat_text_error: Exception | None = None,
+    ) -> None:
+        self._tool_plan_json = tool_plan_json
+        self._answer_text = answer_text
+        self._chat_json_error = chat_json_error
+        self._chat_text_error = chat_text_error
+        self.chat_json_calls: list[dict[str, Any]] = []
+        self.chat_text_calls: list[dict[str, Any]] = []
+
+    def chat_json(self, *, system: str, user: str, **kwargs: Any) -> str:
+        self.chat_json_calls.append({"system": system, "user": user, **kwargs})
+        if self._chat_json_error:
+            raise self._chat_json_error
+        return self._tool_plan_json
+
+    def chat_text(self, *, system: str, user: str, **kwargs: Any) -> str:
+        self.chat_text_calls.append({"system": system, "user": user, **kwargs})
+        if self._chat_text_error:
+            raise self._chat_text_error
+        return self._answer_text
+
+
+class TestChatAgentRespond:
+    """Tests for ChatAgent.respond() method."""
+
+    def test_respond_with_no_tool_calls(
+        self,
+        isolated_db_singleton,  # noqa: ANN001
+    ) -> None:
+        """Agent should handle responses with no tool calls."""
+        ollama = FakeOllama(
+            tool_plan_json='{"tool_calls": []}',
+            answer_text="No tools needed for this response.",
+        )
+        agent = ChatAgent(db=get_db(), ollama=ollama)
+        result = agent.respond("What is Linux?")
+
+        assert result == "No tools needed for this response."
+        assert len(ollama.chat_json_calls) == 1
+        assert len(ollama.chat_text_calls) == 1
+
+    def test_respond_with_successful_tool_calls(
+        self,
+        isolated_db_singleton,  # noqa: ANN001
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Agent should execute tools and include results in response."""
+        calls: list[dict[str, Any]] = []
+
+        def fake_call_tool(db, *, name: str, arguments: dict[str, Any] | None):  # noqa: ANN001
+            calls.append({"name": name, "arguments": arguments or {}})
+            return {"status": "success", "data": "test_data"}
+
+        import reos.agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
+
+        tool_plan = {
+            "tool_calls": [
+                {"name": "linux_system_info", "arguments": {}},
+            ]
+        }
+        ollama = FakeOllama(
+            tool_plan_json=json.dumps(tool_plan),
+            answer_text="System info retrieved.",
+        )
+        agent = ChatAgent(db=get_db(), ollama=ollama)
+        result = agent.respond("What is my system info?")
+
+        assert len(calls) == 1
+        assert calls[0]["name"] == "linux_system_info"
+        assert result == "System info retrieved."
+
+    def test_respond_with_tool_error(
+        self,
+        isolated_db_singleton,  # noqa: ANN001
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Agent should handle tool errors gracefully."""
+
+        def fake_call_tool(db, *, name: str, arguments: dict[str, Any] | None):  # noqa: ANN001
+            raise ToolError(code="TOOL_FAILED", message="Tool execution failed")
+
+        import reos.agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
+
+        tool_plan = {
+            "tool_calls": [
+                {"name": "linux_run_command", "arguments": {"command": "test"}},
+            ]
+        }
+        ollama = FakeOllama(
+            tool_plan_json=json.dumps(tool_plan),
+            answer_text="Sorry, there was an error.",
+        )
+        agent = ChatAgent(db=get_db(), ollama=ollama)
+        result = agent.respond("Run a test command")
+
+        # Should still get a response even with tool error
+        assert result == "Sorry, there was an error."
+
+    def test_respond_with_malformed_tool_response(
+        self,
+        isolated_db_singleton,  # noqa: ANN001
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Agent should handle malformed tool calls from LLM."""
+        calls: list[str] = []
+
+        def fake_call_tool(db, *, name: str, arguments: dict[str, Any] | None):  # noqa: ANN001
+            calls.append(name)
+            return {"ok": True}
+
+        import reos.agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
+
+        # Malformed tool_calls (not a list)
+        ollama = FakeOllama(
+            tool_plan_json='{"tool_calls": "not a list"}',
+            answer_text="Handled gracefully.",
+        )
+        agent = ChatAgent(db=get_db(), ollama=ollama)
+        result = agent.respond("Do something")
+
+        # Should not crash, no tools called
+        assert len(calls) == 0
+        assert result == "Handled gracefully."
+
+    def test_respond_with_invalid_json_from_llm(
+        self,
+        isolated_db_singleton,  # noqa: ANN001
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Agent should fall back gracefully when LLM returns invalid JSON."""
+        calls: list[str] = []
+
+        def fake_call_tool(db, *, name: str, arguments: dict[str, Any] | None):  # noqa: ANN001
+            calls.append(name)
+            return {"ok": True}
+
+        import reos.agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
+
+        ollama = FakeOllama(
+            tool_plan_json="not valid json at all",
+            answer_text="Fallback response.",
+        )
+        agent = ChatAgent(db=get_db(), ollama=ollama)
+        result = agent.respond("Hello")
+
+        # Should fallback to reos_git_summary
+        assert "reos_git_summary" in calls
+
+
+class TestChatAgentDiffHandling:
+    """Tests for diff opt-in/opt-out behavior."""
+
+    def test_diff_opt_in_phrases(
+        self,
+        isolated_db_singleton,  # noqa: ANN001
+    ) -> None:
+        """Agent should recognize various diff opt-in phrases."""
+        agent = ChatAgent(db=get_db())
+
+        opt_in_phrases = [
+            "include diff",
+            "show diff",
+            "full diff",
+            "git diff",
+            "patch",
+            "unified diff",
+            "INCLUDE DIFF",  # case insensitive
+        ]
+
+        for phrase in opt_in_phrases:
+            assert agent._user_opted_into_diff(phrase), f"Should opt in for: {phrase}"
+
+    def test_diff_not_opted_in(
+        self,
+        isolated_db_singleton,  # noqa: ANN001
+    ) -> None:
+        """Agent should not opt in for normal messages."""
+        agent = ChatAgent(db=get_db())
+
+        normal_phrases = [
+            "What changed?",
+            "Show me the changes",
+            "What's different?",
+            "List modified files",
+        ]
+
+        for phrase in normal_phrases:
+            assert not agent._user_opted_into_diff(phrase), f"Should not opt in for: {phrase}"
+
+
+class TestChatAgentPersona:
+    """Tests for persona management."""
+
+    def test_default_persona_values(
+        self,
+        isolated_db_singleton,  # noqa: ANN001
+    ) -> None:
+        """Agent should use sensible defaults when no persona configured."""
+        agent = ChatAgent(db=get_db())
+        persona = agent._get_persona()
+
+        assert "system_prompt" in persona
+        assert "ReOS" in persona["system_prompt"]
+        assert persona.get("temperature", 0.2) == 0.2
+        assert persona.get("top_p", 0.9) == 0.9
+        assert persona.get("tool_call_limit", 5) == 5
+
+    def test_custom_persona(
+        self,
+        isolated_db_singleton,  # noqa: ANN001
+    ) -> None:
+        """Agent should use custom persona when configured."""
+        db = get_db()
+        db.upsert_agent_persona(
+            persona_id="custom-test",
+            name="Custom Test",
+            system_prompt="You are a custom assistant.",
+            default_context="Custom context",
+            temperature=0.5,
+            top_p=0.8,
+            tool_call_limit=2,
+        )
+        db.set_active_persona_id(persona_id="custom-test")
+
+        agent = ChatAgent(db=db)
+        persona = agent._get_persona()
+
+        assert persona["system_prompt"] == "You are a custom assistant."
+        assert persona["default_context"] == "Custom context"
+        assert persona["temperature"] == 0.5
+        assert persona["top_p"] == 0.8
+        assert persona["tool_call_limit"] == 2
+
+
+class TestChatAgentToolSelection:
+    """Tests for tool selection behavior."""
+
+    def test_tool_selection_includes_tool_specs(
+        self,
+        isolated_db_singleton,  # noqa: ANN001
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """LLM should receive tool specifications in selection phase."""
+
+        def fake_call_tool(db, *, name: str, arguments: dict[str, Any] | None):  # noqa: ANN001
+            return {}
+
+        import reos.agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
+
+        ollama = FakeOllama(
+            tool_plan_json='{"tool_calls": []}',
+            answer_text="Done.",
+        )
+        agent = ChatAgent(db=get_db(), ollama=ollama)
+        agent.respond("List files")
+
+        # Check that tool specs were included in the user message
+        assert len(ollama.chat_json_calls) == 1
+        user_msg = ollama.chat_json_calls[0]["user"]
+        assert "TOOLS:" in user_msg
+
+    def test_tool_call_limit_enforcement(
+        self,
+        isolated_db_singleton,  # noqa: ANN001
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Agent should enforce maximum tool call limit of 6."""
+        db = get_db()
+        db.upsert_agent_persona(
+            persona_id="high-limit",
+            name="High Limit",
+            system_prompt="test",
+            default_context="",
+            temperature=0.2,
+            top_p=0.9,
+            tool_call_limit=100,  # Try to set very high limit
+        )
+        db.set_active_persona_id(persona_id="high-limit")
+
+        calls: list[str] = []
+
+        def fake_call_tool(db, *, name: str, arguments: dict[str, Any] | None):  # noqa: ANN001
+            calls.append(name)
+            return {}
+
+        import reos.agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
+
+        # Request 10 tool calls
+        tool_plan = {
+            "tool_calls": [{"name": f"tool_{i}", "arguments": {}} for i in range(10)]
+        }
+        ollama = FakeOllama(
+            tool_plan_json=json.dumps(tool_plan),
+            answer_text="Done.",
+        )
+        agent = ChatAgent(db=db, ollama=ollama)
+        agent.respond("Run many tools")
+
+        # Should be capped at 6
+        assert len(calls) <= 6
+
+
+class TestChatAgentToolCall:
+    """Tests for the ToolCall dataclass."""
+
+    def test_tool_call_immutable(self) -> None:
+        """ToolCall should be immutable (frozen dataclass)."""
+        call = ToolCall(name="test", arguments={"key": "value"})
+        assert call.name == "test"
+        assert call.arguments == {"key": "value"}
+
+        with pytest.raises(AttributeError):
+            call.name = "changed"  # type: ignore
+
+
+class TestChatAgentAnswerGeneration:
+    """Tests for answer generation phase."""
+
+    def test_answer_includes_tool_results(
+        self,
+        isolated_db_singleton,  # noqa: ANN001
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """LLM should receive tool results in answer phase."""
+
+        def fake_call_tool(db, *, name: str, arguments: dict[str, Any] | None):  # noqa: ANN001
+            return {"output": "tool_output_data"}
+
+        import reos.agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
+
+        tool_plan = {
+            "tool_calls": [{"name": "test_tool", "arguments": {}}]
+        }
+        ollama = FakeOllama(
+            tool_plan_json=json.dumps(tool_plan),
+            answer_text="Final answer.",
+        )
+        agent = ChatAgent(db=get_db(), ollama=ollama)
+        agent.respond("Run test tool")
+
+        # Check that tool results were included
+        assert len(ollama.chat_text_calls) == 1
+        user_msg = ollama.chat_text_calls[0]["user"]
+        assert "TOOL_RESULTS:" in user_msg
+
+    def test_answer_respects_temperature(
+        self,
+        isolated_db_singleton,  # noqa: ANN001
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Answer generation should use persona temperature."""
+        db = get_db()
+        db.upsert_agent_persona(
+            persona_id="temp-test",
+            name="Temp Test",
+            system_prompt="test",
+            default_context="",
+            temperature=0.7,
+            top_p=0.95,
+            tool_call_limit=3,
+        )
+        db.set_active_persona_id(persona_id="temp-test")
+
+        def fake_call_tool(db, *, name: str, arguments: dict[str, Any] | None):  # noqa: ANN001
+            return {}
+
+        import reos.agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
+
+        ollama = FakeOllama(
+            tool_plan_json='{"tool_calls": []}',
+            answer_text="Done.",
+        )
+        agent = ChatAgent(db=db, ollama=ollama)
+        agent.respond("Hello")
+
+        # Check temperature was passed
+        assert len(ollama.chat_text_calls) == 1
+        assert ollama.chat_text_calls[0]["temperature"] == 0.7
+        assert ollama.chat_text_calls[0]["top_p"] == 0.95

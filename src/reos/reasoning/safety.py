@@ -30,6 +30,23 @@ class RiskLevel(Enum):
     HIGH = "high"              # Major changes, may require manual intervention
     CRITICAL = "critical"      # Potentially destructive, data loss possible
 
+    def __lt__(self, other: "RiskLevel") -> bool:
+        """Compare risk levels by severity order."""
+        order = [RiskLevel.SAFE, RiskLevel.LOW, RiskLevel.MEDIUM, RiskLevel.HIGH, RiskLevel.CRITICAL]
+        return order.index(self) < order.index(other)
+
+    def __le__(self, other: "RiskLevel") -> bool:
+        """Compare risk levels by severity order."""
+        return self == other or self < other
+
+    def __gt__(self, other: "RiskLevel") -> bool:
+        """Compare risk levels by severity order."""
+        return other < self
+
+    def __ge__(self, other: "RiskLevel") -> bool:
+        """Compare risk levels by severity order."""
+        return self == other or self > other
+
 
 @dataclass(frozen=True)
 class RiskAssessment:
@@ -280,7 +297,7 @@ class SafetyManager:
         # Check for paths to critical files
         for critical_path in CRITICAL_CONFIG_PATHS:
             if critical_path in command:
-                if level.value < RiskLevel.HIGH.value:
+                if level < RiskLevel.HIGH:
                     level = RiskLevel.HIGH
                 requires_backup = True
                 reasons.append(f"Affects critical config: {critical_path}")

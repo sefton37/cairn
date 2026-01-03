@@ -103,6 +103,16 @@ if [[ "${1:-}" == "--mcp" ]]; then
   shift
 fi
 
+if [[ "${1:-}" == "--prompt" || "${1:-}" == "-p" ]]; then
+  mode="prompt"
+  shift
+fi
+
+if [[ "${1:-}" == "--shell" ]]; then
+  mode="shell"
+  shift
+fi
+
 if [[ "${1:-}" == "--ui" ]]; then
   ui_mode="${2:-}"
   shift 2
@@ -125,9 +135,17 @@ Usage:
   ./reos --ui tauri            # launch TypeScript/Tauri UI (dev)
   ./reos --service             # launch ReOS local service (FastAPI)
   ./reos --mcp                 # launch ReOS MCP server (stdio)
+  ./reos --prompt "query"      # run single natural language prompt
+  ./reos -p "query"            # short form of --prompt
+  ./reos --shell               # install shell integration
 
 Aliases:
   ./reos --tauri
+
+Shell Integration:
+  Install: ./reos --shell
+  Then type natural language directly in your terminal!
+  Example: "what files are in my home directory"
 
 Notes:
   - Set REOS_REPO_PATH=/path/to/repo to choose which repo to observe.
@@ -172,6 +190,10 @@ if [[ "$mode" == "gui" ]]; then
   exec npm run tauri:dev
 elif [[ "$mode" == "mcp" ]]; then
   exec "$python_bin" -m reos.mcp "$@"
+elif [[ "$mode" == "prompt" ]]; then
+  exec "$python_bin" -m reos.shell_cli "$@"
+elif [[ "$mode" == "shell" ]]; then
+  exec "$repo_root/scripts/install-shell-integration.sh" "$@"
 else
   exec "$python_bin" -m reos "$@"
 fi

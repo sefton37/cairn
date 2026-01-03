@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -117,6 +118,38 @@ def detect_package_manager() -> str | None:
         if os.path.exists(path):
             return name
     return None
+
+
+def check_sudo_available() -> tuple[bool, str | None]:
+    """Check if the user can run sudo without a password prompt.
+
+    Returns:
+        Tuple of (can_sudo, error_message).
+        If can_sudo is True, error_message is None.
+        If can_sudo is False, error_message explains why.
+    """
+    try:
+        # -n = non-interactive, will fail if password is required
+        result = subprocess.run(
+            ["sudo", "-n", "true"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return True, None
+        # sudo exists but requires password
+        return False, (
+            "sudo requires a password. Either:\n"
+            "  1. Run 'sudo -v' first to cache credentials, or\n"
+            "  2. Configure passwordless sudo for package management"
+        )
+    except FileNotFoundError:
+        return False, "sudo is not installed on this system"
+    except subprocess.TimeoutExpired:
+        return False, "sudo check timed out"
+    except Exception as e:
+        return False, f"Failed to check sudo availability: {e}"
 
 
 def detect_distro() -> str:
@@ -751,19 +784,22 @@ def install_package(package_name: str, confirm: bool = False) -> CommandResult:
             success=False,
         )
 
+    # Sanitize package name to prevent shell injection
+    safe_package = shlex.quote(package_name)
+
     # Build the install command
     if pm == "apt":
-        cmd = f"sudo apt install -y {package_name}"
+        cmd = f"sudo apt install -y {safe_package}"
     elif pm == "dnf":
-        cmd = f"sudo dnf install -y {package_name}"
+        cmd = f"sudo dnf install -y {safe_package}"
     elif pm == "yum":
-        cmd = f"sudo yum install -y {package_name}"
+        cmd = f"sudo yum install -y {safe_package}"
     elif pm == "pacman":
-        cmd = f"sudo pacman -S --noconfirm {package_name}"
+        cmd = f"sudo pacman -S --noconfirm {safe_package}"
     elif pm == "zypper":
-        cmd = f"sudo zypper install -y {package_name}"
+        cmd = f"sudo zypper install -y {safe_package}"
     elif pm == "apk":
-        cmd = f"sudo apk add {package_name}"
+        cmd = f"sudo apk add {safe_package}"
     else:
         return CommandResult(
             command="",
@@ -780,6 +816,88 @@ def install_package(package_name: str, confirm: bool = False) -> CommandResult:
             stdout=f"Would run: {cmd}\nSet confirm=true to execute.",
             stderr="",
             success=True,
+        )
+
+    # Check sudo availability before attempting privileged operation
+    can_sudo, sudo_error = check_sudo_available()
+    if not can_sudo:
+        return CommandResult(
+            command=cmd,
+            returncode=-1,
+            stdout="",
+            stderr=sudo_error or "Cannot run sudo",
+            success=False,
+        )
+
+    return execute_command(cmd, timeout=300)
+
+
+def remove_package(package_name: str, confirm: bool = False, purge: bool = False) -> CommandResult:
+    """Remove a package using the system's package manager.
+
+    Args:
+        package_name: Name of the package to remove
+        confirm: If False, returns what would be done without executing
+        purge: If True, also remove configuration files (apt/dpkg only)
+
+    Note: This typically requires sudo privileges.
+    """
+    pm = detect_package_manager()
+
+    if not pm:
+        return CommandResult(
+            command="",
+            returncode=-1,
+            stdout="",
+            stderr="No supported package manager detected",
+            success=False,
+        )
+
+    # Sanitize package name to prevent shell injection
+    safe_package = shlex.quote(package_name)
+
+    # Build the remove command
+    if pm == "apt":
+        action = "purge" if purge else "remove"
+        cmd = f"sudo apt {action} -y {safe_package}"
+    elif pm == "dnf":
+        cmd = f"sudo dnf remove -y {safe_package}"
+    elif pm == "yum":
+        cmd = f"sudo yum remove -y {safe_package}"
+    elif pm == "pacman":
+        # -Rs removes package and unneeded dependencies
+        cmd = f"sudo pacman -Rs --noconfirm {safe_package}"
+    elif pm == "zypper":
+        cmd = f"sudo zypper remove -y {safe_package}"
+    elif pm == "apk":
+        cmd = f"sudo apk del {safe_package}"
+    else:
+        return CommandResult(
+            command="",
+            returncode=-1,
+            stdout="",
+            stderr=f"Unsupported package manager: {pm}",
+            success=False,
+        )
+
+    if not confirm:
+        return CommandResult(
+            command=cmd,
+            returncode=0,
+            stdout=f"Would run: {cmd}\nSet confirm=true to execute.\n\nWarning: This will remove the package and may affect system functionality.",
+            stderr="",
+            success=True,
+        )
+
+    # Check sudo availability before attempting privileged operation
+    can_sudo, sudo_error = check_sudo_available()
+    if not can_sudo:
+        return CommandResult(
+            command=cmd,
+            returncode=-1,
+            stdout="",
+            stderr=sudo_error or "Cannot run sudo",
+            success=False,
         )
 
     return execute_command(cmd, timeout=300)
@@ -1090,3 +1208,1031 @@ def get_environment_info() -> dict[str, Any]:
             info["available_tools"][tool] = path
 
     return info
+
+
+# =============================================================================
+# Firewall Management
+# =============================================================================
+
+@dataclass(frozen=True)
+class FirewallStatus:
+    """Status of the system firewall."""
+    enabled: bool
+    backend: str  # "ufw", "firewalld", or "none"
+    default_policy: str
+    rules: list[dict[str, str]]
+
+
+def detect_firewall() -> str | None:
+    """Detect which firewall is available on the system.
+
+    Returns:
+        "ufw" for Ubuntu/Debian, "firewalld" for RHEL/Fedora, or None
+    """
+    # Check for ufw (Ubuntu, Debian)
+    if os.path.exists("/usr/sbin/ufw"):
+        return "ufw"
+    # Check for firewall-cmd (RHEL, Fedora, CentOS)
+    if os.path.exists("/usr/bin/firewall-cmd"):
+        return "firewalld"
+    return None
+
+
+def get_firewall_status() -> FirewallStatus:
+    """Get the current firewall status and rules."""
+    backend = detect_firewall()
+
+    if backend == "ufw":
+        return _get_ufw_status()
+    elif backend == "firewalld":
+        return _get_firewalld_status()
+    else:
+        return FirewallStatus(
+            enabled=False,
+            backend="none",
+            default_policy="unknown",
+            rules=[],
+        )
+
+
+def _get_ufw_status() -> FirewallStatus:
+    """Get UFW firewall status."""
+    enabled = False
+    default_policy = "unknown"
+    rules: list[dict[str, str]] = []
+
+    try:
+        result = subprocess.run(
+            ["sudo", "-n", "ufw", "status", "verbose"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            output = result.stdout
+            if "Status: active" in output:
+                enabled = True
+
+            # Parse default policy
+            for line in output.splitlines():
+                if line.startswith("Default:"):
+                    default_policy = line.split(":", 1)[1].strip()
+                    break
+
+            # Parse rules (after "---" line)
+            in_rules = False
+            for line in output.splitlines():
+                if "---" in line:
+                    in_rules = True
+                    continue
+                if in_rules and line.strip():
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        rules.append({
+                            "to": parts[0],
+                            "action": parts[1] if len(parts) > 1 else "",
+                            "from": parts[2] if len(parts) > 2 else "Anywhere",
+                            "raw": line.strip(),
+                        })
+    except Exception as e:
+        logger.debug("Failed to get UFW status: %s", e)
+
+    return FirewallStatus(
+        enabled=enabled,
+        backend="ufw",
+        default_policy=default_policy,
+        rules=rules,
+    )
+
+
+def _get_firewalld_status() -> FirewallStatus:
+    """Get firewalld status."""
+    enabled = False
+    default_policy = "unknown"
+    rules: list[dict[str, str]] = []
+
+    try:
+        # Check if running
+        result = subprocess.run(
+            ["firewall-cmd", "--state"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        enabled = result.returncode == 0 and "running" in result.stdout
+
+        # Get default zone
+        result = subprocess.run(
+            ["firewall-cmd", "--get-default-zone"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            default_policy = result.stdout.strip()
+
+        # Get active services in default zone
+        result = subprocess.run(
+            ["firewall-cmd", "--list-all"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                line = line.strip()
+                if line.startswith("services:"):
+                    services = line.split(":", 1)[1].strip().split()
+                    for svc in services:
+                        rules.append({
+                            "type": "service",
+                            "name": svc,
+                            "action": "allow",
+                        })
+                elif line.startswith("ports:"):
+                    ports = line.split(":", 1)[1].strip().split()
+                    for port in ports:
+                        rules.append({
+                            "type": "port",
+                            "name": port,
+                            "action": "allow",
+                        })
+    except Exception as e:
+        logger.debug("Failed to get firewalld status: %s", e)
+
+    return FirewallStatus(
+        enabled=enabled,
+        backend="firewalld",
+        default_policy=default_policy,
+        rules=rules,
+    )
+
+
+def firewall_allow(
+    port: int | str,
+    protocol: str = "tcp",
+    confirm: bool = False,
+) -> CommandResult:
+    """Allow a port through the firewall.
+
+    Args:
+        port: Port number or service name (e.g., 80, "ssh", "http")
+        protocol: "tcp" or "udp"
+        confirm: If False, returns what would be done without executing
+    """
+    backend = detect_firewall()
+
+    if not backend:
+        return CommandResult(
+            command="",
+            returncode=-1,
+            stdout="",
+            stderr="No supported firewall detected (ufw or firewalld)",
+            success=False,
+        )
+
+    # Sanitize inputs
+    safe_port = shlex.quote(str(port))
+    safe_protocol = shlex.quote(protocol.lower())
+
+    if backend == "ufw":
+        if str(port).isdigit():
+            cmd = f"sudo ufw allow {safe_port}/{safe_protocol}"
+        else:
+            cmd = f"sudo ufw allow {safe_port}"
+    else:  # firewalld
+        if str(port).isdigit():
+            cmd = f"sudo firewall-cmd --add-port={safe_port}/{safe_protocol} --permanent"
+        else:
+            cmd = f"sudo firewall-cmd --add-service={safe_port} --permanent"
+
+    if not confirm:
+        return CommandResult(
+            command=cmd,
+            returncode=0,
+            stdout=f"Would run: {cmd}\nSet confirm=true to execute.",
+            stderr="",
+            success=True,
+        )
+
+    can_sudo, sudo_error = check_sudo_available()
+    if not can_sudo:
+        return CommandResult(
+            command=cmd,
+            returncode=-1,
+            stdout="",
+            stderr=sudo_error or "Cannot run sudo",
+            success=False,
+        )
+
+    result = execute_command(cmd, timeout=30)
+
+    # Reload firewalld if successful
+    if result.success and backend == "firewalld":
+        execute_command("sudo firewall-cmd --reload", timeout=10)
+
+    return result
+
+
+def firewall_deny(
+    port: int | str,
+    protocol: str = "tcp",
+    confirm: bool = False,
+) -> CommandResult:
+    """Block a port through the firewall.
+
+    Args:
+        port: Port number or service name
+        protocol: "tcp" or "udp"
+        confirm: If False, returns what would be done without executing
+    """
+    backend = detect_firewall()
+
+    if not backend:
+        return CommandResult(
+            command="",
+            returncode=-1,
+            stdout="",
+            stderr="No supported firewall detected (ufw or firewalld)",
+            success=False,
+        )
+
+    safe_port = shlex.quote(str(port))
+    safe_protocol = shlex.quote(protocol.lower())
+
+    if backend == "ufw":
+        if str(port).isdigit():
+            cmd = f"sudo ufw deny {safe_port}/{safe_protocol}"
+        else:
+            cmd = f"sudo ufw deny {safe_port}"
+    else:  # firewalld
+        if str(port).isdigit():
+            cmd = f"sudo firewall-cmd --remove-port={safe_port}/{safe_protocol} --permanent"
+        else:
+            cmd = f"sudo firewall-cmd --remove-service={safe_port} --permanent"
+
+    if not confirm:
+        return CommandResult(
+            command=cmd,
+            returncode=0,
+            stdout=f"Would run: {cmd}\nSet confirm=true to execute.",
+            stderr="",
+            success=True,
+        )
+
+    can_sudo, sudo_error = check_sudo_available()
+    if not can_sudo:
+        return CommandResult(
+            command=cmd,
+            returncode=-1,
+            stdout="",
+            stderr=sudo_error or "Cannot run sudo",
+            success=False,
+        )
+
+    result = execute_command(cmd, timeout=30)
+
+    if result.success and backend == "firewalld":
+        execute_command("sudo firewall-cmd --reload", timeout=10)
+
+    return result
+
+
+def firewall_enable(confirm: bool = False) -> CommandResult:
+    """Enable the firewall."""
+    backend = detect_firewall()
+
+    if not backend:
+        return CommandResult(
+            command="",
+            returncode=-1,
+            stdout="",
+            stderr="No supported firewall detected",
+            success=False,
+        )
+
+    if backend == "ufw":
+        cmd = "sudo ufw --force enable"
+    else:
+        cmd = "sudo systemctl enable --now firewalld"
+
+    if not confirm:
+        return CommandResult(
+            command=cmd,
+            returncode=0,
+            stdout=f"Would run: {cmd}\nSet confirm=true to execute.\n\nWarning: Enabling firewall may block network access if not configured properly.",
+            stderr="",
+            success=True,
+        )
+
+    can_sudo, sudo_error = check_sudo_available()
+    if not can_sudo:
+        return CommandResult(
+            command=cmd,
+            returncode=-1,
+            stdout="",
+            stderr=sudo_error or "Cannot run sudo",
+            success=False,
+        )
+
+    return execute_command(cmd, timeout=30)
+
+
+def firewall_disable(confirm: bool = False) -> CommandResult:
+    """Disable the firewall."""
+    backend = detect_firewall()
+
+    if not backend:
+        return CommandResult(
+            command="",
+            returncode=-1,
+            stdout="",
+            stderr="No supported firewall detected",
+            success=False,
+        )
+
+    if backend == "ufw":
+        cmd = "sudo ufw disable"
+    else:
+        cmd = "sudo systemctl disable --now firewalld"
+
+    if not confirm:
+        return CommandResult(
+            command=cmd,
+            returncode=0,
+            stdout=f"Would run: {cmd}\nSet confirm=true to execute.\n\nWarning: Disabling firewall will expose all network services.",
+            stderr="",
+            success=True,
+        )
+
+    can_sudo, sudo_error = check_sudo_available()
+    if not can_sudo:
+        return CommandResult(
+            command=cmd,
+            returncode=-1,
+            stdout="",
+            stderr=sudo_error or "Cannot run sudo",
+            success=False,
+        )
+
+    return execute_command(cmd, timeout=30)
+
+
+# =============================================================================
+# Journalctl / Systemd Logging
+# =============================================================================
+
+@dataclass(frozen=True)
+class JournalEntry:
+    """A single journal log entry."""
+    timestamp: str
+    unit: str
+    priority: str
+    message: str
+
+
+def get_service_logs(
+    service_name: str,
+    *,
+    lines: int = 50,
+    since: str | None = None,
+    priority: str | None = None,
+) -> list[JournalEntry]:
+    """Get logs for a systemd service using journalctl.
+
+    Args:
+        service_name: Name of the service (with or without .service suffix)
+        lines: Number of lines to retrieve
+        since: Time specification (e.g., "1 hour ago", "today", "2024-01-01")
+        priority: Filter by priority (emerg, alert, crit, err, warning, notice, info, debug)
+
+    Returns:
+        List of JournalEntry objects
+    """
+    entries: list[JournalEntry] = []
+
+    # Normalize service name
+    if not service_name.endswith(".service"):
+        service_name = f"{service_name}.service"
+
+    cmd = ["journalctl", "-u", service_name, "-n", str(lines), "--no-pager", "-o", "short-iso"]
+
+    if since:
+        cmd.extend(["--since", since])
+
+    if priority:
+        cmd.extend(["-p", priority])
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                # Parse short-iso format: 2024-01-15T10:30:45+0000 hostname unit[pid]: message
+                if not line.strip():
+                    continue
+                parts = line.split(" ", 3)
+                if len(parts) >= 4:
+                    entries.append(JournalEntry(
+                        timestamp=parts[0],
+                        unit=parts[2].rstrip(":"),
+                        priority="info",  # Priority not in short format
+                        message=parts[3] if len(parts) > 3 else "",
+                    ))
+    except Exception as e:
+        logger.debug("Failed to get service logs: %s", e)
+
+    return entries
+
+
+def get_system_logs(
+    *,
+    lines: int = 100,
+    since: str | None = None,
+    priority: str | None = None,
+    grep: str | None = None,
+) -> list[JournalEntry]:
+    """Get system-wide logs using journalctl.
+
+    Args:
+        lines: Number of lines to retrieve
+        since: Time specification (e.g., "1 hour ago", "today")
+        priority: Filter by priority level
+        grep: Filter messages containing this pattern
+
+    Returns:
+        List of JournalEntry objects
+    """
+    entries: list[JournalEntry] = []
+
+    cmd = ["journalctl", "-n", str(lines), "--no-pager", "-o", "short-iso"]
+
+    if since:
+        cmd.extend(["--since", since])
+
+    if priority:
+        cmd.extend(["-p", priority])
+
+    if grep:
+        cmd.extend(["-g", grep])
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if not line.strip():
+                    continue
+                parts = line.split(" ", 3)
+                if len(parts) >= 3:
+                    entries.append(JournalEntry(
+                        timestamp=parts[0],
+                        unit=parts[2].rstrip(":") if len(parts) > 2 else "",
+                        priority=priority or "info",
+                        message=parts[3] if len(parts) > 3 else "",
+                    ))
+    except Exception as e:
+        logger.debug("Failed to get system logs: %s", e)
+
+    return entries
+
+
+def get_boot_logs(*, current_boot: bool = True, lines: int = 100) -> list[JournalEntry]:
+    """Get boot logs.
+
+    Args:
+        current_boot: If True, show only current boot; otherwise show previous boot
+        lines: Number of lines to retrieve
+    """
+    entries: list[JournalEntry] = []
+
+    boot_flag = "-b" if current_boot else "-b -1"
+    cmd = f"journalctl {boot_flag} -n {lines} --no-pager -o short-iso"
+
+    try:
+        result = subprocess.run(
+            cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if not line.strip():
+                    continue
+                parts = line.split(" ", 3)
+                if len(parts) >= 3:
+                    entries.append(JournalEntry(
+                        timestamp=parts[0],
+                        unit=parts[2].rstrip(":") if len(parts) > 2 else "",
+                        priority="info",
+                        message=parts[3] if len(parts) > 3 else "",
+                    ))
+    except Exception as e:
+        logger.debug("Failed to get boot logs: %s", e)
+
+    return entries
+
+
+def get_failed_services() -> list[ServiceInfo]:
+    """Get list of failed systemd services."""
+    services: list[ServiceInfo] = []
+
+    try:
+        result = subprocess.run(
+            ["systemctl", "list-units", "--type=service", "--state=failed", "--no-pager", "--plain"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if parts and parts[0].endswith(".service"):
+                    services.append(ServiceInfo(
+                        name=parts[0],
+                        load_state=parts[1] if len(parts) > 1 else "unknown",
+                        active_state=parts[2] if len(parts) > 2 else "failed",
+                        sub_state=parts[3] if len(parts) > 3 else "failed",
+                        description=" ".join(parts[4:]) if len(parts) > 4 else "",
+                    ))
+    except Exception as e:
+        logger.debug("Failed to get failed services: %s", e)
+
+    return services
+
+
+# =============================================================================
+# Container Management (Docker + Podman)
+# =============================================================================
+
+def detect_container_runtime() -> str | None:
+    """Detect available container runtime.
+
+    Returns:
+        "docker", "podman", or None
+    """
+    # Check for podman first (preferred on newer Fedora/RHEL)
+    if shutil.which("podman"):
+        try:
+            result = subprocess.run(
+                ["podman", "info"],
+                capture_output=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                return "podman"
+        except Exception:
+            pass
+
+    # Check for docker
+    if shutil.which("docker"):
+        try:
+            result = subprocess.run(
+                ["docker", "info"],
+                capture_output=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                return "docker"
+        except Exception:
+            pass
+
+    return None
+
+
+def list_containers(all_containers: bool = False) -> list[dict[str, str]]:
+    """List containers using Docker or Podman.
+
+    Args:
+        all_containers: If True, include stopped containers
+    """
+    containers = []
+    runtime = detect_container_runtime()
+
+    if not runtime:
+        return containers
+
+    try:
+        cmd = [runtime, "ps", "--format", "{{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Names}}"]
+        if all_containers:
+            cmd.insert(2, "-a")
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                parts = line.split("\t")
+                if len(parts) >= 4:
+                    containers.append({
+                        "id": parts[0],
+                        "image": parts[1],
+                        "status": parts[2],
+                        "name": parts[3],
+                        "runtime": runtime,
+                    })
+    except Exception as e:
+        logger.debug("Failed to list containers: %s", e)
+
+    return containers
+
+
+def list_container_images() -> list[dict[str, str]]:
+    """List container images using Docker or Podman."""
+    images = []
+    runtime = detect_container_runtime()
+
+    if not runtime:
+        return images
+
+    try:
+        result = subprocess.run(
+            [runtime, "images", "--format", "{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.ID}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                parts = line.split("\t")
+                if len(parts) >= 4:
+                    images.append({
+                        "repository": parts[0],
+                        "tag": parts[1],
+                        "size": parts[2],
+                        "id": parts[3],
+                        "runtime": runtime,
+                    })
+    except Exception as e:
+        logger.debug("Failed to list container images: %s", e)
+
+    return images
+
+
+def get_container_logs(
+    container_id: str,
+    *,
+    lines: int = 100,
+    follow: bool = False,
+) -> CommandResult:
+    """Get logs from a container.
+
+    Args:
+        container_id: Container ID or name
+        lines: Number of lines to retrieve
+        follow: If True, return command to follow logs (not executed)
+    """
+    runtime = detect_container_runtime()
+
+    if not runtime:
+        return CommandResult(
+            command="",
+            returncode=-1,
+            stdout="",
+            stderr="No container runtime detected (docker or podman)",
+            success=False,
+        )
+
+    safe_id = shlex.quote(container_id)
+
+    if follow:
+        cmd = f"{runtime} logs -f --tail {lines} {safe_id}"
+        return CommandResult(
+            command=cmd,
+            returncode=0,
+            stdout=f"To follow logs, run: {cmd}",
+            stderr="",
+            success=True,
+        )
+
+    cmd = f"{runtime} logs --tail {lines} {safe_id}"
+    return execute_command(cmd, timeout=30)
+
+
+def container_exec(
+    container_id: str,
+    command: str,
+    *,
+    confirm: bool = False,
+) -> CommandResult:
+    """Execute a command in a running container.
+
+    Args:
+        container_id: Container ID or name
+        command: Command to execute
+        confirm: If False, returns what would be done without executing
+    """
+    runtime = detect_container_runtime()
+
+    if not runtime:
+        return CommandResult(
+            command="",
+            returncode=-1,
+            stdout="",
+            stderr="No container runtime detected",
+            success=False,
+        )
+
+    safe_id = shlex.quote(container_id)
+    safe_command = shlex.quote(command)
+    cmd = f"{runtime} exec {safe_id} {safe_command}"
+
+    if not confirm:
+        return CommandResult(
+            command=cmd,
+            returncode=0,
+            stdout=f"Would run: {cmd}\nSet confirm=true to execute.",
+            stderr="",
+            success=True,
+        )
+
+    return execute_command(cmd, timeout=60)
+
+
+# =============================================================================
+# User and Group Management
+# =============================================================================
+
+@dataclass(frozen=True)
+class UserInfo:
+    """Information about a system user."""
+    username: str
+    uid: int
+    gid: int
+    home: str
+    shell: str
+    groups: list[str]
+
+
+def list_users(system_users: bool = False) -> list[UserInfo]:
+    """List system users.
+
+    Args:
+        system_users: If True, include system users (UID < 1000)
+    """
+    users: list[UserInfo] = []
+
+    try:
+        with open("/etc/passwd") as f:
+            for line in f:
+                parts = line.strip().split(":")
+                if len(parts) >= 7:
+                    uid = int(parts[2])
+                    # Skip system users unless requested
+                    if not system_users and uid < 1000 and uid != 0:
+                        continue
+
+                    username = parts[0]
+                    groups = _get_user_groups(username)
+
+                    users.append(UserInfo(
+                        username=username,
+                        uid=uid,
+                        gid=int(parts[3]),
+                        home=parts[5],
+                        shell=parts[6],
+                        groups=groups,
+                    ))
+    except Exception as e:
+        logger.debug("Failed to list users: %s", e)
+
+    return users
+
+
+def _get_user_groups(username: str) -> list[str]:
+    """Get groups for a user."""
+    groups: list[str] = []
+    try:
+        result = subprocess.run(
+            ["groups", username],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            # Output format: "username : group1 group2 group3"
+            parts = result.stdout.split(":")
+            if len(parts) >= 2:
+                groups = parts[1].strip().split()
+    except Exception:
+        pass
+    return groups
+
+
+def list_groups() -> list[dict[str, Any]]:
+    """List system groups."""
+    groups: list[dict[str, Any]] = []
+
+    try:
+        with open("/etc/group") as f:
+            for line in f:
+                parts = line.strip().split(":")
+                if len(parts) >= 4:
+                    gid = int(parts[2])
+                    # Skip most system groups
+                    if gid < 1000 and gid != 0 and parts[0] not in ("sudo", "wheel", "docker", "admin"):
+                        continue
+
+                    groups.append({
+                        "name": parts[0],
+                        "gid": gid,
+                        "members": parts[3].split(",") if parts[3] else [],
+                    })
+    except Exception as e:
+        logger.debug("Failed to list groups: %s", e)
+
+    return groups
+
+
+def add_user(
+    username: str,
+    *,
+    home_dir: str | None = None,
+    shell: str | None = None,
+    groups: list[str] | None = None,
+    create_home: bool = True,
+    confirm: bool = False,
+) -> CommandResult:
+    """Add a new user.
+
+    Args:
+        username: Username to create
+        home_dir: Home directory path (default: /home/username)
+        shell: Login shell (default: /bin/bash)
+        groups: Additional groups to add user to
+        create_home: Whether to create home directory
+        confirm: If False, returns what would be done without executing
+    """
+    safe_username = shlex.quote(username)
+
+    cmd_parts = ["sudo", "useradd"]
+
+    if create_home:
+        cmd_parts.append("-m")
+
+    if home_dir:
+        cmd_parts.extend(["-d", shlex.quote(home_dir)])
+
+    if shell:
+        cmd_parts.extend(["-s", shlex.quote(shell)])
+    else:
+        cmd_parts.extend(["-s", "/bin/bash"])
+
+    if groups:
+        safe_groups = ",".join(shlex.quote(g) for g in groups)
+        cmd_parts.extend(["-G", safe_groups])
+
+    cmd_parts.append(safe_username)
+    cmd = " ".join(cmd_parts)
+
+    if not confirm:
+        return CommandResult(
+            command=cmd,
+            returncode=0,
+            stdout=f"Would run: {cmd}\nSet confirm=true to execute.",
+            stderr="",
+            success=True,
+        )
+
+    can_sudo, sudo_error = check_sudo_available()
+    if not can_sudo:
+        return CommandResult(
+            command=cmd,
+            returncode=-1,
+            stdout="",
+            stderr=sudo_error or "Cannot run sudo",
+            success=False,
+        )
+
+    return execute_command(cmd, timeout=30)
+
+
+def delete_user(
+    username: str,
+    *,
+    remove_home: bool = False,
+    confirm: bool = False,
+) -> CommandResult:
+    """Delete a user.
+
+    Args:
+        username: Username to delete
+        remove_home: If True, also remove home directory
+        confirm: If False, returns what would be done without executing
+    """
+    safe_username = shlex.quote(username)
+
+    if remove_home:
+        cmd = f"sudo userdel -r {safe_username}"
+    else:
+        cmd = f"sudo userdel {safe_username}"
+
+    if not confirm:
+        warning = ""
+        if remove_home:
+            warning = "\n\nWarning: This will permanently delete the user's home directory!"
+        return CommandResult(
+            command=cmd,
+            returncode=0,
+            stdout=f"Would run: {cmd}\nSet confirm=true to execute.{warning}",
+            stderr="",
+            success=True,
+        )
+
+    can_sudo, sudo_error = check_sudo_available()
+    if not can_sudo:
+        return CommandResult(
+            command=cmd,
+            returncode=-1,
+            stdout="",
+            stderr=sudo_error or "Cannot run sudo",
+            success=False,
+        )
+
+    return execute_command(cmd, timeout=30)
+
+
+def add_user_to_group(
+    username: str,
+    group: str,
+    *,
+    confirm: bool = False,
+) -> CommandResult:
+    """Add a user to a group.
+
+    Args:
+        username: Username
+        group: Group to add user to
+        confirm: If False, returns what would be done without executing
+    """
+    safe_username = shlex.quote(username)
+    safe_group = shlex.quote(group)
+    cmd = f"sudo usermod -aG {safe_group} {safe_username}"
+
+    if not confirm:
+        return CommandResult(
+            command=cmd,
+            returncode=0,
+            stdout=f"Would run: {cmd}\nSet confirm=true to execute.\n\nNote: User may need to log out and back in for group changes to take effect.",
+            stderr="",
+            success=True,
+        )
+
+    can_sudo, sudo_error = check_sudo_available()
+    if not can_sudo:
+        return CommandResult(
+            command=cmd,
+            returncode=-1,
+            stdout="",
+            stderr=sudo_error or "Cannot run sudo",
+            success=False,
+        )
+
+    return execute_command(cmd, timeout=30)
+
+
+def remove_user_from_group(
+    username: str,
+    group: str,
+    *,
+    confirm: bool = False,
+) -> CommandResult:
+    """Remove a user from a group.
+
+    Args:
+        username: Username
+        group: Group to remove user from
+        confirm: If False, returns what would be done without executing
+    """
+    safe_username = shlex.quote(username)
+    safe_group = shlex.quote(group)
+    cmd = f"sudo gpasswd -d {safe_username} {safe_group}"
+
+    if not confirm:
+        return CommandResult(
+            command=cmd,
+            returncode=0,
+            stdout=f"Would run: {cmd}\nSet confirm=true to execute.",
+            stderr="",
+            success=True,
+        )
+
+    can_sudo, sudo_error = check_sudo_available()
+    if not can_sudo:
+        return CommandResult(
+            command=cmd,
+            returncode=-1,
+            stdout="",
+            stderr=sudo_error or "Cannot run sudo",
+            success=False,
+        )
+
+    return execute_command(cmd, timeout=30)

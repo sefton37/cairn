@@ -304,6 +304,243 @@ def list_tools() -> list[Tool]:
             description="Detect the system's package manager (apt, dnf, pacman, etc.).",
             input_schema={"type": "object", "properties": {}},
         ),
+        # --- Package Removal ---
+        Tool(
+            name="linux_remove_package",
+            description=(
+                "Remove a package using the system's package manager. Requires sudo. "
+                "Set confirm=true to actually execute the removal."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "package_name": {"type": "string", "description": "Name of the package to remove"},
+                    "confirm": {"type": "boolean", "description": "Set to true to execute (default: preview only)"},
+                    "purge": {"type": "boolean", "description": "Also remove configuration files (apt only)"},
+                },
+                "required": ["package_name"],
+            },
+        ),
+        # --- Firewall Management ---
+        Tool(
+            name="linux_firewall_status",
+            description="Get firewall status and rules. Supports ufw (Ubuntu/Debian) and firewalld (RHEL/Fedora).",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="linux_firewall_allow",
+            description=(
+                "Allow a port or service through the firewall. "
+                "Set confirm=true to actually apply the rule."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "port": {"type": ["string", "integer"], "description": "Port number or service name (e.g., 80, 'ssh', 'http')"},
+                    "protocol": {"type": "string", "enum": ["tcp", "udp"], "description": "Protocol (default: tcp)"},
+                    "confirm": {"type": "boolean", "description": "Set to true to execute (default: preview only)"},
+                },
+                "required": ["port"],
+            },
+        ),
+        Tool(
+            name="linux_firewall_deny",
+            description=(
+                "Block a port or service in the firewall. "
+                "Set confirm=true to actually apply the rule."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "port": {"type": ["string", "integer"], "description": "Port number or service name"},
+                    "protocol": {"type": "string", "enum": ["tcp", "udp"], "description": "Protocol (default: tcp)"},
+                    "confirm": {"type": "boolean", "description": "Set to true to execute (default: preview only)"},
+                },
+                "required": ["port"],
+            },
+        ),
+        Tool(
+            name="linux_firewall_enable",
+            description="Enable the system firewall. Set confirm=true to execute.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "confirm": {"type": "boolean", "description": "Set to true to execute (default: preview only)"},
+                },
+            },
+        ),
+        Tool(
+            name="linux_firewall_disable",
+            description="Disable the system firewall. Set confirm=true to execute.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "confirm": {"type": "boolean", "description": "Set to true to execute (default: preview only)"},
+                },
+            },
+        ),
+        # --- Journalctl / Logging ---
+        Tool(
+            name="linux_service_logs",
+            description="Get logs for a systemd service using journalctl.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "service_name": {"type": "string", "description": "Name of the service (e.g., 'nginx', 'docker')"},
+                    "lines": {"type": "number", "description": "Number of log lines to retrieve (default: 50)"},
+                    "since": {"type": "string", "description": "Time filter (e.g., '1 hour ago', 'today', '2024-01-01')"},
+                    "priority": {"type": "string", "enum": ["emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"], "description": "Filter by priority level"},
+                },
+                "required": ["service_name"],
+            },
+        ),
+        Tool(
+            name="linux_system_logs",
+            description="Get system-wide logs using journalctl.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "lines": {"type": "number", "description": "Number of log lines to retrieve (default: 100)"},
+                    "since": {"type": "string", "description": "Time filter (e.g., '1 hour ago', 'today')"},
+                    "priority": {"type": "string", "enum": ["emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"], "description": "Filter by priority level"},
+                    "grep": {"type": "string", "description": "Filter messages containing this pattern"},
+                },
+            },
+        ),
+        Tool(
+            name="linux_boot_logs",
+            description="Get boot logs from journalctl.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "current_boot": {"type": "boolean", "description": "If true (default), show current boot; false shows previous boot"},
+                    "lines": {"type": "number", "description": "Number of log lines to retrieve (default: 100)"},
+                },
+            },
+        ),
+        Tool(
+            name="linux_failed_services",
+            description="List all failed systemd services.",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        # --- Container Management (Docker + Podman) ---
+        Tool(
+            name="linux_container_runtime",
+            description="Detect available container runtime (Docker or Podman).",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="linux_containers",
+            description="List containers using Docker or Podman (auto-detected).",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "all_containers": {"type": "boolean", "description": "Include stopped containers"},
+                },
+            },
+        ),
+        Tool(
+            name="linux_container_images",
+            description="List container images using Docker or Podman.",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="linux_container_logs",
+            description="Get logs from a container.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "container_id": {"type": "string", "description": "Container ID or name"},
+                    "lines": {"type": "number", "description": "Number of log lines (default: 100)"},
+                    "follow": {"type": "boolean", "description": "If true, returns command to follow logs"},
+                },
+                "required": ["container_id"],
+            },
+        ),
+        Tool(
+            name="linux_container_exec",
+            description="Execute a command inside a running container.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "container_id": {"type": "string", "description": "Container ID or name"},
+                    "command": {"type": "string", "description": "Command to execute"},
+                    "confirm": {"type": "boolean", "description": "Set to true to execute (default: preview only)"},
+                },
+                "required": ["container_id", "command"],
+            },
+        ),
+        # --- User and Group Management ---
+        Tool(
+            name="linux_list_users",
+            description="List system users.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "system_users": {"type": "boolean", "description": "Include system users (UID < 1000)"},
+                },
+            },
+        ),
+        Tool(
+            name="linux_list_groups",
+            description="List system groups (excluding most system groups).",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="linux_add_user",
+            description="Add a new user to the system. Requires sudo.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "username": {"type": "string", "description": "Username to create"},
+                    "home_dir": {"type": "string", "description": "Home directory path"},
+                    "shell": {"type": "string", "description": "Login shell (default: /bin/bash)"},
+                    "groups": {"type": "array", "items": {"type": "string"}, "description": "Additional groups to add user to"},
+                    "create_home": {"type": "boolean", "description": "Create home directory (default: true)"},
+                    "confirm": {"type": "boolean", "description": "Set to true to execute (default: preview only)"},
+                },
+                "required": ["username"],
+            },
+        ),
+        Tool(
+            name="linux_delete_user",
+            description="Delete a user from the system. Requires sudo.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "username": {"type": "string", "description": "Username to delete"},
+                    "remove_home": {"type": "boolean", "description": "Also remove home directory (default: false)"},
+                    "confirm": {"type": "boolean", "description": "Set to true to execute (default: preview only)"},
+                },
+                "required": ["username"],
+            },
+        ),
+        Tool(
+            name="linux_add_user_to_group",
+            description="Add a user to a group. Requires sudo.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "username": {"type": "string", "description": "Username"},
+                    "group": {"type": "string", "description": "Group to add user to"},
+                    "confirm": {"type": "boolean", "description": "Set to true to execute (default: preview only)"},
+                },
+                "required": ["username", "group"],
+            },
+        ),
+        Tool(
+            name="linux_remove_user_from_group",
+            description="Remove a user from a group. Requires sudo.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "username": {"type": "string", "description": "Username"},
+                    "group": {"type": "string", "description": "Group to remove user from"},
+                    "confirm": {"type": "boolean", "description": "Set to true to execute (default: preview only)"},
+                },
+                "required": ["username", "group"],
+            },
+        ),
     ]
 
 
@@ -594,6 +831,337 @@ def call_tool(db: Database, *, name: str, arguments: dict[str, Any] | None) -> A
         pm = linux_tools.detect_package_manager()
         distro = linux_tools.detect_distro()
         return {"package_manager": pm, "distro": distro}
+
+    # --- Package Removal ---
+
+    if name == "linux_remove_package":
+        package_name = args.get("package_name")
+        if not isinstance(package_name, str) or not package_name.strip():
+            raise ToolError(code="invalid_args", message="package_name is required")
+        confirm = bool(args.get("confirm", False))
+        purge = bool(args.get("purge", False))
+
+        result = linux_tools.remove_package(package_name, confirm=confirm, purge=purge)
+        return {
+            "command": result.command,
+            "success": result.success,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+
+    # --- Firewall Management ---
+
+    if name == "linux_firewall_status":
+        status = linux_tools.get_firewall_status()
+        return {
+            "enabled": status.enabled,
+            "backend": status.backend,
+            "default_policy": status.default_policy,
+            "rules": status.rules,
+        }
+
+    if name == "linux_firewall_allow":
+        port = args.get("port")
+        if port is None:
+            raise ToolError(code="invalid_args", message="port is required")
+        protocol = args.get("protocol", "tcp")
+        confirm = bool(args.get("confirm", False))
+
+        result = linux_tools.firewall_allow(port, protocol=protocol, confirm=confirm)
+        return {
+            "command": result.command,
+            "success": result.success,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+
+    if name == "linux_firewall_deny":
+        port = args.get("port")
+        if port is None:
+            raise ToolError(code="invalid_args", message="port is required")
+        protocol = args.get("protocol", "tcp")
+        confirm = bool(args.get("confirm", False))
+
+        result = linux_tools.firewall_deny(port, protocol=protocol, confirm=confirm)
+        return {
+            "command": result.command,
+            "success": result.success,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+
+    if name == "linux_firewall_enable":
+        confirm = bool(args.get("confirm", False))
+        result = linux_tools.firewall_enable(confirm=confirm)
+        return {
+            "command": result.command,
+            "success": result.success,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+
+    if name == "linux_firewall_disable":
+        confirm = bool(args.get("confirm", False))
+        result = linux_tools.firewall_disable(confirm=confirm)
+        return {
+            "command": result.command,
+            "success": result.success,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+
+    # --- Journalctl / Logging ---
+
+    if name == "linux_service_logs":
+        service_name = args.get("service_name")
+        if not isinstance(service_name, str) or not service_name.strip():
+            raise ToolError(code="invalid_args", message="service_name is required")
+
+        lines = int(args.get("lines", 50))
+        since = args.get("since")
+        priority = args.get("priority")
+
+        entries = linux_tools.get_service_logs(
+            service_name,
+            lines=lines,
+            since=since,
+            priority=priority,
+        )
+        return {
+            "service": service_name,
+            "count": len(entries),
+            "entries": [
+                {
+                    "timestamp": e.timestamp,
+                    "unit": e.unit,
+                    "priority": e.priority,
+                    "message": e.message,
+                }
+                for e in entries
+            ],
+        }
+
+    if name == "linux_system_logs":
+        lines = int(args.get("lines", 100))
+        since = args.get("since")
+        priority = args.get("priority")
+        grep = args.get("grep")
+
+        entries = linux_tools.get_system_logs(
+            lines=lines,
+            since=since,
+            priority=priority,
+            grep=grep,
+        )
+        return {
+            "count": len(entries),
+            "entries": [
+                {
+                    "timestamp": e.timestamp,
+                    "unit": e.unit,
+                    "priority": e.priority,
+                    "message": e.message,
+                }
+                for e in entries
+            ],
+        }
+
+    if name == "linux_boot_logs":
+        current_boot = bool(args.get("current_boot", True))
+        lines = int(args.get("lines", 100))
+
+        entries = linux_tools.get_boot_logs(current_boot=current_boot, lines=lines)
+        return {
+            "boot": "current" if current_boot else "previous",
+            "count": len(entries),
+            "entries": [
+                {
+                    "timestamp": e.timestamp,
+                    "unit": e.unit,
+                    "message": e.message,
+                }
+                for e in entries
+            ],
+        }
+
+    if name == "linux_failed_services":
+        services = linux_tools.get_failed_services()
+        return {
+            "count": len(services),
+            "services": [asdict(s) for s in services],
+        }
+
+    # --- Container Management (Docker + Podman) ---
+
+    if name == "linux_container_runtime":
+        runtime = linux_tools.detect_container_runtime()
+        return {
+            "runtime": runtime,
+            "available": runtime is not None,
+        }
+
+    if name == "linux_containers":
+        all_containers = bool(args.get("all_containers", False))
+        containers = linux_tools.list_containers(all_containers=all_containers)
+        runtime = linux_tools.detect_container_runtime()
+        return {
+            "runtime": runtime,
+            "containers": containers,
+            "count": len(containers),
+        }
+
+    if name == "linux_container_images":
+        images = linux_tools.list_container_images()
+        runtime = linux_tools.detect_container_runtime()
+        return {
+            "runtime": runtime,
+            "images": images,
+            "count": len(images),
+        }
+
+    if name == "linux_container_logs":
+        container_id = args.get("container_id")
+        if not isinstance(container_id, str) or not container_id.strip():
+            raise ToolError(code="invalid_args", message="container_id is required")
+
+        lines = int(args.get("lines", 100))
+        follow = bool(args.get("follow", False))
+
+        result = linux_tools.get_container_logs(container_id, lines=lines, follow=follow)
+        return {
+            "command": result.command,
+            "success": result.success,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+
+    if name == "linux_container_exec":
+        container_id = args.get("container_id")
+        command = args.get("command")
+        if not isinstance(container_id, str) or not container_id.strip():
+            raise ToolError(code="invalid_args", message="container_id is required")
+        if not isinstance(command, str) or not command.strip():
+            raise ToolError(code="invalid_args", message="command is required")
+
+        confirm = bool(args.get("confirm", False))
+        result = linux_tools.container_exec(container_id, command, confirm=confirm)
+        return {
+            "command": result.command,
+            "success": result.success,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+
+    # --- User and Group Management ---
+
+    if name == "linux_list_users":
+        system_users = bool(args.get("system_users", False))
+        users = linux_tools.list_users(system_users=system_users)
+        return {
+            "count": len(users),
+            "users": [
+                {
+                    "username": u.username,
+                    "uid": u.uid,
+                    "gid": u.gid,
+                    "home": u.home,
+                    "shell": u.shell,
+                    "groups": u.groups,
+                }
+                for u in users
+            ],
+        }
+
+    if name == "linux_list_groups":
+        groups = linux_tools.list_groups()
+        return {"count": len(groups), "groups": groups}
+
+    if name == "linux_add_user":
+        username = args.get("username")
+        if not isinstance(username, str) or not username.strip():
+            raise ToolError(code="invalid_args", message="username is required")
+
+        home_dir = args.get("home_dir")
+        shell = args.get("shell")
+        groups = args.get("groups")
+        create_home = bool(args.get("create_home", True))
+        confirm = bool(args.get("confirm", False))
+
+        result = linux_tools.add_user(
+            username,
+            home_dir=home_dir,
+            shell=shell,
+            groups=groups,
+            create_home=create_home,
+            confirm=confirm,
+        )
+        return {
+            "command": result.command,
+            "success": result.success,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+
+    if name == "linux_delete_user":
+        username = args.get("username")
+        if not isinstance(username, str) or not username.strip():
+            raise ToolError(code="invalid_args", message="username is required")
+
+        remove_home = bool(args.get("remove_home", False))
+        confirm = bool(args.get("confirm", False))
+
+        result = linux_tools.delete_user(username, remove_home=remove_home, confirm=confirm)
+        return {
+            "command": result.command,
+            "success": result.success,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+
+    if name == "linux_add_user_to_group":
+        username = args.get("username")
+        group = args.get("group")
+        if not isinstance(username, str) or not username.strip():
+            raise ToolError(code="invalid_args", message="username is required")
+        if not isinstance(group, str) or not group.strip():
+            raise ToolError(code="invalid_args", message="group is required")
+
+        confirm = bool(args.get("confirm", False))
+        result = linux_tools.add_user_to_group(username, group, confirm=confirm)
+        return {
+            "command": result.command,
+            "success": result.success,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+
+    if name == "linux_remove_user_from_group":
+        username = args.get("username")
+        group = args.get("group")
+        if not isinstance(username, str) or not username.strip():
+            raise ToolError(code="invalid_args", message="username is required")
+        if not isinstance(group, str) or not group.strip():
+            raise ToolError(code="invalid_args", message="group is required")
+
+        confirm = bool(args.get("confirm", False))
+        result = linux_tools.remove_user_from_group(username, group, confirm=confirm)
+        return {
+            "command": result.command,
+            "success": result.success,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
 
     raise ToolError(code="unknown_tool", message=f"Unknown tool: {name}")
 
