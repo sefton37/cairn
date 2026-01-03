@@ -304,6 +304,32 @@ def list_tools() -> list[Tool]:
             description="Detect the system's package manager (apt, dnf, pacman, etc.).",
             input_schema={"type": "object", "properties": {}},
         ),
+        # --- System Index (RAG) ---
+        Tool(
+            name="system_index_status",
+            description=(
+                "Get status of the daily system state index. Shows when the last snapshot "
+                "was captured and whether a refresh is needed."
+            ),
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="system_index_refresh",
+            description=(
+                "Force a refresh of the system state index. Captures current system state "
+                "(OS, hardware, services, packages, containers, users, storage). "
+                "This is normally done automatically once per day."
+            ),
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="system_index_view",
+            description=(
+                "View the current system state snapshot. Returns the RAG context that "
+                "the agent uses for system awareness."
+            ),
+            input_schema={"type": "object", "properties": {}},
+        ),
         # --- Package Removal ---
         Tool(
             name="linux_remove_package",
@@ -831,6 +857,51 @@ def call_tool(db: Database, *, name: str, arguments: dict[str, Any] | None) -> A
         pm = linux_tools.detect_package_manager()
         distro = linux_tools.detect_distro()
         return {"package_manager": pm, "distro": distro}
+
+    # --- System Index (RAG) ---
+
+    if name == "system_index_status":
+        from .system_index import SystemIndexer
+        indexer = SystemIndexer(db)
+        snapshot = indexer.get_latest_snapshot()
+        needs_refresh = indexer.needs_refresh()
+        return {
+            "has_snapshot": snapshot is not None,
+            "needs_refresh": needs_refresh,
+            "last_captured": snapshot.captured_at if snapshot else None,
+            "hostname": snapshot.hostname if snapshot else None,
+            "snapshot_id": snapshot.snapshot_id if snapshot else None,
+        }
+
+    if name == "system_index_refresh":
+        from .system_index import SystemIndexer
+        indexer = SystemIndexer(db)
+        snapshot = indexer.capture_snapshot()
+        return {
+            "success": True,
+            "snapshot_id": snapshot.snapshot_id,
+            "captured_at": snapshot.captured_at,
+            "hostname": snapshot.hostname,
+            "message": "System state snapshot captured successfully",
+        }
+
+    if name == "system_index_view":
+        from .system_index import SystemIndexer, build_rag_context
+        indexer = SystemIndexer(db)
+        snapshot = indexer.get_latest_snapshot()
+        if snapshot is None:
+            return {
+                "has_snapshot": False,
+                "context": "",
+                "message": "No system snapshot available. Run system_index_refresh first.",
+            }
+        context = build_rag_context(snapshot)
+        return {
+            "has_snapshot": True,
+            "snapshot_id": snapshot.snapshot_id,
+            "captured_at": snapshot.captured_at,
+            "context": context,
+        }
 
     # --- Package Removal ---
 

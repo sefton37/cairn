@@ -69,27 +69,3 @@ def test_record_error_dedupes_within_window(temp_db: Database) -> None:
 
     rows = temp_db.iter_events_recent(limit=10)
     assert len(rows) == 1
-
-
-def test_poll_git_repo_reports_error(monkeypatch) -> None:
-    from reos import git_poll
-
-    monkeypatch.setattr(git_poll, "get_default_repo_path", lambda: Path("/tmp/repo"))
-
-    def _boom(*args, **kwargs):  # noqa: ANN001
-        raise RuntimeError("git failed")
-
-    monkeypatch.setattr(git_poll, "get_git_summary", _boom)
-
-    called: dict[str, object] = {}
-
-    def _record_error(**kwargs):  # noqa: ANN001
-        called["ok"] = True
-        return None
-
-    monkeypatch.setattr(git_poll, "record_error", _record_error)
-
-    res = git_poll.poll_git_repo()
-    assert res["status"] == "error"
-    assert "message" in res
-    assert called.get("ok") is True

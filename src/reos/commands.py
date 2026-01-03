@@ -14,7 +14,6 @@ from .alignment import (
     infer_active_repo_path,
     is_git_repo,
 )
-from .attention import classify_attention_pattern, get_current_session_summary
 from .db import get_db
 
 
@@ -134,23 +133,13 @@ def get_command_registry() -> list[Command]:
 
 
 def handle_reflect_recent() -> str:
-    """Reflect on recent attention patterns."""
-    try:
-        db = get_db()
-        classification = classify_attention_pattern(db)
-        return json.dumps(classification, indent=2)
-    except Exception as e:
-        return f"Error reflecting on recent patterns: {e}"
+    """Reflect on recent repo activity (placeholder for M1b)."""
+    return json.dumps({"status": "not_implemented", "message": "Attention detection removed for M1b stage."})
 
 
 def handle_inspect_session(params: dict[str, Any]) -> str:
-    """Inspect the current session."""
-    try:
-        db = get_db()
-        summary = get_current_session_summary(db)
-        return json.dumps(summary, indent=2)
-    except Exception as e:
-        return f"Error inspecting session: {e}"
+    """Inspect the current session (placeholder for M1b)."""
+    return json.dumps({"status": "not_implemented", "message": "Session inspection removed for M1b stage."})
 
 
 def handle_list_events(params: dict[str, Any]) -> str:

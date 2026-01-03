@@ -9,6 +9,7 @@ from .mcp_tools import Tool, ToolError, call_tool, list_tools, render_tool_resul
 from .ollama import OllamaClient
 from .play_fs import list_acts as play_list_acts
 from .play_fs import read_me_markdown as play_read_me_markdown
+from .system_index import get_or_refresh_context as get_system_context
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,11 @@ class ChatAgent:
         if play_context:
             persona_prefix = persona_prefix + "\n\n" + play_context
 
+        # Add daily system state context (RAG)
+        system_context = self._get_system_context()
+        if system_context:
+            persona_prefix = persona_prefix + "\n\n" + system_context
+
         ollama = self._get_ollama_client()
 
         wants_diff = self._user_opted_into_diff(user_text)
@@ -143,6 +149,13 @@ class ChatAgent:
             top_p=top_p,
         )
         return answer
+
+    def _get_system_context(self) -> str:
+        """Get daily system state context for RAG."""
+        try:
+            return get_system_context(self._db)
+        except Exception:  # noqa: BLE001
+            return ""
 
     def _get_play_context(self) -> str:
         try:
