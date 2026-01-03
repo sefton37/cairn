@@ -5,6 +5,9 @@ This module provides intelligent failure handling:
 - Automatic dependency resolution
 - Dynamic plan revision on failure
 - Execution learning for future improvements
+
+SAFETY: Contains circuit breakers to prevent runaway execution (paperclip problem).
+See SafetyLimits class for hard limits on automated behavior.
 """
 
 from __future__ import annotations
@@ -14,8 +17,9 @@ import json
 import logging
 import re
 import subprocess
+import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
@@ -24,6 +28,189 @@ from .planner import TaskPlan, TaskStep, StepType, StepStatus
 from .executor import StepResult
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# CIRCUIT BREAKERS - Hard limits to prevent runaway AI behavior
+# =============================================================================
+
+@dataclass
+class SafetyLimits:
+    """Hard limits on automated execution to prevent runaway behavior.
+
+    These limits exist to ensure the system cannot:
+    - Execute indefinitely (paperclip problem)
+    - Escalate privileges without bounds
+    - Consume unlimited resources
+    - Drift from the original request scope
+
+    All limits are HARD - they cannot be overridden by the AI.
+    They can only be changed by the user in config or code.
+    """
+
+    # Maximum total operations (commands/tools) per plan execution
+    # After this, execution STOPS and requires human approval
+    max_total_operations: int = 25
+
+    # Maximum wall-clock time for a single plan (seconds)
+    # After this, execution STOPS regardless of progress
+    max_execution_time_seconds: int = 300  # 5 minutes
+
+    # Maximum privilege escalations (sudo additions) per plan
+    # Prevents unbounded privilege creep
+    max_privilege_escalations: int = 3
+
+    # Maximum steps that can be injected during recovery
+    # Prevents the plan from growing without bound
+    max_injected_steps: int = 5
+
+    # Require human checkpoint after this many automated recoveries
+    # Forces human oversight even during "successful" recovery
+    human_checkpoint_after_recoveries: int = 2
+
+    # Maximum patterns to store in learning memory
+    # Prevents unbounded memory growth
+    max_learned_patterns: int = 1000
+
+    # Maximum age for rollback history (hours)
+    # Old entries are pruned to prevent unbounded growth
+    max_rollback_history_hours: int = 24
+
+
+@dataclass
+class ExecutionBudget:
+    """Tracks resource consumption against SafetyLimits.
+
+    This is the runtime tracker that enforces SafetyLimits.
+    It's created fresh for each plan execution.
+    """
+
+    limits: SafetyLimits
+    start_time: datetime = field(default_factory=datetime.now)
+
+    # Counters - increment as operations happen
+    operations_executed: int = 0
+    privilege_escalations: int = 0
+    steps_injected: int = 0
+    automated_recoveries: int = 0
+
+    # State flags
+    human_checkpoint_required: bool = False
+    budget_exhausted: bool = False
+    exhaustion_reason: str = ""
+
+    def record_operation(self) -> bool:
+        """Record an operation. Returns False if budget exhausted."""
+        self.operations_executed += 1
+        if self.operations_executed >= self.limits.max_total_operations:
+            self._exhaust("Maximum operations reached ({})".format(
+                self.limits.max_total_operations
+            ))
+            return False
+        return True
+
+    def record_privilege_escalation(self) -> bool:
+        """Record a privilege escalation (e.g., adding sudo).
+        Returns False if limit reached.
+        """
+        self.privilege_escalations += 1
+        if self.privilege_escalations >= self.limits.max_privilege_escalations:
+            self._exhaust("Maximum privilege escalations reached ({})".format(
+                self.limits.max_privilege_escalations
+            ))
+            return False
+        return True
+
+    def record_injected_step(self) -> bool:
+        """Record an injected step. Returns False if limit reached."""
+        self.steps_injected += 1
+        if self.steps_injected >= self.limits.max_injected_steps:
+            self._exhaust("Maximum injected steps reached ({})".format(
+                self.limits.max_injected_steps
+            ))
+            return False
+        return True
+
+    def record_recovery(self) -> bool:
+        """Record an automated recovery. Returns False if checkpoint needed."""
+        self.automated_recoveries += 1
+        if self.automated_recoveries >= self.limits.human_checkpoint_after_recoveries:
+            self.human_checkpoint_required = True
+            return False
+        return True
+
+    def check_time_limit(self) -> bool:
+        """Check if we've exceeded the time limit."""
+        elapsed = (datetime.now() - self.start_time).total_seconds()
+        if elapsed >= self.limits.max_execution_time_seconds:
+            self._exhaust("Maximum execution time reached ({:.0f}s)".format(
+                self.limits.max_execution_time_seconds
+            ))
+            return False
+        return True
+
+    def _exhaust(self, reason: str) -> None:
+        """Mark budget as exhausted."""
+        self.budget_exhausted = True
+        self.exhaustion_reason = reason
+        logger.warning("Execution budget exhausted: %s", reason)
+
+    def get_status(self) -> dict[str, Any]:
+        """Get current budget status for reporting."""
+        elapsed = (datetime.now() - self.start_time).total_seconds()
+        return {
+            "operations": f"{self.operations_executed}/{self.limits.max_total_operations}",
+            "time": f"{elapsed:.0f}s/{self.limits.max_execution_time_seconds}s",
+            "escalations": f"{self.privilege_escalations}/{self.limits.max_privilege_escalations}",
+            "injected_steps": f"{self.steps_injected}/{self.limits.max_injected_steps}",
+            "recoveries": f"{self.automated_recoveries}/{self.limits.human_checkpoint_after_recoveries}",
+            "exhausted": self.budget_exhausted,
+            "checkpoint_required": self.human_checkpoint_required,
+        }
+
+
+def check_scope_drift(original_request: str, proposed_action: str) -> tuple[bool, str]:
+    """Check if a proposed action drifts too far from the original request.
+
+    Returns (is_safe, reason).
+
+    This is a heuristic check to prevent the system from deciding to
+    "fix" things that weren't part of the original request.
+    """
+    # Normalize for comparison
+    original_lower = original_request.lower()
+    action_lower = proposed_action.lower()
+
+    # Dangerous scope expansions - actions that go way beyond typical fixes
+    dangerous_patterns = [
+        (r"rm\s+-rf\s+/(?!tmp)", "Recursive deletion outside /tmp"),
+        (r"chmod\s+-R\s+777", "World-writable recursive permissions"),
+        (r"curl.*\|\s*bash", "Piping remote script to shell"),
+        (r"wget.*\|\s*sh", "Piping remote script to shell"),
+        (r"dd\s+if=.*/dev/", "Raw disk write"),
+        (r"mkfs\.", "Filesystem creation"),
+        (r"fdisk|parted|gdisk", "Partition manipulation"),
+        (r"systemctl\s+(disable|mask)\s+.*firewall", "Disabling firewall"),
+        (r"iptables\s+-F", "Flushing firewall rules"),
+        (r"passwd|chpasswd|usermod", "User credential modification"),
+        (r"visudo|sudoers", "Sudo configuration"),
+        (r"ssh-keygen.*-y.*>", "SSH key extraction"),
+    ]
+
+    for pattern, reason in dangerous_patterns:
+        # Use IGNORECASE since we're matching against lowercased strings
+        # but patterns may have uppercase (e.g., -R for recursive)
+        if (re.search(pattern, action_lower, re.IGNORECASE) and
+                not re.search(pattern, original_lower, re.IGNORECASE)):
+            return False, f"Scope drift detected: {reason}"
+
+    # Check for privilege escalation in fixes (sudo being added)
+    if "sudo" in action_lower and "sudo" not in original_lower:
+        # This is tracked separately in ExecutionBudget
+        # Just flag it for awareness
+        logger.debug("Privilege escalation detected in proposed action")
+
+    return True, "Within scope"
 
 
 class ErrorCategory(Enum):
@@ -534,12 +721,21 @@ class AdaptiveReplanner:
 
 
 class ExecutionLearner:
-    """Learns from execution to improve future performance."""
+    """Learns from execution to improve future performance.
 
-    def __init__(self, storage_path: Path | None = None) -> None:
+    SAFETY: Enforces limits on stored patterns to prevent unbounded memory growth.
+    Old patterns are pruned automatically.
+    """
+
+    def __init__(
+        self,
+        storage_path: Path | None = None,
+        limits: SafetyLimits | None = None,
+    ) -> None:
         if storage_path is None:
             storage_path = Path.home() / ".config" / "reos" / "knowledge.db"
         self.storage_path = storage_path
+        self.limits = limits or SafetyLimits()
         self.memory = ExecutionMemory()
         self._load()
 
@@ -555,23 +751,76 @@ class ExecutionLearner:
             self.memory.failed_patterns = data.get("failed_patterns", {})
             self.memory.system_quirks = data.get("system_quirks", {})
             logger.debug("Loaded %d learned patterns", len(self.memory.successful_patterns))
+
+            # Prune on load if over limits
+            self._prune_patterns()
         except Exception as e:
             logger.warning("Failed to load learning data: %s", e)
 
     def save(self) -> None:
-        """Save learned patterns to disk."""
+        """Save learned patterns to disk (with limits enforced)."""
+        # Prune before saving
+        self._prune_patterns()
+
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "successful_patterns": self.memory.successful_patterns,
             "failed_patterns": self.memory.failed_patterns,
             "system_quirks": self.memory.system_quirks,
             "updated": datetime.now().isoformat(),
+            "pattern_count": len(self.memory.successful_patterns) + len(self.memory.failed_patterns),
+            "limit": self.limits.max_learned_patterns,
         }
         try:
             with open(self.storage_path, "w") as f:
                 json.dump(data, f, indent=2)
         except Exception as e:
             logger.warning("Failed to save learning data: %s", e)
+
+    def _prune_patterns(self) -> None:
+        """Prune patterns to stay within limits.
+
+        SAFETY: This enforces the max_learned_patterns limit.
+        Oldest patterns are removed first.
+        """
+        total = len(self.memory.successful_patterns) + len(self.memory.failed_patterns)
+        if total <= self.limits.max_learned_patterns:
+            return
+
+        logger.info("Pruning learned patterns: %d -> %d", total, self.limits.max_learned_patterns)
+
+        # Sort by most recent timestamp and keep only the most recent
+        all_patterns = []
+        for key, values in self.memory.successful_patterns.items():
+            for v in values:
+                ts = v.get("timestamp", "1970-01-01")
+                all_patterns.append(("success", key, ts))
+        for key, values in self.memory.failed_patterns.items():
+            for v in values:
+                ts = v.get("timestamp", "1970-01-01")
+                all_patterns.append(("fail", key, ts))
+
+        # Sort by timestamp descending (newest first)
+        all_patterns.sort(key=lambda x: x[2], reverse=True)
+
+        # Keep only the limit
+        to_keep_success = set()
+        to_keep_fail = set()
+        for pattern_type, key, _ in all_patterns[:self.limits.max_learned_patterns]:
+            if pattern_type == "success":
+                to_keep_success.add(key)
+            else:
+                to_keep_fail.add(key)
+
+        # Prune
+        self.memory.successful_patterns = {
+            k: v for k, v in self.memory.successful_patterns.items()
+            if k in to_keep_success
+        }
+        self.memory.failed_patterns = {
+            k: v for k, v in self.memory.failed_patterns.items()
+            if k in to_keep_fail
+        }
 
     def record_success(self, step: TaskStep, result: StepResult) -> None:
         """Record a successful step execution."""
@@ -642,41 +891,70 @@ class ExecutionLearner:
 
 
 class AdaptiveExecutor:
-    """Enhanced executor with adaptive failure handling."""
+    """Enhanced executor with adaptive failure handling.
+
+    SAFETY: Enforces hard limits via ExecutionBudget to prevent runaway execution.
+    These limits cannot be overridden by the AI during execution.
+    """
 
     def __init__(
         self,
         base_executor: Any,  # The original ExecutionEngine
         learner: ExecutionLearner | None = None,
+        safety_limits: SafetyLimits | None = None,
     ) -> None:
         self.base = base_executor
         self.classifier = ErrorClassifier()
         self.learner = learner or ExecutionLearner()
         self.replanner = AdaptiveReplanner(self.classifier, self.learner.memory)
+        self.safety_limits = safety_limits or SafetyLimits()
+
+        # Current execution budget (created per-execution)
+        self._current_budget: ExecutionBudget | None = None
 
     def execute_with_recovery(
         self,
         context: Any,  # ExecutionContext
         on_recovery_attempt: Callable[[str], None] | None = None,
+        on_budget_exhausted: Callable[[str, dict], None] | None = None,
     ) -> bool:
-        """Execute plan with automatic error recovery.
+        """Execute plan with automatic error recovery and circuit breakers.
 
         Args:
             context: The execution context
             on_recovery_attempt: Callback when attempting recovery
+            on_budget_exhausted: Callback when safety limits are hit
 
         Returns:
             True if plan completed successfully
+
+        SAFETY: This method enforces hard limits. If any limit is reached,
+        execution STOPS and control returns to the human.
         """
         from .executor import ExecutionState
 
+        # Create fresh budget for this execution
+        budget = ExecutionBudget(limits=self.safety_limits)
+        self._current_budget = budget
+
         max_recovery_attempts = 3
         recovery_count = 0
+        original_request = context.plan.original_request
 
         while context.state == ExecutionState.RUNNING:
+            # === CIRCUIT BREAKER: Time limit ===
+            if not budget.check_time_limit():
+                self._handle_budget_exhaustion(context, budget, on_budget_exhausted)
+                break
+
             result = self.base.execute_next_step(context)
 
             if result is None:
+                break
+
+            # === CIRCUIT BREAKER: Operation count ===
+            if not budget.record_operation():
+                self._handle_budget_exhaustion(context, budget, on_budget_exhausted)
                 break
 
             if result.success:
@@ -712,11 +990,51 @@ class AdaptiveExecutor:
                 on_recovery_attempt(explanation)
 
             if fix_step:
+                # === CIRCUIT BREAKER: Check scope drift ===
+                fix_cmd = fix_step.action.get("command", "")
+                is_safe, scope_reason = check_scope_drift(original_request, fix_cmd)
+                if not is_safe:
+                    logger.warning("Blocking fix due to scope drift: %s", scope_reason)
+                    if on_recovery_attempt:
+                        on_recovery_attempt(f"Blocked: {scope_reason}")
+                    context.state = ExecutionState.PAUSED
+                    break
+
+                # === CIRCUIT BREAKER: Privilege escalation ===
+                if "sudo" in fix_cmd:
+                    if not budget.record_privilege_escalation():
+                        self._handle_budget_exhaustion(context, budget, on_budget_exhausted)
+                        break
+
+                # === CIRCUIT BREAKER: Injected step limit ===
+                if not budget.record_injected_step():
+                    self._handle_budget_exhaustion(context, budget, on_budget_exhausted)
+                    break
+
                 recovery_count += 1
+
+                # === CIRCUIT BREAKER: Human checkpoint ===
+                if not budget.record_recovery():
+                    logger.info("Human checkpoint required after %d recoveries",
+                                budget.automated_recoveries)
+                    if on_recovery_attempt:
+                        on_recovery_attempt(
+                            f"Pausing for human review after {budget.automated_recoveries} "
+                            "automated recoveries. Status: " +
+                            str(budget.get_status())
+                        )
+                    context.state = ExecutionState.PAUSED
+                    break
+
                 logger.info("Attempting recovery: %s", fix_step.title)
 
                 # Execute the fix
                 fix_result = self.base._execute_step(fix_step, context)
+
+                # Count this as an operation too
+                if not budget.record_operation():
+                    self._handle_budget_exhaustion(context, budget, on_budget_exhausted)
+                    break
 
                 if fix_result.success:
                     self.replanner.record_resolution(
@@ -737,7 +1055,35 @@ class AdaptiveExecutor:
                 context.state = ExecutionState.PAUSED
                 break
 
-        # Save learning at the end
+        # Save learning at the end (with limits enforced)
         self.learner.save()
+        self._current_budget = None
 
         return context.plan.is_complete() and not context.plan.has_failed()
+
+    def _handle_budget_exhaustion(
+        self,
+        context: Any,
+        budget: ExecutionBudget,
+        callback: Callable[[str, dict], None] | None,
+    ) -> None:
+        """Handle when safety limits are reached."""
+        from .executor import ExecutionState
+
+        context.state = ExecutionState.PAUSED
+        status = budget.get_status()
+
+        logger.warning(
+            "Execution paused due to safety limits: %s. Status: %s",
+            budget.exhaustion_reason,
+            status,
+        )
+
+        if callback:
+            callback(budget.exhaustion_reason, status)
+
+    def get_current_budget_status(self) -> dict[str, Any] | None:
+        """Get the current execution budget status, if executing."""
+        if self._current_budget:
+            return self._current_budget.get_status()
+        return None

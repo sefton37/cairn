@@ -16,6 +16,11 @@ Adaptive Features:
     - AdaptiveReplanner: Dynamically revises plans on failure
     - ExecutionLearner: Learns what works on this specific system
 
+Circuit Breakers (prevent runaway AI):
+    - SafetyLimits: Hard limits on automated execution
+    - ExecutionBudget: Runtime tracker for limits
+    - check_scope_drift: Prevents actions outside original request
+
 Example:
     from reos.reasoning import ReasoningEngine
 
@@ -37,6 +42,10 @@ from .adaptive import (
     AdaptiveExecutor,
     ExecutionLearner,
     ExecutionMemory,
+    # Circuit breakers for safety
+    SafetyLimits,
+    ExecutionBudget,
+    check_scope_drift,
 )
 
 __all__ = [
@@ -61,6 +70,10 @@ __all__ = [
     "AdaptiveExecutor",
     "ExecutionLearner",
     "ExecutionMemory",
+    # Circuit breakers
+    "SafetyLimits",
+    "ExecutionBudget",
+    "check_scope_drift",
     # Conversation
     "ConversationManager",
     # Safety

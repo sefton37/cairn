@@ -304,6 +304,69 @@ For safety, automatic recovery is limited:
 - Maximum 2 fix attempts per error type
 - User intervention required for critical or unclassifiable errors
 
+## Circuit Breakers (Paperclip Problem Prevention)
+
+To prevent runaway AI behavior, ReOS enforces hard limits that **cannot be overridden by the AI**:
+
+### Hard Limits
+
+| Limit | Default | Purpose |
+|-------|---------|---------|
+| **Max Operations** | 25 | Stop after 25 commands per plan |
+| **Max Time** | 5 minutes | Hard timeout for any plan execution |
+| **Max Privilege Escalations** | 3 | Limit sudo additions |
+| **Max Injected Steps** | 5 | Limit plan growth during recovery |
+| **Human Checkpoint** | After 2 recoveries | Force human review |
+| **Max Learned Patterns** | 1000 | Cap learning database size |
+
+### Scope Drift Detection
+
+ReOS blocks "fixes" that drift too far from the original request:
+
+```
+You: install nginx
+
+ReOS: [During recovery, attempts to run rm -rf /var/log]
+      ⛔ BLOCKED: Scope drift detected - Recursive deletion outside /tmp
+      [Execution paused for human review]
+```
+
+Blocked patterns include:
+- `rm -rf /` (outside /tmp)
+- `chmod -R 777`
+- `curl | bash` (unless requested)
+- `fdisk`, `parted` (partition tools)
+- Firewall disabling
+- Credential modification
+
+### What Happens When Limits Are Hit
+
+When any limit is reached, execution **immediately stops** and returns control to you:
+
+```
+You: fix everything on my system
+
+ReOS: [After 25 operations]
+      ⚠️ Execution paused: Maximum operations reached (25/25)
+
+      Completed: 24 steps
+      Pending: 8 steps remaining
+      Time elapsed: 2m 34s
+
+      Continue? (This resets the operation counter)
+```
+
+### Why These Limits Exist
+
+These limits prevent the AI from:
+1. **Executing indefinitely** - No infinite loops
+2. **Escalating privileges unbounded** - Can't keep adding sudo
+3. **Growing plans without limit** - Can't inject infinite "fix" steps
+4. **Consuming unlimited resources** - Memory and time are capped
+5. **Drifting from the request** - Must stay related to what you asked
+
+The limits are enforced in code and **cannot be modified by the AI during execution**. Only you can change them in config.
+
 ## Limitations
 
 - Planning uses heuristics and may misclassify edge cases
