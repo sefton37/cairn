@@ -11,6 +11,7 @@ ReOS is a local-first AI companion that lets you control your entire Linux syste
 - **Transparent Actions**: Every command is previewed before execution. You always see what's happening.
 - **Recoverable Mistakes**: Destructive operations show undo commands. It's conversational - you can say "wait, undo that."
 - **Safety First**: Dangerous commands are blocked. Risky operations require confirmation.
+- **No Paperclips**: Hard-coded circuit breakers prevent runaway AI execution. [Learn more](#circuit-breakers)
 
 ## Examples
 
@@ -80,6 +81,38 @@ ReOS: [Preview] This will delete 47 files in /tmp:
       - ... (45 more)
       This action cannot be undone. Proceed? [y/N]
 ```
+
+## Circuit Breakers
+
+**The "paperclip problem" won't happen here.**
+
+You've heard the thought experiment: tell an AI to make paperclips efficiently, and it converts the entire planet into paperclips because you didn't say when to stop. ReOS has hard-coded limits that **the AI cannot override**:
+
+| Protection | What It Prevents |
+|------------|------------------|
+| **Operation Limit** | Max 25 commands per plan—no infinite loops |
+| **Time Limit** | 5 minute hard cap—no runaway execution |
+| **Privilege Cap** | Max 3 sudo escalations—can't keep adding permissions |
+| **Scope Lock** | Blocks actions unrelated to your request |
+| **Human Checkpoints** | Forces pause after 2 automatic recoveries |
+
+If the AI tries to "fix" your nginx install by deleting system logs? **Blocked.** Tries to run 100 commands to "optimize" your system? **Stopped at 25.** Keeps escalating to root? **Capped at 3.**
+
+```
+You: fix everything on my system
+
+ReOS: [After 25 operations]
+      ⚠️ Execution paused: Maximum operations reached (25/25)
+
+      Completed: 24 steps
+      Pending: 8 steps remaining
+
+      Continue? (This resets the operation counter)
+```
+
+These limits are enforced in code, not by the AI's "judgment." The AI literally cannot change them during execution. Only you can modify them in config.
+
+[Full technical details →](docs/reasoning.md#circuit-breakers-paperclip-problem-prevention)
 
 ## Architecture
 
