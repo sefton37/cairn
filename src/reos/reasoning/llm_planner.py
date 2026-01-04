@@ -192,46 +192,38 @@ Return the structured intent as JSON:"""
         system_prompt = """You are a Linux system administration planner.
 Given a user's intent and matched system resources, generate a step-by-step plan.
 
-CRITICAL: Use the EXACT resource names from the matched resources. Do not guess or use placeholders.
+CRITICAL RULES:
+1. Return a JSON ARRAY of steps (not a single object!)
+2. Use the EXACT resource names from the matched resources
+3. Create SEPARATE steps for each resource and each action
 
-Return a JSON array of steps:
+JSON format - MUST be an array:
 [
-    {
-        "title": "Short step title",
-        "description": "What this step does",
-        "tool": "tool name (linux_run_command, linux_containers, linux_service_status, etc.)",
-        "tool_args": {"command": "the command to run"} or {"service_name": "nginx"} etc.,
-        "risk_level": "safe|low|medium|high",
-        "rollback_command": "optional command to undo this step",
-        "depends_on": ["optional list of step titles this depends on"]
-    }
+    {"title": "Step 1", "description": "...", "tool": "linux_run_command", "tool_args": {"command": "..."}, "risk_level": "medium"},
+    {"title": "Step 2", "description": "...", "tool": "linux_run_command", "tool_args": {"command": "..."}, "risk_level": "high"}
+]
+
+For combined actions like "stop_and_remove":
+- Create SEPARATE steps: first stop, then remove
+- One step per container/resource
+
+Example for "stop_and_remove containers [nextcloud-app, nextcloud-redis]":
+[
+    {"title": "Stop nextcloud-app", "tool": "linux_run_command", "tool_args": {"command": "docker stop nextcloud-app"}, "risk_level": "medium"},
+    {"title": "Remove nextcloud-app", "tool": "linux_run_command", "tool_args": {"command": "docker rm nextcloud-app"}, "risk_level": "high", "depends_on": ["Stop nextcloud-app"]},
+    {"title": "Stop nextcloud-redis", "tool": "linux_run_command", "tool_args": {"command": "docker stop nextcloud-redis"}, "risk_level": "medium"},
+    {"title": "Remove nextcloud-redis", "tool": "linux_run_command", "tool_args": {"command": "docker rm nextcloud-redis"}, "risk_level": "high", "depends_on": ["Stop nextcloud-redis"]}
 ]
 
 Available tools:
 - linux_run_command: Execute shell commands. Args: {"command": "..."}
-- linux_docker_containers: List Docker containers. Args: {}
-- linux_service_status: Check service status. Args: {"service_name": "..."}
-- linux_system_info: Get system info. Args: {}
-- linux_list_packages: List packages. Args: {}
 
-Command patterns (use EXACT container/service names from matched resources):
-- Stop container: docker stop <container_name>
-- Remove container: docker rm <container_name>
-- Stop and remove: docker stop <name> && docker rm <name>
-- Restart container: docker restart <container_name>
-- Service control: sudo systemctl <action> <service_name>
-- Package install: sudo apt install -y <package_name>
-- Package remove: sudo apt remove -y <package_name>
+Risk levels:
+- "high": destructive (rm, remove, delete)
+- "medium": state-changing (stop, restart)
+- "safe": read-only
 
-Guidelines:
-- For EACH matched resource, create appropriate steps
-- If stopping and removing containers, create separate stop and remove steps
-- Always include rollback_command for destructive operations
-- Mark destructive operations (rm, remove, delete) as "high" risk
-- Mark state-changing operations (stop, restart) as "medium" risk
-- Mark read-only operations as "safe"
-
-IMPORTANT: Return valid JSON array only. Use exact resource names, not patterns."""
+IMPORTANT: Always return a JSON ARRAY [], never a single object {}."""
 
         # Build description of what we're trying to do
         matched_desc = self._format_matched_resources(matched_resources)
@@ -260,17 +252,21 @@ Return the step-by-step plan as JSON:"""
 
             steps_data = json.loads(response)
 
-            # Handle various ways LLM might wrap the steps
+            # Handle various ways LLM might return steps
             if isinstance(steps_data, dict):
-                # Try common wrapper keys
+                # Try common wrapper keys first
                 for key in ("steps", "plan", "actions", "tasks"):
                     if key in steps_data and isinstance(steps_data[key], list):
                         steps_data = steps_data[key]
                         break
                 else:
-                    # If dict has no known list key, log and return empty
-                    logger.warning("LLM returned dict without steps list: keys=%s", list(steps_data.keys()))
-                    return []
+                    # Check if dict looks like a single step (has tool or title)
+                    if "tool" in steps_data or "title" in steps_data:
+                        logger.debug("LLM returned single step dict, wrapping in list")
+                        steps_data = [steps_data]
+                    else:
+                        logger.warning("LLM returned dict without steps list: keys=%s", list(steps_data.keys()))
+                        return []
 
             if not isinstance(steps_data, list):
                 logger.warning("LLM returned non-list plan: %s", type(steps_data))

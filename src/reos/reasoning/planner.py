@@ -732,8 +732,9 @@ class TaskPlanner:
         if service_match2:
             action = service_match2.group(1)
             target = service_match2.group(2)
-            # Heuristic: if target looks like a service name
-            if target not in ("all", "the", "my", "this"):
+            # Heuristic: if target looks like a service name (not a common word)
+            common_words = {"all", "the", "my", "this", "and", "or", "them", "it", "that", "those"}
+            if target not in common_words:
                 return {"action": action, "resource_type": "service", "filter": target}
 
         # Package actions
