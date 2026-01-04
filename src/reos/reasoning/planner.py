@@ -430,17 +430,21 @@ class TaskPlanner:
             created_at=datetime.now(),
         )
 
-        # Try templates first
-        template_plan = self._try_template_match(request, system_context or {})
-        if template_plan:
-            plan.steps = template_plan
-        elif self.llm_planner:
-            # Use LLM for custom planning
+        # Prefer LLM planner for intelligent intent parsing with system context
+        # LLM understands natural language variations and can match against
+        # actual system state (containers, services, packages)
+        if self.llm_planner:
             llm_steps = self.llm_planner(request, system_context or {})
-            plan.steps = self._parse_llm_steps(llm_steps)
+            if llm_steps:
+                logger.debug("Using LLM planner: %d steps generated", len(llm_steps))
+                plan.steps = self._parse_llm_steps(llm_steps)
+            else:
+                # LLM failed or low confidence - fall back to templates/regex
+                logger.debug("LLM planner returned no steps, falling back")
+                plan.steps = self._fallback_plan(request, system_context)
         else:
-            # Goal-oriented fallback: parse intent and create actionable plan
-            plan.steps = self._create_fallback_plan(request, system_context)
+            # No LLM available - use templates and regex fallback
+            plan.steps = self._fallback_plan(request, system_context)
 
         # Assess risks for all steps
         self._assess_plan_risks(plan)
@@ -454,6 +458,25 @@ class TaskPlanner:
         if len(request.split()) > 6:
             title += "..."
         return title.capitalize()
+
+    def _fallback_plan(
+        self,
+        request: str,
+        system_context: dict[str, Any] | None = None,
+    ) -> list[TaskStep]:
+        """Fallback planning when LLM is unavailable or fails.
+
+        Tries templates first, then regex-based intent parsing.
+        """
+        # Try templates
+        template_plan = self._try_template_match(request, system_context or {})
+        if template_plan:
+            logger.debug("Using template-based plan")
+            return template_plan
+
+        # Fall back to regex-based intent parsing
+        logger.debug("Using regex fallback plan")
+        return self._create_fallback_plan(request, system_context)
 
     def _try_template_match(
         self,

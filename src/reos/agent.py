@@ -11,7 +11,7 @@ from .mcp_tools import Tool, ToolError, call_tool, list_tools, render_tool_resul
 from .ollama import OllamaClient
 from .play_fs import list_acts as play_list_acts
 from .play_fs import read_me_markdown as play_read_me_markdown
-from .reasoning import ReasoningEngine, ReasoningConfig, ComplexityLevel, TaskPlan
+from .reasoning import ReasoningEngine, ReasoningConfig, ComplexityLevel, TaskPlan, create_llm_planner_callback
 from .system_index import get_or_refresh_context as get_system_context
 
 # Intent detection patterns for conversational troubleshooting
@@ -89,10 +89,15 @@ class ChatAgent:
         self._db = db
         self._ollama_override = ollama
 
+        # Create LLM planner callback for intelligent intent parsing
+        # This replaces rigid regex patterns with LLM-based understanding
+        llm_planner = create_llm_planner_callback(ollama)
+
         # Initialize reasoning engine for complex tasks
         self._reasoning_engine = ReasoningEngine(
             db=db,
             tool_executor=self._execute_tool_for_reasoning,
+            llm_planner=llm_planner,
             config=ReasoningConfig(
                 enabled=True,
                 auto_assess=True,

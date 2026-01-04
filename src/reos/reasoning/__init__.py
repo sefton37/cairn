@@ -47,6 +47,7 @@ from .adaptive import (
     ExecutionBudget,
     check_scope_drift,
 )
+from .llm_planner import LLMPlanner, ParsedIntent, PlanStep, create_llm_planner_callback
 
 __all__ = [
     # Main entry point
@@ -82,4 +83,9 @@ __all__ = [
     "SafetyManager",
     "RiskLevel",
     "RollbackAction",
+    # LLM Planning
+    "LLMPlanner",
+    "ParsedIntent",
+    "PlanStep",
+    "create_llm_planner_callback",
 ]
