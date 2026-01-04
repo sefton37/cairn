@@ -16,7 +16,14 @@ from reos.mcp_tools import ToolError
 
 
 class FakeOllama:
-    """Fake Ollama client for testing."""
+    """Fake Ollama client for testing.
+
+    Handles the LLM-first architecture with different response types:
+    - Intent parsing: Returns query intent (no plan needed)
+    - Plan generation: Returns empty steps (if called)
+    - Tool selection: Returns tool_calls
+    - Answer generation: Returns text
+    """
 
     def __init__(
         self,
@@ -25,11 +32,21 @@ class FakeOllama:
         answer_text: str = "Test response",
         chat_json_error: Exception | None = None,
         chat_text_error: Exception | None = None,
+        intent_response: dict[str, Any] | None = None,
     ) -> None:
         self._tool_plan_json = tool_plan_json
         self._answer_text = answer_text
         self._chat_json_error = chat_json_error
         self._chat_text_error = chat_text_error
+        # Default intent: query (no plan needed, let normal flow handle)
+        self._intent_response = intent_response or {
+            "action": "query",
+            "resource_type": "general",
+            "targets": [],
+            "conditions": {},
+            "confidence": 0.9,
+            "explanation": "User asking a question"
+        }
         self.chat_json_calls: list[dict[str, Any]] = []
         self.chat_text_calls: list[dict[str, Any]] = []
 
@@ -37,7 +54,17 @@ class FakeOllama:
         self.chat_json_calls.append({"system": system, "user": user, **kwargs})
         if self._chat_json_error:
             raise self._chat_json_error
-        return self._tool_plan_json
+
+        # Detect call type based on system prompt content
+        if "intent parser" in system.lower():
+            # Intent parsing call - return query intent (no plan)
+            return json.dumps(self._intent_response)
+        elif "planner" in system.lower() or "generate a plan" in system.lower():
+            # Plan generation call - return empty steps
+            return "[]"
+        else:
+            # Tool selection call - return tool plan
+            return self._tool_plan_json
 
     def chat_text(self, *, system: str, user: str, **kwargs: Any) -> str:
         self.chat_text_calls.append({"system": system, "user": user, **kwargs})
@@ -64,7 +91,8 @@ class TestChatAgentRespond:
         assert result.answer == "No tools needed for this response."
         assert result.conversation_id is not None
         assert result.message_id is not None
-        assert len(ollama.chat_json_calls) == 1
+        # LLM-first: 1 intent parsing + 1 tool selection = 2 calls
+        assert len(ollama.chat_json_calls) == 2
         assert len(ollama.chat_text_calls) == 1
 
     def test_respond_with_successful_tool_calls(
@@ -296,9 +324,11 @@ class TestChatAgentToolSelection:
         agent = ChatAgent(db=get_db(), ollama=ollama)
         agent.respond("List files")
 
-        # Check that tool specs were included in the user message
-        assert len(ollama.chat_json_calls) == 1
-        user_msg = ollama.chat_json_calls[0]["user"]
+        # Check that tool specs were included in the tool selection call
+        # LLM-first: call[0] = intent parsing, call[1] = tool selection
+        assert len(ollama.chat_json_calls) == 2
+        # Tool selection is the second call
+        user_msg = ollama.chat_json_calls[1]["user"]
         assert "TOOLS:" in user_msg
 
     def test_tool_call_limit_enforcement(

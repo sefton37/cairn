@@ -385,24 +385,47 @@ class TestReasoningEngine:
             auto_assess=True,
             always_confirm=False,
         )
-        self.engine = ReasoningEngine(config=self.config)
+
+        # Mock LLM planner for testing - returns plans for action requests
+        def mock_llm_planner(request: str, context: dict) -> list[dict]:
+            """Mock LLM planner that returns plans for action-like requests."""
+            request_lower = request.lower()
+
+            # Check for action keywords
+            action_keywords = ["set up", "configure", "install", "remove", "stop", "start"]
+            is_action = any(kw in request_lower for kw in action_keywords)
+
+            if is_action:
+                return [
+                    {
+                        "id": "step_1",
+                        "title": "Execute action",
+                        "description": f"Performing: {request}",
+                        "type": "command",
+                        "action": {"tool": "linux_run_command", "args": {"command": "echo test"}},
+                        "rollback": None,
+                        "explanation": "Mock step for testing",
+                    }
+                ]
+            return []  # Query - no plan needed
+
+        self.engine = ReasoningEngine(config=self.config, llm_planner=mock_llm_planner)
 
     def test_simple_request_bypasses_planning(self) -> None:
-        """Simple requests should bypass the planning system."""
+        """Simple requests should bypass the planning system (no plan from LLM)."""
         result = self.engine.process("show disk space")
 
-        # Simple requests get empty response (agent handles directly)
-        assert result.complexity is not None
-        assert result.complexity.level == ComplexityLevel.SIMPLE
-        assert result.plan is None
+        # Query requests get empty response (agent handles directly)
+        # LLM returns no plan for queries
+        assert result.plan is None or len(result.plan.steps) == 0
 
     def test_complex_request_creates_plan(self) -> None:
-        """Complex requests should create a plan."""
+        """Complex/action requests should create a plan."""
         result = self.engine.process("set up a development environment")
 
-        assert result.complexity is not None
-        assert result.complexity.level in (ComplexityLevel.COMPLEX, ComplexityLevel.DIAGNOSTIC)
+        # Action requests get a plan from LLM
         assert result.plan is not None
+        assert len(result.plan.steps) > 0
         assert result.needs_approval
 
     def test_approval_handling(self) -> None:
@@ -481,8 +504,30 @@ class TestIntegration:
 
     def setup_method(self) -> None:
         self.temp_dir = tempfile.mkdtemp()
-        # Create engine with isolated backup directory
-        self.engine = ReasoningEngine()
+
+        # Mock LLM planner for testing
+        def mock_llm_planner(request: str, context: dict) -> list[dict]:
+            """Mock LLM planner that returns plans for action-like requests."""
+            request_lower = request.lower()
+            action_keywords = ["speed up", "optimize", "configure", "install", "set up"]
+            is_action = any(kw in request_lower for kw in action_keywords)
+
+            if is_action:
+                return [
+                    {
+                        "id": "step_1",
+                        "title": "Optimize system",
+                        "description": f"Performing: {request}",
+                        "type": "command",
+                        "action": {"tool": "linux_run_command", "args": {"command": "echo optimizing"}},
+                        "rollback": None,
+                        "explanation": "Mock optimization step",
+                    }
+                ]
+            return []
+
+        # Create engine with mock LLM planner and isolated backup directory
+        self.engine = ReasoningEngine(llm_planner=mock_llm_planner)
         self.engine.safety = SafetyManager(backup_dir=Path(self.temp_dir))
 
     def teardown_method(self) -> None:
@@ -490,7 +535,7 @@ class TestIntegration:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_full_pipeline_simple(self) -> None:
-        """Simple request should complete quickly."""
+        """Simple/query request should complete quickly with no plan."""
         import time
         start = time.time()
 
@@ -498,9 +543,11 @@ class TestIntegration:
 
         elapsed = time.time() - start
         assert elapsed < 0.5  # Should be very fast
+        # Query intent - no plan
+        assert result.plan is None or len(result.plan.steps) == 0
 
     def test_full_pipeline_complex(self) -> None:
-        """Complex request should produce a plan."""
+        """Action request should produce a plan."""
         result = self.engine.process("speed up my computer")
 
         assert result.plan is not None
@@ -1374,3 +1421,190 @@ class TestAdaptiveExecutorWithLimits:
 
         # Budget should be cleared after execution
         assert self.adaptive.get_current_budget_status() is None
+
+
+class TestLLMPlannerIntentParsing:
+    """Tests for LLM-based intent parsing with system context."""
+
+    def test_query_intent_returns_no_plan(self) -> None:
+        """Query intents should return empty plan."""
+        def mock_llm_planner(request: str, context: dict) -> list[dict]:
+            # Simulate LLM returning query intent
+            if "what" in request.lower() or "list" in request.lower():
+                return []  # Query - no plan
+            return [{"id": "1", "title": "action", "action": {}}]
+
+        engine = ReasoningEngine(llm_planner=mock_llm_planner)
+        result = engine.process("what containers are running")
+
+        # Query intent means empty plan
+        assert result.plan is None or len(result.plan.steps) == 0
+        assert not result.needs_approval
+
+    def test_action_intent_returns_plan(self) -> None:
+        """Action intents should return a plan for approval."""
+        def mock_llm_planner(request: str, context: dict) -> list[dict]:
+            if "stop" in request.lower() or "remove" in request.lower():
+                return [{
+                    "id": "1",
+                    "title": "Stop container",
+                    "description": "Stop the container",
+                    "type": "command",
+                    "action": {"tool": "linux_run_command", "args": {"command": "docker stop x"}},
+                    "rollback": "docker start x",
+                }]
+            return []
+
+        engine = ReasoningEngine(llm_planner=mock_llm_planner)
+        result = engine.process("stop the nextcloud containers")
+
+        assert result.plan is not None
+        assert len(result.plan.steps) > 0
+        assert result.needs_approval
+
+    def test_system_context_passed_to_planner(self) -> None:
+        """System context should be passed to the LLM planner."""
+        received_context = {}
+
+        def mock_llm_planner(request: str, context: dict) -> list[dict]:
+            nonlocal received_context
+            received_context = context
+            return []
+
+        engine = ReasoningEngine(llm_planner=mock_llm_planner)
+
+        system_context = {
+            "containers": {
+                "all": [
+                    {"name": "nextcloud-app", "image": "nextcloud", "status": "Up 2 hours"},
+                    {"name": "nextcloud-redis", "image": "redis", "status": "Up 2 hours"},
+                ]
+            },
+            "services": [
+                {"name": "nginx.service", "active": True, "description": "Web server"},
+            ],
+            "hostname": "test-server",
+            "package_manager": "apt",
+        }
+
+        engine.process("what is running", system_context=system_context)
+
+        # Verify context was passed
+        assert received_context.get("hostname") == "test-server"
+        assert received_context.get("package_manager") == "apt"
+        assert "containers" in received_context
+        assert "services" in received_context
+
+    def test_combined_query_action_prioritizes_action(self) -> None:
+        """Combined query+action requests should prioritize the action."""
+        def mock_llm_planner(request: str, context: dict) -> list[dict]:
+            # LLM should detect the action intent despite query prefix
+            if "stop" in request.lower() or "remove" in request.lower():
+                return [{
+                    "id": "1",
+                    "title": "Stop containers",
+                    "description": "Stop matching containers",
+                    "type": "command",
+                    "action": {"tool": "linux_run_command", "args": {"command": "docker stop x"}},
+                }]
+            return []
+
+        engine = ReasoningEngine(llm_planner=mock_llm_planner)
+
+        # Combined request: query + action
+        result = engine.process(
+            "what containers are running, if nextcloud is running stop it"
+        )
+
+        # Should create a plan for the action
+        assert result.plan is not None
+        assert len(result.plan.steps) > 0
+        assert result.needs_approval
+
+
+class TestLLMPlannerTargetMatching:
+    """Tests for target matching against system context."""
+
+    def test_container_names_matched_from_context(self) -> None:
+        """Container names should be matched from system context."""
+        matched_targets = []
+
+        def mock_llm_planner(request: str, context: dict) -> list[dict]:
+            # Simulate LLM matching against actual containers
+            containers = context.get("containers", {}).get("all", [])
+            container_names = [c.get("name", "") for c in containers]
+
+            # Find containers matching "nextcloud"
+            targets = [n for n in container_names if "nextcloud" in n.lower()]
+            matched_targets.extend(targets)
+
+            if targets:
+                return [{
+                    "id": f"stop_{i}",
+                    "title": f"Stop {name}",
+                    "description": f"Stop container {name}",
+                    "type": "command",
+                    "action": {"tool": "linux_run_command", "args": {"command": f"docker stop {name}"}},
+                } for i, name in enumerate(targets)]
+            return []
+
+        engine = ReasoningEngine(llm_planner=mock_llm_planner)
+
+        system_context = {
+            "containers": {
+                "all": [
+                    {"name": "nextcloud-app", "image": "nextcloud"},
+                    {"name": "nextcloud-redis", "image": "redis"},
+                    {"name": "portainer", "image": "portainer/portainer"},
+                ]
+            }
+        }
+
+        result = engine.process("stop nextcloud containers", system_context=system_context)
+
+        # Should match the two nextcloud containers
+        assert "nextcloud-app" in matched_targets
+        assert "nextcloud-redis" in matched_targets
+        assert "portainer" not in matched_targets
+
+        # Plan should have steps for matched containers
+        assert result.plan is not None
+        assert len(result.plan.steps) == 2
+
+    def test_service_names_matched_from_context(self) -> None:
+        """Service names should be matched from system context."""
+        matched_services = []
+
+        def mock_llm_planner(request: str, context: dict) -> list[dict]:
+            services = context.get("services", [])
+            service_names = [s.get("name", "") for s in services]
+
+            # Find services matching "nginx"
+            targets = [n for n in service_names if "nginx" in n.lower()]
+            matched_services.extend(targets)
+
+            if targets:
+                return [{
+                    "id": "restart_0",
+                    "title": f"Restart {targets[0]}",
+                    "description": f"Restart service {targets[0]}",
+                    "type": "command",
+                    "action": {"tool": "linux_run_command", "args": {"command": f"sudo systemctl restart {targets[0]}"}},
+                }]
+            return []
+
+        engine = ReasoningEngine(llm_planner=mock_llm_planner)
+
+        system_context = {
+            "services": [
+                {"name": "nginx.service", "active": True},
+                {"name": "docker.service", "active": True},
+                {"name": "ssh.service", "active": True},
+            ]
+        }
+
+        result = engine.process("restart nginx", system_context=system_context)
+
+        assert "nginx.service" in matched_services
+        assert result.plan is not None
+        assert len(result.plan.steps) == 1
