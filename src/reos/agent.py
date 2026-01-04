@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from .db import Database
@@ -13,6 +15,10 @@ from .play_fs import list_acts as play_list_acts
 from .play_fs import read_me_markdown as play_read_me_markdown
 from .reasoning import ReasoningEngine, ReasoningConfig, ComplexityLevel, TaskPlan, create_llm_planner_callback
 from .system_index import get_or_refresh_context as get_system_context
+from .system_state import SteadyStateCollector
+from .certainty import CertaintyWrapper, create_certainty_prompt_addition
+
+logger = logging.getLogger(__name__)
 
 # Intent detection patterns for conversational troubleshooting
 _APPROVAL_PATTERN = re.compile(
@@ -74,6 +80,10 @@ class ChatResponse:
     message_type: str = "text"
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     pending_approval_id: str | None = None
+    # Certainty tracking
+    confidence: float = 1.0
+    evidence_summary: str = ""
+    has_uncertainties: bool = False
 
 
 class ChatAgent:
@@ -88,6 +98,19 @@ class ChatAgent:
     def __init__(self, *, db: Database, ollama: OllamaClient | None = None) -> None:
         self._db = db
         self._ollama_override = ollama
+
+        # Initialize steady state collector for system knowledge (RAG)
+        # This provides grounded facts about the machine
+        self._steady_state = SteadyStateCollector()
+
+        # Initialize certainty wrapper for anti-hallucination
+        self._certainty = CertaintyWrapper(
+            require_evidence=True,
+            stale_threshold_seconds=300,  # 5 minutes
+        )
+
+        # Track tool outputs for certainty validation
+        self._recent_tool_outputs: list[dict[str, Any]] = []
 
         # Create LLM planner callback for intelligent intent parsing
         # This replaces rigid regex patterns with LLM-based understanding
@@ -105,6 +128,12 @@ class ChatAgent:
                 explain_steps=True,
             ),
         )
+
+        # Collect steady state on initialization (async-safe, cached)
+        try:
+            self._steady_state.refresh_if_stale(max_age_seconds=3600)
+        except Exception as e:
+            logger.warning("Failed to collect steady state: %s", e)
 
         # Restore pending plan from database if exists
         self._restore_pending_plan()
@@ -353,14 +382,17 @@ class ChatAgent:
                     call = ToolCall(name=call.name, arguments=args)
 
                 result = call_tool(self._db, name=call.name, arguments=call.arguments)
-                tool_results.append(
-                    {
-                        "name": call.name,
-                        "arguments": call.arguments,
-                        "ok": True,
-                        "result": result,
-                    }
-                )
+                tool_result = {
+                    "tool": call.name,
+                    "name": call.name,
+                    "arguments": call.arguments,
+                    "ok": True,
+                    "result": result,
+                    "timestamp": datetime.now().isoformat(),
+                }
+                tool_results.append(tool_result)
+                # Track for certainty validation
+                self._recent_tool_outputs.append(tool_result)
             except ToolError as exc:
                 tool_results.append(
                     {
@@ -370,6 +402,9 @@ class ChatAgent:
                         "error": {"code": exc.code, "message": exc.message, "data": exc.data},
                     }
                 )
+
+        # Keep only recent tool outputs (last 20)
+        self._recent_tool_outputs = self._recent_tool_outputs[-20:]
 
         answer = self._answer(
             user_text=user_text,
@@ -382,6 +417,23 @@ class ChatAgent:
             top_p=top_p,
         )
 
+        # Validate response certainty
+        try:
+            certain_response = self._certainty.wrap_response(
+                response=answer,
+                system_state=self._steady_state.current if self._steady_state._current else None,
+                tool_outputs=tool_results,
+                user_input=user_text,
+            )
+            confidence = certain_response.overall_confidence
+            evidence_summary = certain_response.evidence_summary
+            has_uncertainties = certain_response.has_uncertainties()
+        except Exception as e:
+            logger.warning("Certainty validation failed: %s", e)
+            confidence = 1.0
+            evidence_summary = ""
+            has_uncertainties = False
+
         # Store assistant response
         assistant_message_id = _generate_id()
         self._db.add_message(
@@ -390,7 +442,12 @@ class ChatAgent:
             role="assistant",
             content=answer,
             message_type="text",
-            metadata=json.dumps({"tool_calls": tool_results}) if tool_results else None,
+            metadata=json.dumps({
+                "tool_calls": tool_results,
+                "confidence": confidence,
+                "evidence_summary": evidence_summary,
+                "has_uncertainties": has_uncertainties,
+            }) if tool_results or confidence < 1.0 else None,
         )
 
         # Generate title for new conversations (first message)
@@ -405,6 +462,9 @@ class ChatAgent:
             message_id=assistant_message_id,
             message_type="text",
             tool_calls=tool_results,
+            confidence=confidence,
+            evidence_summary=evidence_summary,
+            has_uncertainties=has_uncertainties,
         )
 
     def respond_text(self, user_text: str) -> str:
@@ -437,11 +497,25 @@ class ChatAgent:
         return "\n".join(lines)
 
     def _get_system_context(self) -> str:
-        """Get daily system state context for RAG."""
+        """Get system state context for RAG with certainty rules.
+
+        Uses SteadyStateCollector for comprehensive system knowledge,
+        formatted with certainty rules to prevent hallucination.
+        """
         try:
-            return get_system_context(self._db)
-        except Exception:  # noqa: BLE001
-            return ""
+            # Get steady state context (cached, refreshed if stale)
+            steady_state = self._steady_state.refresh_if_stale(max_age_seconds=3600)
+            context = steady_state.to_context_string()
+
+            # Add certainty rules to prevent hallucination
+            return create_certainty_prompt_addition(context)
+        except Exception as e:
+            logger.warning("Failed to get system context: %s", e)
+            # Fallback to basic context
+            try:
+                return get_system_context(self._db)
+            except Exception:
+                return ""
 
     def _get_system_snapshot_for_reasoning(self) -> dict[str, Any]:
         """Get system snapshot as structured data for the reasoning engine.
