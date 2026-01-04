@@ -131,12 +131,16 @@ def main() -> NoReturn:
         print_header()
 
     try:
-        response = handle_prompt(prompt, verbose=not args.quiet)
+        result = handle_prompt(prompt, verbose=not args.quiet)
 
         if not args.quiet:
             print()  # Blank line before response
 
-        print(response)
+        # handle_prompt returns ChatResponse, extract the answer
+        if hasattr(result, 'answer'):
+            print(result.answer)
+        else:
+            print(result)
         sys.exit(0)
 
     except KeyboardInterrupt:
