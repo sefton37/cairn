@@ -11,6 +11,7 @@ from .mcp_tools import Tool, ToolError, call_tool, list_tools, render_tool_resul
 from .ollama import OllamaClient
 from .play_fs import list_acts as play_list_acts
 from .play_fs import read_me_markdown as play_read_me_markdown
+from .reasoning import ReasoningEngine, ReasoningConfig, ComplexityLevel
 from .system_index import get_or_refresh_context as get_system_context
 
 # Intent detection patterns for conversational troubleshooting
@@ -76,17 +77,128 @@ class ChatResponse:
 
 
 class ChatAgent:
-    """Minimal tool-using chat agent for ReOS.
+    """Tool-using chat agent for ReOS with reasoning capabilities.
 
     Principles:
     - Local-only (Ollama).
-    - Metadata-first; diffs only on explicit opt-in.
-    - Repo-first; repo selection is configured via REOS_REPO_PATH or by running inside a git repo.
+    - Reasoning-first for complex tasks.
+    - Simple tasks go direct, complex tasks get planned.
     """
 
     def __init__(self, *, db: Database, ollama: OllamaClient | None = None) -> None:
         self._db = db
         self._ollama_override = ollama
+
+        # Initialize reasoning engine for complex tasks
+        self._reasoning_engine = ReasoningEngine(
+            db=db,
+            tool_executor=self._execute_tool_for_reasoning,
+            config=ReasoningConfig(
+                enabled=True,
+                auto_assess=True,
+                always_confirm=False,
+                explain_steps=True,
+            ),
+        )
+
+        # Restore pending plan from database if exists
+        self._restore_pending_plan()
+
+    def _execute_tool_for_reasoning(self, tool_name: str, args: dict) -> Any:
+        """Callback for reasoning engine to execute tools."""
+        try:
+            return call_tool(self._db, name=tool_name, arguments=args)
+        except ToolError as e:
+            return {"error": e.message, "code": e.code}
+
+    def _restore_pending_plan(self) -> None:
+        """Restore pending plan info from database state.
+
+        Note: Full plan restoration requires plan serialization.
+        For now, we just track if there's a pending plan.
+        """
+        # TODO: Implement full plan persistence when TaskPlan gets to_dict/from_dict
+        pass
+
+    def _save_pending_plan(self, plan) -> None:
+        """Save pending plan info to database for persistence."""
+        if plan:
+            # Store plan ID so we know one is pending
+            self._db.set_state(key="pending_plan_id", value=plan.id)
+            self._db.set_state(key="pending_plan_request", value=plan.original_request)
+
+    def _clear_pending_plan(self) -> None:
+        """Clear pending plan from database."""
+        self._db.set_state(key="pending_plan_id", value="")
+        self._db.set_state(key="pending_plan_request", value="")
+
+    def _try_reasoning(
+        self,
+        user_text: str,
+        conversation_id: str,
+    ) -> ChatResponse | None:
+        """Try to handle request through reasoning engine.
+
+        Returns ChatResponse if reasoning handled it, None to continue normal flow.
+        """
+        # Get system context for reasoning
+        system_context = {}
+        try:
+            import psutil
+            system_context = {
+                "cpu_count": psutil.cpu_count(),
+                "memory_gb": psutil.virtual_memory().total / (1024**3),
+            }
+        except ImportError:
+            pass
+
+        # Process through reasoning engine
+        result = self._reasoning_engine.process(user_text, system_context)
+
+        # Save or clear pending plan for persistence across invocations
+        if result.plan and result.needs_approval:
+            self._save_pending_plan(result.plan)
+        elif not result.needs_approval:
+            self._clear_pending_plan()
+
+        # Empty response means simple task - let normal agent handle it
+        if not result.response:
+            return None
+
+        # Reasoning engine handled it - store and return response
+        message_id = _generate_id()
+
+        # Determine message type based on result
+        if result.needs_approval:
+            message_type = "plan_preview"
+        elif result.execution_context:
+            message_type = "execution_result"
+        else:
+            message_type = "reasoning"
+
+        # Store assistant response
+        self._db.add_message(
+            message_id=message_id,
+            conversation_id=conversation_id,
+            role="assistant",
+            content=result.response,
+            message_type=message_type,
+            metadata=json.dumps({
+                "reasoning": True,
+                "complexity": result.complexity.level.value if result.complexity else None,
+                "plan_id": result.plan.id if result.plan else None,
+                "needs_approval": result.needs_approval,
+            }),
+        )
+
+        return ChatResponse(
+            answer=result.response,
+            conversation_id=conversation_id,
+            message_id=message_id,
+            message_type=message_type,
+            tool_calls=[],  # Reasoning engine handles tools internally
+            pending_approval_id=result.plan.id if result.plan and result.needs_approval else None,
+        )
 
     def _get_persona(self) -> dict[str, Any]:
         persona_id = self._db.get_active_persona_id()
@@ -177,6 +289,11 @@ class ChatAgent:
             content=user_text,
             message_type="text",
         )
+
+        # Route through reasoning engine for complex tasks
+        reasoning_result = self._try_reasoning(user_text, conversation_id)
+        if reasoning_result is not None:
+            return reasoning_result
 
         tools = list_tools()
 

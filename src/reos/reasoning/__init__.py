@@ -33,7 +33,7 @@ from .planner import TaskPlanner, TaskPlan, TaskStep
 from .executor import ExecutionEngine, StepResult, ExecutionState
 from .conversation import ConversationManager
 from .safety import SafetyManager, RiskLevel, RollbackAction
-from .engine import ReasoningEngine
+from .engine import ReasoningEngine, ReasoningConfig, ProcessingResult
 from .adaptive import (
     ErrorClassifier,
     ErrorCategory,
@@ -51,6 +51,8 @@ from .adaptive import (
 __all__ = [
     # Main entry point
     "ReasoningEngine",
+    "ReasoningConfig",
+    "ProcessingResult",
     # Complexity assessment
     "ComplexityAssessor",
     "ComplexityLevel",

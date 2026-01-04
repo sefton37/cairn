@@ -183,8 +183,8 @@ class TestChatAgentRespond:
         agent = ChatAgent(db=get_db(), ollama=ollama)
         result = agent.respond("Hello")
 
-        # Should fallback to reos_git_summary
-        assert "reos_git_summary" in calls
+        # Should fallback to linux_system_info (Linux-focused)
+        assert "linux_system_info" in calls
 
 
 class TestChatAgentDiffHandling:
