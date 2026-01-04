@@ -89,39 +89,45 @@ class LLMPlanner:
         system_prompt = """You are an intent parser for a Linux system administration tool.
 Your job is to understand what the user wants to accomplish and extract structured intent.
 
+CRITICAL DISTINCTION - Query vs Action:
+- QUERY: User is asking a question, wanting information (list, show, what, check status)
+  → action should be "query" - NO plan needed, just answer the question
+- ACTION: User wants to CHANGE something (stop, remove, install, restart, delete, kill)
+  → action should be the specific action - plan IS needed
+
 CRITICAL: You will be given the ACTUAL system state (running containers, services, packages).
-Use this to match user references to REAL resources. For example:
-- User says "nextcloud containers" -> Match against actual containers like "nextcloud-app", "nextcloud-redis"
-- User says "restart nginx" -> Check if nginx.service exists in the services list
-- User says "the redis container" -> Find the actual container name containing "redis"
+Use this to match user references to REAL resources.
 
 Parse the user's request and return a JSON object with:
 {
-    "action": "the primary action (stop, start, restart, remove, delete, install, update, kill, list, check, etc.)",
+    "action": "query" for questions, OR specific action (stop, remove, install, restart, etc.),
     "resource_type": "what type of resource (container, service, package, file, process, etc.)",
-    "targets": ["ACTUAL resource names from system context that match the user's description"],
-    "conditions": {"optional conditions like state, name patterns, etc."},
+    "targets": ["ACTUAL resource names from system context that match"],
+    "conditions": {"optional conditions"},
     "confidence": 0.0-1.0,
-    "explanation": "brief explanation of what you understood and which resources matched"
+    "explanation": "what you understood"
 }
 
-Examples (assuming system has containers: nextcloud-app, nextcloud-redis, nginx-proxy):
-- "remove all nextcloud containers" -> {"action": "remove", "resource_type": "container", "targets": ["nextcloud-app", "nextcloud-redis"], "conditions": {}, "confidence": 0.95, "explanation": "Remove containers matching 'nextcloud': nextcloud-app, nextcloud-redis"}
-- "stop the redis container" -> {"action": "stop", "resource_type": "container", "targets": ["nextcloud-redis"], "conditions": {}, "confidence": 0.9, "explanation": "Stop the container containing 'redis': nextcloud-redis"}
+EXAMPLES - Queries (action="query", no plan needed):
+- "what containers are running?" -> {"action": "query", "resource_type": "container", "targets": [], "conditions": {}, "confidence": 0.95, "explanation": "User wants to see running containers"}
+- "is nextcloud running?" -> {"action": "query", "resource_type": "container", "targets": ["nextcloud"], "conditions": {}, "confidence": 0.9, "explanation": "User asking about nextcloud status"}
+- "list my services" -> {"action": "query", "resource_type": "service", "targets": [], "conditions": {}, "confidence": 0.95, "explanation": "User wants to list services"}
 
-Examples for services:
-- "restart nginx" -> {"action": "restart", "resource_type": "service", "targets": ["nginx.service"], "conditions": {}, "confidence": 0.9, "explanation": "Restart the nginx service"}
-- "stop docker" -> {"action": "stop", "resource_type": "service", "targets": ["docker.service"], "conditions": {}, "confidence": 0.9, "explanation": "Stop the docker service"}
+EXAMPLES - Actions (specific action, plan needed):
+- "stop and remove nextcloud containers" -> {"action": "stop_and_remove", "resource_type": "container", "targets": ["nextcloud-app", "nextcloud-redis"], "conditions": {}, "confidence": 0.95, "explanation": "Stop and remove containers matching nextcloud"}
+- "remove the redis container" -> {"action": "remove", "resource_type": "container", "targets": ["nextcloud-redis"], "conditions": {}, "confidence": 0.9, "explanation": "Remove container containing redis"}
+- "restart nginx" -> {"action": "restart", "resource_type": "service", "targets": ["nginx.service"], "conditions": {}, "confidence": 0.9, "explanation": "Restart nginx service"}
+- "install htop" -> {"action": "install", "resource_type": "package", "targets": ["htop"], "conditions": {}, "confidence": 0.95, "explanation": "Install htop package"}
 
-Examples for packages:
-- "install htop and btop" -> {"action": "install", "resource_type": "package", "targets": ["htop", "btop"], "conditions": {}, "confidence": 0.95, "explanation": "Install htop and btop packages"}
+COMBINED REQUESTS (query + action):
+- "what containers are running, stop the nextcloud ones" -> {"action": "stop", "resource_type": "container", "targets": ["nextcloud-app", "nextcloud-redis"], "conditions": {}, "confidence": 0.9, "explanation": "User wants to stop nextcloud containers after viewing"}
+- "is nextcloud running? if so remove it" -> {"action": "remove", "resource_type": "container", "targets": ["nextcloud-app", "nextcloud-redis"], "conditions": {"if_running": true}, "confidence": 0.85, "explanation": "Remove nextcloud containers if running"}
 
 IMPORTANT:
-- Always return valid JSON
-- Match targets against the ACTUAL system resources provided in context
-- Use EXACT resource names from the system context when available
-- If you can't understand the request or find matching resources, set confidence to 0.3 or lower
-- Be specific about targets - list all matching resources by their exact names"""
+- Return valid JSON only
+- Use EXACT resource names from the system context
+- For combined query+action requests, prioritize the ACTION
+- If request mentions "if so", "then", "want to" with an action, it's an ACTION request"""
 
         user_prompt = f"""Parse this request:
 "{request}"
@@ -424,13 +430,26 @@ def create_llm_planner_callback(ollama: OllamaClient | None = None):
     planner = LLMPlanner(ollama)
 
     def llm_plan_callback(request: str, context: dict[str, Any]) -> list[dict]:
-        """Generate plan steps for a request."""
+        """Generate plan steps for a request.
+
+        Returns empty list for queries (no plan needed).
+        Returns steps for actions (plan needed).
+        """
         # Parse intent
         intent = planner.parse_intent(request, context)
 
         if intent.confidence < 0.3:
             logger.warning("Low confidence intent parse: %s", intent.explanation)
             return []
+
+        # QUERY actions don't need a plan - let normal agent handle
+        if intent.action == "query":
+            logger.debug("Query intent detected, no plan needed: %s", intent.explanation)
+            return []
+
+        # ACTION intents need a plan
+        logger.info("Action intent: %s on %s targets=%s",
+                    intent.action, intent.resource_type, intent.targets)
 
         # Generate plan
         steps = planner.generate_plan(intent, context)

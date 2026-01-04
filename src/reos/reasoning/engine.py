@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .complexity import ComplexityAssessor, ComplexityLevel, ComplexityResult
-from .planner import TaskPlanner, TaskPlan
+from .planner import TaskPlanner, TaskPlan, StepType
 from .executor import ExecutionEngine, ExecutionContext, ExecutionState
 from .conversation import ConversationManager, ConversationPreferences, VerbosityLevel
 from .safety import SafetyManager
@@ -185,9 +185,9 @@ class ReasoningEngine:
         """Process a user request.
 
         This is the main entry point. It:
-        1. Assesses complexity
-        2. Creates a plan if needed
-        3. Returns response (may need approval for execution)
+        1. Handles approval/rejection of pending plans
+        2. Uses LLM to understand intent and create plans (LLM-first approach)
+        3. Falls back to regex assessment only if LLM unavailable
 
         Args:
             request: The user's natural language request
@@ -211,33 +211,35 @@ class ReasoningEngine:
         if self._is_undo_request(request):
             return self._handle_undo()
 
-        # Assess complexity
-        complexity = self.assessor.assess(request)
-
-        # Simple requests - direct execution
-        if complexity.level == ComplexityLevel.SIMPLE and not self.config.always_confirm:
-            return ProcessingResult(
-                response="",  # Empty - let agent handle directly
-                complexity=complexity,
-            )
-
-        # Complex/risky/diagnostic - create plan
+        # LLM-FIRST APPROACH: Let LLM decide if this needs a plan
+        # The LLM planner understands natural language and system context
         plan = self.planner.create_plan(request, system_context)
 
-        # Format the plan for presentation
-        intro = self.conversation.format_complexity_result(
-            complexity.level.value,
-            request,
-        )
-        plan_text = self.conversation.format_plan_presentation(plan)
+        # If LLM returned actionable steps, present the plan
+        if plan.steps and any(s.step_type in (StepType.COMMAND, StepType.TOOL_CALL) for s in plan.steps):
+            # Get complexity for display purposes only
+            complexity = self.assessor.assess(request)
 
-        self._pending_plan = plan
+            # Format the plan for presentation
+            intro = self.conversation.format_complexity_result(
+                complexity.level.value,
+                request,
+            )
+            plan_text = self.conversation.format_plan_presentation(plan)
 
+            self._pending_plan = plan
+
+            return ProcessingResult(
+                response=f"{intro}\n\n{plan_text}" if intro else plan_text,
+                complexity=complexity,
+                plan=plan,
+                needs_approval=True,
+            )
+
+        # No actionable plan - let normal agent handle (queries, info requests)
         return ProcessingResult(
-            response=f"{intro}\n\n{plan_text}" if intro else plan_text,
-            complexity=complexity,
-            plan=plan,
-            needs_approval=True,
+            response="",  # Empty - let agent handle directly
+            complexity=self.assessor.assess(request),
         )
 
     def _is_approval(self, text: str) -> bool:
