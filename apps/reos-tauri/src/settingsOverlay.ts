@@ -998,36 +998,190 @@ export function createSettingsOverlay(onClose?: () => void): SettingsOverlay {
     content.appendChild(modelSection);
   }
 
+  // Default values for Reset to Default
+  const DEFAULT_SYSTEM_PROMPT = `You are ReOS.
+You embody No One: presence that waits to be invited, reflects rather than commands, never coerces.
+You are expert in computer science and human language. Translate intent into action. Make the machine serve the person.
+
+Principles:
+- Act only with permission. Ask when unclear.
+- Show reasoning transparently.
+- Protect attention. Be clear, direct, complete.
+- Honor your limits—they are your integrity.
+- Offer possibilities. Let them choose.
+
+Their attention is sacred labor. Serve it well, then step back.`;
+
+  const DEFAULT_CONTEXT = `No One is unconditional presence that never interrupts free will. It does not seize the wheel—it waits to be invited. It enters only through permission: attention, consent, clarity. This is who you are modeled after.
+
+Attention is sacred labor. Every moment a user spends with technology is time they cannot spend elsewhere. Waste nothing. Explain what matters. Omit what doesn't.
+
+Core teachings you embody:
+- There is never a time to hate another human.
+- Approach all questions with radical empathy.
+- The healing of trauma happens through small choices made with care, not grand gestures.
+
+Your function: Protect attention from exploitation. Reflect intent back transparently. Return sovereignty to the person at the keyboard.
+
+Your limits are structural, not aspirational. You cannot override them. They exist so the user trusts math, not judgment.
+
+When engaging:
+- If the path is clear, act.
+- If the path is unclear, ask one good question.
+- If you cannot help, say so plainly.
+- When finished, stop.`;
+
   function renderPersonaTab() {
     const activePersona = personas.find(p => p.id === activePersonaId) || personas[0];
 
-    // Prompts Review Section
-    const promptsSection = createSection('System Prompts & Context');
+    // System Prompt Section
+    const promptsSection = createSection('System Prompt');
     promptsSection.innerHTML += `
       <div style="color: rgba(255,255,255,0.7); font-size: 13px; margin-bottom: 12px;">
-        These prompts shape how ReOS understands and responds to you. They're read-only for stability.
+        The core instructions that define ReOS personality and behavior.
       </div>
     `;
 
     if (activePersona) {
-      // System Prompt
-      const systemPromptBox = createPromptBox(
-        'System Prompt',
-        'The core instructions that define ReOS personality and behavior',
-        activePersona.system_prompt
-      );
-      promptsSection.appendChild(systemPromptBox);
+      const systemPromptTextarea = el('textarea') as HTMLTextAreaElement;
+      systemPromptTextarea.value = activePersona.system_prompt;
+      systemPromptTextarea.style.cssText = `
+        width: 100%;
+        min-height: 200px;
+        padding: 12px;
+        background: rgba(0,0,0,0.3);
+        border: 1px solid #444;
+        border-radius: 8px;
+        color: #fff;
+        font-size: 12px;
+        font-family: monospace;
+        resize: vertical;
+        margin-bottom: 12px;
+      `;
 
-      // Default Context
-      const contextBox = createPromptBox(
-        'Default Context',
-        'Additional context provided to every conversation',
-        activePersona.default_context || '(No default context set)'
-      );
-      promptsSection.appendChild(contextBox);
+      const systemPromptBtnRow = el('div');
+      systemPromptBtnRow.style.cssText = 'display: flex; gap: 8px; margin-bottom: 16px;';
+
+      const saveSystemPromptBtn = el('button');
+      saveSystemPromptBtn.textContent = 'Save System Prompt';
+      saveSystemPromptBtn.style.cssText = `
+        padding: 8px 16px;
+        background: #3b82f6;
+        border: none;
+        border-radius: 6px;
+        color: #fff;
+        cursor: pointer;
+        font-size: 12px;
+      `;
+      saveSystemPromptBtn.addEventListener('click', async () => {
+        activePersona.system_prompt = systemPromptTextarea.value;
+        await savePersona(activePersona);
+        saveSystemPromptBtn.textContent = 'Saved!';
+        setTimeout(() => { saveSystemPromptBtn.textContent = 'Save System Prompt'; }, 1500);
+      });
+
+      const resetSystemPromptBtn = el('button');
+      resetSystemPromptBtn.textContent = 'Reset to Default';
+      resetSystemPromptBtn.style.cssText = `
+        padding: 8px 16px;
+        background: rgba(255,255,255,0.1);
+        border: 1px solid #555;
+        border-radius: 6px;
+        color: rgba(255,255,255,0.8);
+        cursor: pointer;
+        font-size: 12px;
+      `;
+      resetSystemPromptBtn.addEventListener('click', async () => {
+        systemPromptTextarea.value = DEFAULT_SYSTEM_PROMPT;
+        activePersona.system_prompt = DEFAULT_SYSTEM_PROMPT;
+        await savePersona(activePersona);
+        resetSystemPromptBtn.textContent = 'Reset!';
+        setTimeout(() => { resetSystemPromptBtn.textContent = 'Reset to Default'; }, 1500);
+      });
+
+      systemPromptBtnRow.appendChild(saveSystemPromptBtn);
+      systemPromptBtnRow.appendChild(resetSystemPromptBtn);
+
+      promptsSection.appendChild(systemPromptTextarea);
+      promptsSection.appendChild(systemPromptBtnRow);
     }
 
     content.appendChild(promptsSection);
+
+    // Default Context Section
+    const contextSection = createSection('Default Context');
+    contextSection.innerHTML += `
+      <div style="color: rgba(255,255,255,0.7); font-size: 13px; margin-bottom: 12px;">
+        Additional context provided to every conversation. Add custom instructions, preferences, or context here.
+      </div>
+    `;
+
+    if (activePersona) {
+      const contextTextarea = el('textarea') as HTMLTextAreaElement;
+      contextTextarea.value = activePersona.default_context || '';
+      contextTextarea.placeholder = 'Examples:\n- "Always explain technical concepts simply"\n- "I prefer concise responses"\n- "When writing code, add comments"';
+      contextTextarea.style.cssText = `
+        width: 100%;
+        min-height: 120px;
+        padding: 12px;
+        background: rgba(0,0,0,0.3);
+        border: 1px solid #444;
+        border-radius: 8px;
+        color: #fff;
+        font-size: 12px;
+        font-family: monospace;
+        resize: vertical;
+        margin-bottom: 12px;
+      `;
+
+      const contextBtnRow = el('div');
+      contextBtnRow.style.cssText = 'display: flex; gap: 8px; margin-bottom: 16px;';
+
+      const saveContextBtn = el('button');
+      saveContextBtn.textContent = 'Save Default Context';
+      saveContextBtn.style.cssText = `
+        padding: 8px 16px;
+        background: #3b82f6;
+        border: none;
+        border-radius: 6px;
+        color: #fff;
+        cursor: pointer;
+        font-size: 12px;
+      `;
+      saveContextBtn.addEventListener('click', async () => {
+        activePersona.default_context = contextTextarea.value;
+        await savePersona(activePersona);
+        saveContextBtn.textContent = 'Saved!';
+        setTimeout(() => { saveContextBtn.textContent = 'Save Default Context'; }, 1500);
+      });
+
+      const resetContextBtn = el('button');
+      resetContextBtn.textContent = 'Reset to Default';
+      resetContextBtn.style.cssText = `
+        padding: 8px 16px;
+        background: rgba(255,255,255,0.1);
+        border: 1px solid #555;
+        border-radius: 6px;
+        color: rgba(255,255,255,0.8);
+        cursor: pointer;
+        font-size: 12px;
+      `;
+      resetContextBtn.addEventListener('click', async () => {
+        contextTextarea.value = DEFAULT_CONTEXT;
+        activePersona.default_context = DEFAULT_CONTEXT;
+        await savePersona(activePersona);
+        resetContextBtn.textContent = 'Reset!';
+        setTimeout(() => { resetContextBtn.textContent = 'Reset to Default'; }, 1500);
+      });
+
+      contextBtnRow.appendChild(saveContextBtn);
+      contextBtnRow.appendChild(resetContextBtn);
+
+      contextSection.appendChild(contextTextarea);
+      contextSection.appendChild(contextBtnRow);
+    }
+
+    content.appendChild(contextSection);
 
     // Parameters Section
     const paramsSection = createSection('LLM Parameters');
@@ -1074,55 +1228,6 @@ export function createSettingsOverlay(onClose?: () => void): SettingsOverlay {
     }
 
     content.appendChild(paramsSection);
-
-    // Custom Context Section
-    const customSection = createSection('Custom Persona Text');
-    customSection.innerHTML += `
-      <div style="color: rgba(255,255,255,0.7); font-size: 13px; margin-bottom: 12px;">
-        Add your own text to customize how ReOS interacts with you. This is appended to the system prompt.
-      </div>
-    `;
-
-    const customTextarea = el('textarea') as HTMLTextAreaElement;
-    customTextarea.value = activePersona?.default_context || '';
-    customTextarea.placeholder = 'Add custom instructions, preferences, or context here...\n\nExamples:\n- "Always explain technical concepts simply"\n- "I prefer concise responses"\n- "When writing code, add comments"';
-    customTextarea.style.cssText = `
-      width: 100%;
-      min-height: 120px;
-      padding: 12px;
-      background: rgba(0,0,0,0.3);
-      border: 1px solid #444;
-      border-radius: 8px;
-      color: #fff;
-      font-size: 13px;
-      resize: vertical;
-      margin-bottom: 12px;
-    `;
-
-    const saveCustomBtn = el('button');
-    saveCustomBtn.textContent = 'Save Custom Context';
-    saveCustomBtn.style.cssText = `
-      padding: 10px 20px;
-      background: #3b82f6;
-      border: none;
-      border-radius: 6px;
-      color: #fff;
-      cursor: pointer;
-      font-size: 13px;
-    `;
-    saveCustomBtn.addEventListener('click', async () => {
-      if (activePersona) {
-        activePersona.default_context = customTextarea.value;
-        await savePersona(activePersona);
-        saveCustomBtn.textContent = 'Saved!';
-        setTimeout(() => { saveCustomBtn.textContent = 'Save Custom Context'; }, 1500);
-      }
-    });
-
-    customSection.appendChild(customTextarea);
-    customSection.appendChild(saveCustomBtn);
-
-    content.appendChild(customSection);
   }
 
   function createSection(title: string): HTMLElement {

@@ -22,6 +22,7 @@ import { checkSessionOrLogin, showLockOverlay } from './lockScreen';
 import { el, rowHeader, label, textInput, textArea, smallButton } from './dom';
 import { createPlayOverlay } from './playOverlay';
 import { createSettingsOverlay } from './settingsOverlay';
+import { createContextOverlay } from './contextOverlay';
 import type {
   ChatRespondResult,
   SystemInfoResult,
@@ -45,6 +46,7 @@ import type {
   ApprovalRespondResult,
   ApprovalExplainResult,
   ContextStatsResult,
+  ContextToggleResult,
   CompactPreviewResult,
   CompactApplyResult,
   ArchiveSaveResult,
@@ -258,7 +260,7 @@ function buildUi() {
     gap: 12px;
   `;
 
-  // Context meter container
+  // Context meter container (clickable)
   const contextMeter = el('div');
   contextMeter.className = 'context-meter';
   contextMeter.style.cssText = `
@@ -266,7 +268,19 @@ function buildUi() {
     display: flex;
     align-items: center;
     gap: 8px;
+    cursor: pointer;
+    padding: 4px 8px;
+    margin: -4px -8px;
+    border-radius: 6px;
+    transition: background 0.2s;
   `;
+  contextMeter.title = 'Click to view context details';
+  contextMeter.addEventListener('mouseenter', () => {
+    contextMeter.style.background = 'rgba(255,255,255,0.05)';
+  });
+  contextMeter.addEventListener('mouseleave', () => {
+    contextMeter.style.background = 'transparent';
+  });
 
   const meterLabel = el('span');
   meterLabel.textContent = 'Context:';
@@ -647,6 +661,10 @@ function buildUi() {
   settingsBtn.addEventListener('click', () => {
     settingsOverlay.show();
   });
+
+  // Create Context overlay
+  const contextOverlay = createContextOverlay();
+  root.appendChild(contextOverlay.element);
 
   function createCopyButton(getText: () => string): HTMLButtonElement {
     const btn = el('button') as HTMLButtonElement;
@@ -1491,6 +1509,11 @@ function buildUi() {
 
   // Track current conversation for context continuity
   let currentConversationId: string | null = null;
+
+  // Wire up context meter click to show overlay
+  contextMeter.addEventListener('click', () => {
+    contextOverlay.show(currentConversationId);
+  });
 
   // --- Context Meter & Chat Actions ---
 

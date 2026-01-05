@@ -342,6 +342,15 @@ export type IntentDetectResult = {
 };
 
 // Context Meter types
+export type ContextSource = {
+  name: string;
+  display_name: string;
+  tokens: number;
+  percent: number;
+  enabled: boolean;
+  description: string;
+};
+
 export type ContextStatsResult = {
   estimated_tokens: number;
   context_limit: number;
@@ -350,6 +359,12 @@ export type ContextStatsResult = {
   usage_percent: number;
   message_count: number;
   warning_level: 'ok' | 'warning' | 'critical';
+  sources?: ContextSource[];
+};
+
+export type ContextToggleResult = {
+  ok: boolean;
+  disabled_sources: string[];
 };
 
 // Archive types
