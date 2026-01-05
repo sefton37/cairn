@@ -188,9 +188,11 @@ def _write_acts(acts: list[Act]) -> None:
     _write_json(_acts_path(), payload)
 
 
-def set_active_act_id(*, act_id: str) -> tuple[list[Act], str]:
+def set_active_act_id(*, act_id: str | None) -> tuple[list[Act], str | None]:
+    """Set the active act, or clear it if act_id is None."""
     acts, _active = list_acts()
-    if not any(a.act_id == act_id for a in acts):
+
+    if act_id is not None and not any(a.act_id == act_id for a in acts):
         raise ValueError("unknown act_id")
 
     updated = [Act(act_id=a.act_id, title=a.title, active=(a.act_id == act_id), notes=a.notes) for a in acts]

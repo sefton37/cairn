@@ -1111,7 +1111,8 @@ def _handle_play_acts_list(_db: Database) -> dict[str, Any]:
     }
 
 
-def _handle_play_acts_set_active(_db: Database, *, act_id: str) -> dict[str, Any]:
+def _handle_play_acts_set_active(_db: Database, *, act_id: str | None) -> dict[str, Any]:
+    """Set active act, or clear it if act_id is None."""
     try:
         acts, active_id = play_set_active_act_id(act_id=act_id)
     except ValueError as exc:
@@ -1938,8 +1939,9 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
             if not isinstance(params, dict):
                 raise RpcError(code=-32602, message="params must be an object")
             act_id = params.get("act_id")
-            if not isinstance(act_id, str) or not act_id:
-                raise RpcError(code=-32602, message="act_id is required")
+            # act_id can be null to clear the active act
+            if act_id is not None and (not isinstance(act_id, str) or not act_id):
+                raise RpcError(code=-32602, message="act_id must be a non-empty string or null")
             return _jsonrpc_result(req_id=req_id, result=_handle_play_acts_set_active(db, act_id=act_id))
 
         if method == "play/scenes/list":

@@ -323,6 +323,24 @@ export function createPlayOverlay(onClose: () => void): {
     }
   }
 
+  function deselectAct() {
+    // Clear active act and go back to Play level
+    state.activeActId = null;
+    state.selectedSceneId = null;
+    state.selectedBeatId = null;
+    state.selectedLevel = 'play';
+    state.scenesCache = [];
+    state.beatsCache = [];
+
+    void (async () => {
+      // Tell backend to clear the active act
+      await kernelRequest('play/acts/set_active', { act_id: null });
+      await refreshKbContent();
+      await refreshAttachments();
+      render();
+    })();
+  }
+
   function selectLevel(
     level: PlayLevel,
     actId?: string | null,
@@ -428,7 +446,14 @@ export function createPlayOverlay(onClose: () => void): {
 
       actItem.appendChild(expandIcon);
       actItem.appendChild(actLabel);
-      actItem.addEventListener('click', () => selectLevel('act', act.act_id));
+      actItem.addEventListener('click', () => {
+        // Toggle: if clicking already-active act, deselect it
+        if (state.activeActId === act.act_id) {
+          deselectAct();
+        } else {
+          selectLevel('act', act.act_id);
+        }
+      });
       sidebar.appendChild(actItem);
 
       // Scenes (if expanded and this is the active act)
