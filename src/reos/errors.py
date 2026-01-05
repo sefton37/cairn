@@ -91,5 +91,11 @@ def record_error(
         append_event(Event(source=source, ts=now, payload_metadata=payload))
         return None
     except Exception as write_exc:  # noqa: BLE001
-        logger.debug("Failed to record error event: %s", write_exc)
+        # Elevate to warning - error recording failures should be visible in production
+        logger.warning(
+            "Failed to record error event for %s: %s (original error: %s)",
+            operation,
+            write_exc,
+            type(exc).__name__,
+        )
         return None

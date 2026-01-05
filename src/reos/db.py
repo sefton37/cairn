@@ -11,8 +11,15 @@ from .settings import settings
 class Database:
     """Local SQLite database for ReOS events, sessions, and classifications."""
 
-    def __init__(self, db_path: Path | None = None) -> None:
-        self.db_path = db_path or settings.data_dir / "reos.db"
+    def __init__(self, db_path: Path | str | None = None) -> None:
+        if db_path == ":memory:":
+            self.db_path = ":memory:"
+        elif db_path is None:
+            self.db_path = settings.data_dir / "reos.db"
+        elif isinstance(db_path, str):
+            self.db_path = Path(db_path)
+        else:
+            self.db_path = db_path
         self._local = threading.local()
 
     def connect(self) -> sqlite3.Connection:
@@ -20,7 +27,9 @@ class Database:
         conn = getattr(self._local, "conn", None)
         if conn is not None:
             return conn
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        # Handle :memory: databases specially
+        if self.db_path != ":memory:":
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(
             str(self.db_path),
             timeout=5.0,
@@ -562,6 +571,19 @@ class Database:
             (conversation_id, limit),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def clear_messages(self, *, conversation_id: str) -> int:
+        """Clear all messages from a conversation.
+
+        Returns:
+            Number of messages deleted
+        """
+        cursor = self._execute(
+            "DELETE FROM messages WHERE conversation_id = ?",
+            (conversation_id,),
+        )
+        self.connect().commit()
+        return cursor.rowcount
 
     # -------------------------------------------------------------------------
     # Approval methods

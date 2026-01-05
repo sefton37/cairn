@@ -62,8 +62,12 @@ def configure_logging(*, log_path: Path | None = None) -> None:
             file_handler.setLevel(level)
             file_handler.setFormatter(formatter)
             root.addHandler(file_handler)
-    except Exception:
-        # Best-effort: logging must never crash the app.
-        pass
+    except Exception as e:
+        # Log to stderr so we know file logging failed - don't crash but don't be silent
+        import sys
+        print(
+            f"WARNING: Failed to configure file logging to {resolved_log_path}: {e}",
+            file=sys.stderr,
+        )
 
     _CONFIGURED = True

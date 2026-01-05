@@ -17,10 +17,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import sys
 import threading
+import uuid
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from . import auth
 from .agent import ChatAgent
@@ -2349,6 +2353,18 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
     req_id = req.get("id")
     params = req.get("params")
 
+    # Generate correlation ID for request tracing
+    correlation_id = uuid.uuid4().hex[:12]
+
+    # Log request entry (DEBUG level for normal requests, skip ping/initialize for noise reduction)
+    if method not in ("ping", "initialize"):
+        logger.debug(
+            "RPC request [%s] method=%s req_id=%s",
+            correlation_id,
+            method,
+            req_id,
+        )
+
     try:
         if method == "initialize":
             result = {
@@ -3348,13 +3364,37 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
         raise RpcError(code=-32601, message=f"Method not found: {method}")
 
     except RpcError as exc:
+        # Log RPC errors at warning level with correlation ID
+        logger.warning(
+            "RPC error [%s] method=%s code=%d: %s",
+            correlation_id,
+            method,
+            exc.code,
+            exc.message,
+        )
         return _jsonrpc_error(req_id=req_id, code=exc.code, message=exc.message, data=exc.data)
     except Exception as exc:  # noqa: BLE001
+        # Log internal errors at error level with full traceback
+        logger.exception(
+            "RPC internal error [%s] method=%s: %s",
+            correlation_id,
+            method,
+            exc,
+        )
+        # Record for later analysis
+        from .errors import record_error
+        record_error(
+            source="ui_rpc_server",
+            operation=f"rpc:{method}",
+            exc=exc,
+            context={"correlation_id": correlation_id, "req_id": req_id},
+            db=db,
+        )
         return _jsonrpc_error(
             req_id=req_id,
             code=-32099,
             message="Internal error",
-            data={"error": str(exc)},
+            data={"error": str(exc), "correlation_id": correlation_id},
         )
 
 
