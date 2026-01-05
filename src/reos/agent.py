@@ -1101,7 +1101,12 @@ class ChatAgent:
         return self._parse_thinking_answer(raw)
 
     def _parse_thinking_answer(self, raw: str) -> tuple[str, list[str]]:
-        """Parse response with <thinking> and <answer> tags.
+        """Parse response with thinking tags from various formats.
+
+        Supports:
+        - <thinking>...</thinking> - ReOS prompted format
+        - <think>...</think> - Native thinking models (DeepSeek-R1, QWQ)
+        - <answer>...</answer> - ReOS prompted answer format
 
         Returns:
             Tuple of (answer, thinking_steps)
@@ -1111,8 +1116,13 @@ class ChatAgent:
         thinking_steps: list[str] = []
         answer = raw.strip()
 
-        # Extract thinking section
-        thinking_match = re.search(r"<thinking>(.*?)</thinking>", raw, re.DOTALL | re.IGNORECASE)
+        # Extract thinking section - check both formats
+        # First try <think> (native thinking models like DeepSeek-R1, QWQ)
+        thinking_match = re.search(r"<think>(.*?)</think>", raw, re.DOTALL | re.IGNORECASE)
+        if not thinking_match:
+            # Fall back to <thinking> (ReOS prompted format)
+            thinking_match = re.search(r"<thinking>(.*?)</thinking>", raw, re.DOTALL | re.IGNORECASE)
+
         if thinking_match:
             thinking_content = thinking_match.group(1).strip()
             # Split into individual steps (by line or sentence)
@@ -1125,8 +1135,10 @@ class ChatAgent:
             answer = answer_match.group(1).strip()
         else:
             # Fallback: remove thinking tags and use the rest
-            answer = re.sub(r"<thinking>.*?</thinking>", "", raw, flags=re.DOTALL | re.IGNORECASE).strip()
+            # Remove both <think> and <thinking> variants
+            answer = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL | re.IGNORECASE).strip()
+            answer = re.sub(r"<thinking>.*?</thinking>", "", answer, flags=re.DOTALL | re.IGNORECASE).strip()
             # Also remove any leftover tags
-            answer = re.sub(r"</?(?:thinking|answer)>", "", answer, flags=re.IGNORECASE).strip()
+            answer = re.sub(r"</?(?:think|thinking|answer)>", "", answer, flags=re.IGNORECASE).strip()
 
         return answer, thinking_steps
