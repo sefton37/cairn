@@ -21,6 +21,7 @@ import {
 import { checkSessionOrLogin, showLockOverlay } from './lockScreen';
 import { el, rowHeader, label, textInput, textArea, smallButton } from './dom';
 import { createPlayOverlay } from './playOverlay';
+import { createSettingsOverlay } from './settingsOverlay';
 import type {
   ChatRespondResult,
   SystemInfoResult,
@@ -196,11 +197,47 @@ function buildUi() {
   actsSection.appendChild(actsHeader);
   actsSection.appendChild(actsList);
 
-  nav.appendChild(navTitle);
-  nav.appendChild(systemSection);
-  nav.appendChild(dashboardBtn);
-  nav.appendChild(playSection);
-  nav.appendChild(actsSection);
+  // Nav content container (top section)
+  const navContent = el('div');
+  navContent.className = 'nav-content';
+  navContent.style.cssText = 'flex: 1;';
+
+  navContent.appendChild(navTitle);
+  navContent.appendChild(systemSection);
+  navContent.appendChild(dashboardBtn);
+  navContent.appendChild(playSection);
+  navContent.appendChild(actsSection);
+
+  // Settings button (bottom of nav)
+  const settingsBtn = el('button');
+  settingsBtn.className = 'settings-btn';
+  settingsBtn.innerHTML = '⚙️ Settings';
+  settingsBtn.style.cssText = `
+    width: 100%;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    color: rgba(255,255,255,0.8);
+    cursor: pointer;
+    font-size: 13px;
+    text-align: left;
+    transition: background 0.2s;
+    margin-top: 8px;
+  `;
+  settingsBtn.addEventListener('mouseenter', () => {
+    settingsBtn.style.background = 'rgba(255,255,255,0.1)';
+  });
+  settingsBtn.addEventListener('mouseleave', () => {
+    settingsBtn.style.background = 'rgba(255,255,255,0.05)';
+  });
+
+  // Make nav flex column
+  nav.style.display = 'flex';
+  nav.style.flexDirection = 'column';
+
+  nav.appendChild(navContent);
+  nav.appendChild(settingsBtn);
 
   const center = el('div');
   center.className = 'center';
@@ -601,6 +638,15 @@ function buildUi() {
     playInspectorActive = false;
   });
   root.appendChild(playOverlay.element);
+
+  // Create Settings overlay
+  const settingsOverlay = createSettingsOverlay();
+  root.appendChild(settingsOverlay.element);
+
+  // Wire up settings button
+  settingsBtn.addEventListener('click', () => {
+    settingsOverlay.show();
+  });
 
   function createCopyButton(getText: () => string): HTMLButtonElement {
     const btn = el('button') as HTMLButtonElement;

@@ -1090,6 +1090,116 @@ def _handle_persona_set_active(db: Database, *, persona_id: str | None) -> dict[
     return {"ok": True}
 
 
+# --- Ollama Settings Handlers ---
+
+def _handle_ollama_status(db: Database) -> dict[str, Any]:
+    """Get Ollama connection status and current settings."""
+    from .ollama import check_ollama, list_ollama_models
+    from .settings import settings
+
+    # Get stored settings
+    stored_url = db.get_state(key="ollama_url")
+    stored_model = db.get_state(key="ollama_model")
+
+    url = stored_url if isinstance(stored_url, str) and stored_url else settings.ollama_url
+    model = stored_model if isinstance(stored_model, str) and stored_model else settings.ollama_model
+
+    # Check connection
+    health = check_ollama(url=url)
+
+    # List models if reachable
+    models: list[str] = []
+    if health.reachable:
+        try:
+            models = list_ollama_models(url=url)
+        except Exception:
+            pass
+
+    return {
+        "url": url,
+        "model": model,
+        "reachable": health.reachable,
+        "model_count": health.model_count,
+        "error": health.error,
+        "available_models": models,
+    }
+
+
+def _handle_ollama_set_url(db: Database, *, url: str) -> dict[str, Any]:
+    """Set Ollama URL."""
+    from .ollama import check_ollama
+
+    # Validate URL format
+    if not url.startswith(("http://", "https://")):
+        raise RpcError(code=-32602, message="URL must start with http:// or https://")
+
+    # Test connection
+    health = check_ollama(url=url)
+    if not health.reachable:
+        raise RpcError(code=-32010, message=f"Cannot connect to Ollama at {url}: {health.error}")
+
+    db.set_state(key="ollama_url", value=url)
+    return {"ok": True, "url": url}
+
+
+def _handle_ollama_set_model(db: Database, *, model: str) -> dict[str, Any]:
+    """Set active Ollama model."""
+    from .ollama import list_ollama_models
+
+    stored_url = db.get_state(key="ollama_url")
+    from .settings import settings
+    url = stored_url if isinstance(stored_url, str) and stored_url else settings.ollama_url
+
+    # Verify model exists
+    available = list_ollama_models(url=url)
+    if model not in available:
+        raise RpcError(code=-32602, message=f"Model '{model}' not found. Available: {', '.join(available[:5])}")
+
+    db.set_state(key="ollama_model", value=model)
+    return {"ok": True, "model": model}
+
+
+def _handle_ollama_pull_model(db: Database, *, model: str) -> dict[str, Any]:
+    """Start pulling a new Ollama model. Returns immediately, pull happens async."""
+    import httpx
+    from .settings import settings
+
+    stored_url = db.get_state(key="ollama_url")
+    url = stored_url if isinstance(stored_url, str) and stored_url else settings.ollama_url
+    url = url.rstrip("/") + "/api/pull"
+
+    try:
+        # Start the pull (this is async in Ollama)
+        with httpx.Client(timeout=5.0) as client:
+            # Just initiate, don't wait for completion
+            res = client.post(url, json={"name": model, "stream": False}, timeout=120.0)
+            res.raise_for_status()
+        return {"ok": True, "message": f"Model '{model}' pull initiated"}
+    except httpx.TimeoutException:
+        # Pull is happening, just took longer than timeout
+        return {"ok": True, "message": f"Model '{model}' pull in progress (this may take a while)"}
+    except Exception as e:
+        raise RpcError(code=-32010, message=f"Failed to pull model: {e}") from e
+
+
+def _handle_ollama_test_connection(db: Database, *, url: str | None = None) -> dict[str, Any]:
+    """Test Ollama connection."""
+    from .ollama import check_ollama
+    from .settings import settings
+
+    if url is None:
+        stored_url = db.get_state(key="ollama_url")
+        url = stored_url if isinstance(stored_url, str) and stored_url else settings.ollama_url
+
+    health = check_ollama(url=url)
+    return {
+        "url": url,
+        "reachable": health.reachable,
+        "model_count": health.model_count,
+        "error": health.error,
+    }
+
+
 def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -2190,6 +2300,41 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
             if persona_id is not None and not isinstance(persona_id, str):
                 raise RpcError(code=-32602, message="persona_id must be a string or null")
             return _jsonrpc_result(req_id=req_id, result=_handle_persona_set_active(db, persona_id=persona_id))
+
+        # --- Ollama Settings ---
+
+        if method == "ollama/status":
+            return _jsonrpc_result(req_id=req_id, result=_handle_ollama_status(db))
+
+        if method == "ollama/set_url":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            url = params.get("url")
+            if not isinstance(url, str) or not url:
+                raise RpcError(code=-32602, message="url is required")
+            return _jsonrpc_result(req_id=req_id, result=_handle_ollama_set_url(db, url=url))
+
+        if method == "ollama/set_model":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            model = params.get("model")
+            if not isinstance(model, str) or not model:
+                raise RpcError(code=-32602, message="model is required")
+            return _jsonrpc_result(req_id=req_id, result=_handle_ollama_set_model(db, model=model))
+
+        if method == "ollama/pull_model":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            model = params.get("model")
+            if not isinstance(model, str) or not model:
+                raise RpcError(code=-32602, message="model is required")
+            return _jsonrpc_result(req_id=req_id, result=_handle_ollama_pull_model(db, model=model))
+
+        if method == "ollama/test_connection":
+            if not isinstance(params, dict):
+                params = {}
+            url = params.get("url")
+            return _jsonrpc_result(req_id=req_id, result=_handle_ollama_test_connection(db, url=url))
 
         if method == "play/me/read":
             return _jsonrpc_result(req_id=req_id, result=_handle_play_me_read(db))
