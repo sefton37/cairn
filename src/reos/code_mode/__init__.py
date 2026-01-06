@@ -111,6 +111,22 @@ from reos.code_mode.embeddings import (
     EmbeddingResult,
 )
 
+# LSP Integration (Language Server Protocol)
+from reos.code_mode.lsp_client import (
+    LSPClient,
+    LSPClientError,
+    LSPLocation,
+    Diagnostic,
+    HoverInfo,
+)
+from reos.code_mode.lsp_manager import (
+    LSPManager,
+    LanguageServerConfig,
+    DEFAULT_SERVERS,
+    check_lsp_server,
+    get_available_servers,
+)
+
 __all__ = [
     # Sandbox
     "CodeSandbox",
@@ -181,4 +197,15 @@ __all__ = [
     "EmbeddingManager",
     "EmbeddingError",
     "EmbeddingResult",
+    # LSP Integration
+    "LSPClient",
+    "LSPClientError",
+    "LSPLocation",
+    "Diagnostic",
+    "HoverInfo",
+    "LSPManager",
+    "LanguageServerConfig",
+    "DEFAULT_SERVERS",
+    "check_lsp_server",
+    "get_available_servers",
 ]

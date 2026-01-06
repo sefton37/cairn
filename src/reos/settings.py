@@ -81,6 +81,23 @@ class Settings:
     tokens_per_changed_line: int = int(os.environ.get("REOS_TOKENS_PER_CHANGED_LINE", "6"))
     tokens_per_changed_file: int = int(os.environ.get("REOS_TOKENS_PER_CHANGED_FILE", "40"))
 
+    # =========================================================================
+    # LSP Integration (Language Server Protocol)
+    # =========================================================================
+    # LSP provides real-time code intelligence: type errors, go-to-definition,
+    # find-references, hover documentation without running tests.
+    #
+    # Requires language servers to be installed:
+    # - Python: npm install -g pyright
+    # - TypeScript: npm install -g typescript-language-server typescript
+    # - Rust: rustup component add rust-analyzer
+    # =========================================================================
+    lsp_enabled: bool = _env_bool("REOS_LSP_ENABLED", True)
+    lsp_python_server: str = os.environ.get("REOS_LSP_PYTHON", "pyright-langserver")
+    lsp_typescript_server: str = os.environ.get("REOS_LSP_TS", "typescript-language-server")
+    lsp_rust_server: str = os.environ.get("REOS_LSP_RUST", "rust-analyzer")
+    lsp_startup_timeout: int = int(os.environ.get("REOS_LSP_TIMEOUT", "30"))
+
 
 settings = Settings()
 
