@@ -4,6 +4,7 @@ Intent is discovered by synthesizing understanding from:
 1. The user's prompt (what they explicitly asked for)
 2. The Play context (Act goals, Scene context, historical Beats)
 3. The codebase state (existing patterns, architecture, conventions)
+4. The Repository Map (semantic code understanding - symbols, dependencies)
 
 This multi-source approach prevents hallucination by grounding intent
 in concrete, observable reality.
@@ -18,6 +19,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from reos.code_mode.repo_map import RepoMap
     from reos.code_mode.sandbox import CodeSandbox
     from reos.ollama import OllamaClient
     from reos.play_fs import Act
@@ -58,6 +60,9 @@ class CodebaseIntent:
     related_files: list[str]  # Files likely relevant to this task
     existing_patterns: list[str]  # Patterns to follow
     test_patterns: str        # How tests are structured
+    # RepoMap-enhanced fields
+    relevant_symbols: list[str] = field(default_factory=list)  # Symbol names from repo map
+    symbol_context: str = ""  # Formatted context from repo map
 
 
 @dataclass
@@ -124,15 +129,22 @@ class IntentDiscoverer:
 
     Uses different analytical perspectives to build a complete picture
     of what the user wants, grounded in observable evidence.
+
+    When a RepoMap is provided, uses semantic code understanding for:
+    - Finding related files via symbol search
+    - Getting relevant context within token budget
+    - Understanding dependencies between files
     """
 
     def __init__(
         self,
         sandbox: CodeSandbox,
         ollama: OllamaClient | None = None,
+        repo_map: RepoMap | None = None,
     ) -> None:
         self.sandbox = sandbox
         self._ollama = ollama
+        self._repo_map = repo_map
 
     def discover(
         self,
@@ -264,14 +276,18 @@ Output JSON with these fields:
         )
 
     def _analyze_codebase(self, prompt: str) -> CodebaseIntent:
-        """Extract intent from codebase analysis."""
+        """Extract intent from codebase analysis.
+
+        If RepoMap is available and indexed, uses semantic search
+        to find relevant code. Otherwise falls back to grep-based search.
+        """
         # Detect language
         language = self._detect_language()
 
         # Detect architecture style
         architecture = self._detect_architecture()
 
-        # Find related files
+        # Find related files - use RepoMap if available
         related = self._find_related_files(prompt)
 
         # Detect conventions
@@ -280,13 +296,37 @@ Output JSON with these fields:
         # Detect test patterns
         test_patterns = self._detect_test_patterns()
 
+        # Get RepoMap-enhanced context if available
+        relevant_symbols: list[str] = []
+        symbol_context = ""
+        existing_patterns: list[str] = []
+
+        if self._repo_map is not None:
+            try:
+                # Get relevant context using RepoMap
+                symbol_context = self._repo_map.get_relevant_context(
+                    prompt, token_budget=600
+                )
+
+                # Find relevant symbols
+                symbols = self._find_symbols_for_prompt(prompt)
+                relevant_symbols = [s.qualified_name for s in symbols[:10]]
+
+                # Extract patterns from found symbols
+                existing_patterns = self._extract_patterns_from_symbols(symbols)
+
+            except Exception as e:
+                logger.debug("RepoMap analysis failed: %s", e)
+
         return CodebaseIntent(
             language=language,
             architecture_style=architecture,
             conventions=conventions,
             related_files=related,
-            existing_patterns=[],  # TODO: Extract patterns
+            existing_patterns=existing_patterns,
             test_patterns=test_patterns,
+            relevant_symbols=relevant_symbols,
+            symbol_context=symbol_context,
         )
 
     def _detect_language(self) -> str:
@@ -324,10 +364,44 @@ Output JSON with these fields:
         return "flat"
 
     def _find_related_files(self, prompt: str) -> list[str]:
-        """Find files likely relevant to the request."""
-        related = []
+        """Find files likely relevant to the request.
 
-        # Extract potential file/module names from prompt
+        Uses RepoMap for semantic search when available, falling back
+        to grep-based search otherwise.
+        """
+        related: list[str] = []
+
+        # Try RepoMap first for better context
+        if self._repo_map is not None:
+            try:
+                # Find symbols related to the prompt
+                symbols = self._find_symbols_for_prompt(prompt)
+                for sym in symbols:
+                    if hasattr(sym, "location") and hasattr(sym.location, "file_path"):
+                        file_path = sym.location.file_path
+                        if file_path not in related:
+                            related.append(file_path)
+
+                # Also find callers of those symbols for broader context
+                for sym in symbols[:3]:  # Limit to avoid too many lookups
+                    if hasattr(sym, "name") and hasattr(sym, "location"):
+                        try:
+                            callers = self._repo_map.find_callers(
+                                sym.name, sym.location.file_path
+                            )
+                            for caller in callers[:2]:
+                                if hasattr(caller, "file_path"):
+                                    if caller.file_path not in related:
+                                        related.append(caller.file_path)
+                        except Exception:
+                            pass
+
+                if related:
+                    return related[:10]
+            except Exception as e:
+                logger.debug("RepoMap file search failed: %s", e)
+
+        # Fallback: grep-based search
         words = prompt.lower().split()
         for word in words:
             # Search for files matching the word
@@ -395,6 +469,105 @@ Output JSON with these fields:
             return "spec (*_spec.py)"
 
         return "unknown"
+
+    def _find_symbols_for_prompt(self, prompt: str) -> list[Any]:
+        """Find symbols relevant to the prompt using RepoMap.
+
+        Extracts keywords from the prompt and searches for matching symbols.
+
+        Args:
+            prompt: The user's request.
+
+        Returns:
+            List of Symbol objects from the repo map.
+        """
+        if self._repo_map is None:
+            return []
+
+        symbols = []
+
+        # Extract potential symbol names from prompt
+        words = prompt.split()
+        keywords = []
+
+        for word in words:
+            # Clean word of punctuation
+            clean = word.strip(".,!?()[]{}:;\"'")
+            # Look for CamelCase or snake_case words as likely symbol names
+            if (
+                len(clean) > 2
+                and (clean[0].isupper() or "_" in clean or clean.islower())
+                and clean not in ("the", "and", "for", "with", "from", "that", "this")
+            ):
+                keywords.append(clean)
+
+        # Search for each keyword
+        for keyword in keywords[:5]:  # Limit to 5 keywords
+            try:
+                found = self._repo_map.find_symbol(keyword)
+                for sym in found[:3]:  # Limit per keyword
+                    if sym not in symbols:
+                        symbols.append(sym)
+            except Exception as e:
+                logger.debug("Symbol search failed for '%s': %s", keyword, e)
+
+        return symbols[:15]  # Return at most 15 symbols
+
+    def _extract_patterns_from_symbols(self, symbols: list[Any]) -> list[str]:
+        """Extract coding patterns from found symbols.
+
+        Analyzes symbols to identify patterns that should be followed.
+
+        Args:
+            symbols: List of Symbol objects.
+
+        Returns:
+            List of pattern descriptions.
+        """
+        patterns = []
+
+        if not symbols:
+            return patterns
+
+        # Check for decorator patterns
+        decorators_seen: set[str] = set()
+        for sym in symbols:
+            if hasattr(sym, "decorators") and sym.decorators:
+                decorators_seen.update(sym.decorators)
+
+        if "@dataclass" in decorators_seen:
+            patterns.append("Use @dataclass for data classes")
+        if "@property" in decorators_seen:
+            patterns.append("Use @property for computed attributes")
+        if any("pytest" in d or "fixture" in d for d in decorators_seen):
+            patterns.append("Use pytest fixtures for test setup")
+
+        # Check for type hint patterns
+        has_type_hints = any(
+            hasattr(sym, "signature") and sym.signature and "->" in sym.signature
+            for sym in symbols
+        )
+        if has_type_hints:
+            patterns.append("Include return type annotations")
+
+        # Check for docstring patterns
+        has_docstrings = any(
+            hasattr(sym, "docstring") and sym.docstring
+            for sym in symbols
+        )
+        if has_docstrings:
+            patterns.append("Include docstrings for public functions")
+
+        # Check for naming conventions
+        class_symbols = [s for s in symbols if hasattr(s, "kind") and str(s.kind) == "SymbolKind.CLASS"]
+        func_symbols = [s for s in symbols if hasattr(s, "kind") and str(s.kind) == "SymbolKind.FUNCTION"]
+
+        if class_symbols and all(s.name[0].isupper() for s in class_symbols if s.name):
+            patterns.append("Use PascalCase for class names")
+        if func_symbols and all("_" in s.name or s.name.islower() for s in func_symbols if s.name):
+            patterns.append("Use snake_case for function names")
+
+        return patterns
 
     def _synthesize_intent(
         self,
@@ -471,6 +644,23 @@ Output JSON:
 
 Be specific. Ground everything in the provided context. Flag ambiguities honestly."""
 
+        # Build symbol context section if available
+        symbol_section = ""
+        if codebase_intent.symbol_context:
+            symbol_section = f"""
+
+RELEVANT CODE SYMBOLS:
+{codebase_intent.symbol_context[:1500]}
+"""
+        if codebase_intent.relevant_symbols:
+            symbol_section += f"""
+- Key Symbols: {', '.join(codebase_intent.relevant_symbols[:8])}
+"""
+        if codebase_intent.existing_patterns:
+            symbol_section += f"""
+- Existing Patterns: {', '.join(codebase_intent.existing_patterns[:5])}
+"""
+
         context = f"""
 USER PROMPT: {prompt}
 
@@ -489,7 +679,7 @@ CODEBASE CONTEXT:
 - Architecture: {codebase_intent.architecture_style}
 - Conventions: {', '.join(codebase_intent.conventions)}
 - Related Files: {', '.join(codebase_intent.related_files[:5])}
-"""
+{symbol_section}"""
 
         try:
             response = self._ollama.chat_json(  # type: ignore
