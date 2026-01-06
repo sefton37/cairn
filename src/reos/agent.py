@@ -13,7 +13,9 @@ from .mcp_tools import Tool, ToolError, call_tool, list_tools, render_tool_resul
 from .ollama import OllamaClient
 from .play_fs import list_acts as play_list_acts
 from .play_fs import read_me_markdown as play_read_me_markdown
+from .play_fs import Act
 from .reasoning import ReasoningEngine, ReasoningConfig, ComplexityLevel, TaskPlan, create_llm_planner_callback
+from .code_mode import CodeModeRouter, CodePlanner, CodeSandbox, CodeTaskPlan
 from .system_index import get_or_refresh_context as get_system_context
 from .system_state import SteadyStateCollector
 from .certainty import CertaintyWrapper, create_certainty_prompt_addition
@@ -150,6 +152,11 @@ class ChatAgent:
         # Restore pending plan from database if exists
         self._restore_pending_plan()
 
+        # Initialize Code Mode router for repo-based coding tasks
+        self._code_router = CodeModeRouter(ollama=ollama)
+        self._code_planner: CodePlanner | None = None
+        self._pending_code_plan: CodeTaskPlan | None = None
+
     def _execute_tool_for_reasoning(self, tool_name: str, args: dict) -> Any:
         """Callback for reasoning engine to execute tools."""
         try:
@@ -187,6 +194,86 @@ class ChatAgent:
         """Clear pending plan from database."""
         self._db.set_state(key="pending_plan_json", value="")
         self._db.set_state(key="pending_plan_id", value="")
+
+    def _get_active_act_with_repo(self) -> Act | None:
+        """Get the active Act if it has a repository assigned.
+
+        Returns:
+            The active Act with repo_path set, or None.
+        """
+        try:
+            acts = play_list_acts()
+            for act in acts:
+                if act.active and act.repo_path:
+                    return act
+            return None
+        except Exception as e:
+            logger.debug("Error getting active act: %s", e)
+            return None
+
+    def _handle_code_mode(
+        self,
+        user_text: str,
+        active_act: Act,
+        conversation_id: str,
+    ) -> ChatResponse | None:
+        """Handle a code-related request in Code Mode.
+
+        Creates a plan for the code task and presents it for approval.
+
+        Returns:
+            ChatResponse if handled, None to fall through to normal flow.
+        """
+        from pathlib import Path
+
+        try:
+            # Initialize sandbox and planner for this Act's repo
+            repo_path = Path(active_act.repo_path)  # type: ignore[arg-type]
+            sandbox = CodeSandbox(repo_path)
+            ollama = self._get_ollama_client()
+            planner = CodePlanner(sandbox=sandbox, ollama=ollama)
+
+            # Create a plan for the code task
+            plan = planner.create_plan(request=user_text, act=active_act)
+
+            # Store the pending plan for approval flow
+            self._pending_code_plan = plan
+
+            # Generate plan summary for user
+            plan_summary = plan.summary()
+            response_text = (
+                f"**Code Mode Active** (repo: `{active_act.repo_path}`)\n\n"
+                f"{plan_summary}\n\n"
+                f"Do you want me to proceed with this plan? (yes/no)"
+            )
+
+            # Store response
+            message_id = _generate_id()
+            self._db.add_message(
+                message_id=message_id,
+                conversation_id=conversation_id,
+                role="assistant",
+                content=response_text,
+                message_type="code_plan_preview",
+                metadata=json.dumps({
+                    "code_mode": True,
+                    "plan_id": plan.id,
+                    "repo_path": active_act.repo_path,
+                }),
+            )
+
+            return ChatResponse(
+                answer=response_text,
+                conversation_id=conversation_id,
+                message_id=message_id,
+                message_type="code_plan_preview",
+                pending_approval_id=plan.id,
+            )
+
+        except Exception as e:
+            logger.warning("Code Mode handling failed: %s", e)
+            # Fall through to normal processing
+            return None
 
     def _try_reasoning(
         self,
@@ -358,6 +445,17 @@ class ChatAgent:
             content=user_text,
             message_type="text",
         )
+
+        # Check for Code Mode routing (Act with repo assigned)
+        active_act = self._get_active_act_with_repo()
+        if active_act is not None:
+            routing = self._code_router.should_use_code_mode(user_text, active_act)
+            if routing.use_code_mode:
+                code_result = self._handle_code_mode(
+                    user_text, active_act, conversation_id
+                )
+                if code_result is not None:
+                    return code_result
 
         # Route through reasoning engine for complex tasks
         reasoning_result = self._try_reasoning(user_text, conversation_id)

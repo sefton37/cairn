@@ -18,10 +18,20 @@ _JSON = dict[str, Any]
 
 @dataclass(frozen=True)
 class Act:
+    """An Act in The Play - a major phase or project.
+
+    When repo_path is set, this Act is in "Code Mode" - ReOS will
+    automatically detect code-related requests and provide agentic
+    coding capabilities sandboxed to the assigned repository.
+    """
     act_id: str
     title: str
     active: bool = False
     notes: str = ""
+    # Code Mode fields
+    repo_path: str | None = None           # Absolute path to git repo
+    artifact_type: str | None = None       # "python", "typescript", "rust", etc.
+    code_config: dict[str, Any] | None = None  # Per-Act code configuration
 
 
 @dataclass(frozen=True)
@@ -162,16 +172,43 @@ def list_acts() -> tuple[list[Act], str | None]:
         if not isinstance(notes, str):
             notes = ""
 
+        # Code Mode fields (optional)
+        repo_path = item.get("repo_path")
+        if repo_path is not None and not isinstance(repo_path, str):
+            repo_path = None
+        artifact_type = item.get("artifact_type")
+        if artifact_type is not None and not isinstance(artifact_type, str):
+            artifact_type = None
+        code_config = item.get("code_config")
+        if code_config is not None and not isinstance(code_config, dict):
+            code_config = None
+
         if active and active_id is None:
             active_id = act_id
 
-        acts.append(Act(act_id=act_id, title=title, active=active, notes=notes))
+        acts.append(Act(
+            act_id=act_id,
+            title=title,
+            active=active,
+            notes=notes,
+            repo_path=repo_path,
+            artifact_type=artifact_type,
+            code_config=code_config,
+        ))
 
     # Enforce single-active invariant if the file has drifted.
     if active_id is not None:
         normalized: list[Act] = []
         for a in acts:
-            normalized.append(Act(act_id=a.act_id, title=a.title, active=(a.act_id == active_id), notes=a.notes))
+            normalized.append(Act(
+                act_id=a.act_id,
+                title=a.title,
+                active=(a.act_id == active_id),
+                notes=a.notes,
+                repo_path=a.repo_path,
+                artifact_type=a.artifact_type,
+                code_config=a.code_config,
+            ))
         acts = normalized
         _write_acts(acts)
 
@@ -181,7 +218,16 @@ def list_acts() -> tuple[list[Act], str | None]:
 def _write_acts(acts: list[Act]) -> None:
     payload = {
         "acts": [
-            {"act_id": a.act_id, "title": a.title, "active": bool(a.active), "notes": a.notes}
+            {
+                "act_id": a.act_id,
+                "title": a.title,
+                "active": bool(a.active),
+                "notes": a.notes,
+                # Code Mode fields (only include if set)
+                **({"repo_path": a.repo_path} if a.repo_path else {}),
+                **({"artifact_type": a.artifact_type} if a.artifact_type else {}),
+                **({"code_config": a.code_config} if a.code_config else {}),
+            }
             for a in acts
         ]
     }
@@ -195,7 +241,18 @@ def set_active_act_id(*, act_id: str | None) -> tuple[list[Act], str | None]:
     if act_id is not None and not any(a.act_id == act_id for a in acts):
         raise ValueError("unknown act_id")
 
-    updated = [Act(act_id=a.act_id, title=a.title, active=(a.act_id == act_id), notes=a.notes) for a in acts]
+    updated = [
+        Act(
+            act_id=a.act_id,
+            title=a.title,
+            active=(a.act_id == act_id),
+            notes=a.notes,
+            repo_path=a.repo_path,
+            artifact_type=a.artifact_type,
+            code_config=a.code_config,
+        )
+        for a in acts
+    ]
     _write_acts(updated)
     return updated, act_id
 
@@ -353,6 +410,117 @@ def update_act(*, act_id: str, title: str | None = None, notes: str | None = Non
                 title=(title.strip() if isinstance(title, str) else a.title),
                 active=bool(a.active),
                 notes=(notes if isinstance(notes, str) else a.notes),
+                repo_path=a.repo_path,
+                artifact_type=a.artifact_type,
+                code_config=a.code_config,
+            )
+        )
+
+    if not found:
+        raise ValueError("unknown act_id")
+
+    _write_acts(updated)
+    return updated, active_id
+
+
+def assign_repo_to_act(
+    *,
+    act_id: str,
+    repo_path: str | None,
+    artifact_type: str | None = None,
+    code_config: dict[str, Any] | None = None,
+) -> tuple[list[Act], str | None]:
+    """Assign a repository to an Act, enabling Code Mode.
+
+    Args:
+        act_id: The Act to modify
+        repo_path: Absolute path to git repository, or None to disable Code Mode
+        artifact_type: Language/type hint (e.g., "python", "typescript")
+        code_config: Per-Act code configuration
+
+    Returns:
+        Updated acts list and active_id
+    """
+    _validate_id(name="act_id", value=act_id)
+
+    # Validate repo_path is a real git repo if provided
+    if repo_path is not None:
+        repo = Path(repo_path).resolve()
+        if not repo.is_dir():
+            raise ValueError(f"repo_path does not exist: {repo_path}")
+        if not (repo / ".git").is_dir():
+            raise ValueError(f"repo_path is not a git repository: {repo_path}")
+        repo_path = str(repo)  # Normalize to absolute path
+
+    acts, active_id = list_acts()
+    found = False
+    updated: list[Act] = []
+
+    for a in acts:
+        if a.act_id != act_id:
+            updated.append(a)
+            continue
+        found = True
+        updated.append(
+            Act(
+                act_id=a.act_id,
+                title=a.title,
+                active=a.active,
+                notes=a.notes,
+                repo_path=repo_path,
+                artifact_type=artifact_type if artifact_type else a.artifact_type,
+                code_config=code_config if code_config else a.code_config,
+            )
+        )
+
+    if not found:
+        raise ValueError("unknown act_id")
+
+    _write_acts(updated)
+    return updated, active_id
+
+
+def configure_code_mode(
+    *,
+    act_id: str,
+    code_config: dict[str, Any],
+) -> tuple[list[Act], str | None]:
+    """Update Code Mode configuration for an Act.
+
+    Args:
+        act_id: The Act to modify
+        code_config: Code configuration dict (test_command, build_command, etc.)
+
+    Returns:
+        Updated acts list and active_id
+    """
+    _validate_id(name="act_id", value=act_id)
+
+    if not isinstance(code_config, dict):
+        raise ValueError("code_config must be a dictionary")
+
+    acts, active_id = list_acts()
+    found = False
+    updated: list[Act] = []
+
+    for a in acts:
+        if a.act_id != act_id:
+            updated.append(a)
+            continue
+        found = True
+
+        if not a.repo_path:
+            raise ValueError("Cannot configure Code Mode: no repo_path assigned to this Act")
+
+        updated.append(
+            Act(
+                act_id=a.act_id,
+                title=a.title,
+                active=a.active,
+                notes=a.notes,
+                repo_path=a.repo_path,
+                artifact_type=a.artifact_type,
+                code_config=code_config,
             )
         )
 

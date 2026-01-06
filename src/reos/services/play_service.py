@@ -17,20 +17,42 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ActInfo:
-    """Information about an Act."""
+    """Information about an Act.
+
+    When repo_path is set, this Act is in "Code Mode" - ReOS will
+    automatically detect code-related requests and provide agentic
+    coding capabilities sandboxed to the assigned repository.
+    """
 
     act_id: str
     title: str
     active: bool = False
     notes: str = ""
+    # Code Mode fields
+    repo_path: str | None = None
+    artifact_type: str | None = None
+    code_config: dict[str, Any] | None = None
+
+    @property
+    def has_repo(self) -> bool:
+        """Check if this Act has an assigned repository (Code Mode enabled)."""
+        return self.repo_path is not None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "act_id": self.act_id,
             "title": self.title,
             "active": self.active,
             "notes": self.notes,
         }
+        # Only include Code Mode fields if set
+        if self.repo_path:
+            result["repo_path"] = self.repo_path
+        if self.artifact_type:
+            result["artifact_type"] = self.artifact_type
+        if self.code_config:
+            result["code_config"] = self.code_config
+        return result
 
     @classmethod
     def from_play_fs(cls, act: play_fs.Act) -> ActInfo:
@@ -39,6 +61,9 @@ class ActInfo:
             title=act.title,
             active=act.active,
             notes=act.notes,
+            repo_path=act.repo_path,
+            artifact_type=act.artifact_type,
+            code_config=act.code_config,
         )
 
 
@@ -206,6 +231,70 @@ class PlayService:
         """
         acts, active_id = play_fs.set_active_act_id(act_id=act_id)
         return [ActInfo.from_play_fs(a) for a in acts], active_id
+
+    # --- Code Mode (Repo Assignment) ---
+
+    def assign_repo(
+        self,
+        act_id: str,
+        repo_path: str | None,
+        artifact_type: str | None = None,
+        code_config: dict[str, Any] | None = None,
+    ) -> tuple[list[ActInfo], str | None]:
+        """Assign a repository to an Act, enabling Code Mode.
+
+        Args:
+            act_id: The Act to modify
+            repo_path: Absolute path to git repository, or None to disable Code Mode
+            artifact_type: Language/type hint (e.g., "python", "typescript")
+            code_config: Per-Act code configuration
+
+        Returns:
+            Tuple of (updated act list, active_act_id)
+        """
+        acts, active_id = play_fs.assign_repo_to_act(
+            act_id=act_id,
+            repo_path=repo_path,
+            artifact_type=artifact_type,
+            code_config=code_config,
+        )
+        return [ActInfo.from_play_fs(a) for a in acts], active_id
+
+    def configure_code_mode(
+        self,
+        act_id: str,
+        code_config: dict[str, Any],
+    ) -> tuple[list[ActInfo], str | None]:
+        """Update Code Mode configuration for an Act.
+
+        Args:
+            act_id: The Act to modify
+            code_config: Code configuration dict (test_command, build_command, etc.)
+
+        Returns:
+            Tuple of (updated act list, active_act_id)
+        """
+        acts, active_id = play_fs.configure_code_mode(
+            act_id=act_id,
+            code_config=code_config,
+        )
+        return [ActInfo.from_play_fs(a) for a in acts], active_id
+
+    def get_active_act_with_repo(self) -> ActInfo | None:
+        """Get the active Act if it has a repo assigned (Code Mode enabled).
+
+        Returns:
+            ActInfo if active Act has repo_path, else None
+        """
+        acts, active_id = self.list_acts()
+        if not active_id:
+            return None
+
+        active_act = next((a for a in acts if a.act_id == active_id), None)
+        if not active_act or not active_act.has_repo:
+            return None
+
+        return active_act
 
     # --- Scenes ---
 
