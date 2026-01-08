@@ -531,7 +531,13 @@ Rules:
 4. Each sub-task should be simpler than the parent
 5. Include acceptance criteria for each sub-task
 
-Respond with JSON array of objects with "what" and "acceptance" fields."""
+Respond with ONLY a JSON array of objects with "what" and "acceptance" fields.
+
+Example response format:
+[
+  {"what": "Create the main module file", "acceptance": "Module file exists with correct structure"},
+  {"what": "Add the core functions", "acceptance": "All functions implemented and callable"}
+]"""
 
     user_prompt = f"""Decompose this intention into 2-5 smaller, verifiable sub-intentions:
 
@@ -560,12 +566,24 @@ Provide sub-intentions that are concrete and testable."""
         data = json.loads(response)
         children = []
         for item in data:
-            child = Intention.create(
-                what=item.get("what", ""),
-                acceptance=item.get("acceptance", ""),
-                parent_id=intention.id,
-            )
-            children.append(child)
+            # Handle both dict format and string format
+            if isinstance(item, dict):
+                what = item.get("what", "")
+                acceptance = item.get("acceptance", "")
+            elif isinstance(item, str):
+                # Some models return simple strings instead of objects
+                what = item
+                acceptance = f"Complete: {item[:30]}..."
+            else:
+                continue  # Skip invalid items
+
+            if what:  # Only add if we have a description
+                child = Intention.create(
+                    what=what,
+                    acceptance=acceptance,
+                    parent_id=intention.id,
+                )
+                children.append(child)
 
         # Human/auto confirmation
         if ctx.checkpoint.approve_decomposition(intention, children):
@@ -649,13 +667,23 @@ def determine_next_action(intention: Intention, ctx: WorkContext) -> tuple[str, 
 
     system_prompt = """You are determining the next action to satisfy an intention.
 
-Respond with JSON:
+Respond with ONLY a JSON object:
 {
   "thought": "What I'm about to try and why",
-  "action_type": "command|edit|create|delete|query",
+  "action_type": "one of: command, edit, create, delete, query",
   "content": "The actual command/code/query",
-  "target": "file path if applicable, null otherwise"
+  "target": "file path if applicable, or null"
 }
+
+Valid action_type values:
+- "command": Run a shell command
+- "edit": Modify an existing file
+- "create": Create a new file
+- "delete": Delete a file
+- "query": Ask a question or search
+
+Example response:
+{"thought": "Creating the main module file", "action_type": "create", "content": "def main():\\n    pass", "target": "main.py"}
 
 Be specific and concrete. Prefer small, testable actions."""
 
@@ -738,6 +766,28 @@ def _heuristic_action(intention: Intention, ctx: WorkContext) -> tuple[str, Acti
     )
 
 
+def _strip_markdown_code_block(content: str) -> str:
+    """Strip markdown code block formatting from content.
+
+    LLMs often wrap code in ```language ... ``` blocks.
+    This extracts the inner content.
+    """
+    import re
+    content = content.strip()
+
+    # Match ```language\n...\n``` or ```\n...\n```
+    match = re.match(r'^```(?:\w+)?\s*\n(.*)\n```$', content, re.DOTALL)
+    if match:
+        return match.group(1)
+
+    # Match just ```...``` (no newlines)
+    match = re.match(r'^```(?:\w+)?\s*(.*?)\s*```$', content, re.DOTALL)
+    if match:
+        return match.group(1)
+
+    return content
+
+
 def execute_action(action: Action, ctx: WorkContext) -> str:
     """Execute an action and return the result."""
     if ctx.session_logger:
@@ -764,25 +814,28 @@ def execute_action(action: Action, ctx: WorkContext) -> str:
 
         elif action.type == ActionType.CREATE:
             if action.target:
-                ctx.sandbox.write_file(action.target, action.content)
+                # Strip markdown code blocks from LLM output
+                clean_content = _strip_markdown_code_block(action.content)
+                ctx.sandbox.write_file(action.target, clean_content)
                 if ctx.session_logger:
                     ctx.session_logger.log_info("riva", "file_created",
                         f"Created file: {action.target}", {
                             "target": action.target,
-                            "content_length": len(action.content),
+                            "content_length": len(clean_content),
                         })
                 return f"Created file: {action.target}"
             return "Error: No target specified for create action"
 
         elif action.type == ActionType.EDIT:
             if action.target:
-                # For now, just overwrite - could be smarter
-                ctx.sandbox.write_file(action.target, action.content)
+                # Strip markdown code blocks and overwrite
+                clean_content = _strip_markdown_code_block(action.content)
+                ctx.sandbox.write_file(action.target, clean_content)
                 if ctx.session_logger:
                     ctx.session_logger.log_info("riva", "file_edited",
                         f"Edited file: {action.target}", {
                             "target": action.target,
-                            "content_length": len(action.content),
+                            "content_length": len(clean_content),
                         })
                 return f"Edited file: {action.target}"
             return "Error: No target specified for edit action"
