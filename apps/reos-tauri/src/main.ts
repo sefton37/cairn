@@ -235,7 +235,7 @@ function buildUi() {
   // The Play button - opens your story notebook
   const playBtn = el('button');
   playBtn.textContent = 'Your Story';
-  playBtn.title = 'Open your narrative and identity documents (always available to ReOS)';
+  playBtn.title = 'Open your narrative and identity documents (always available to Talking Rock)';
   navBtnStyle(playBtn);
   playBtn.style.borderColor = 'rgba(34, 197, 94, 0.3)';
 
@@ -645,7 +645,7 @@ function buildUi() {
     try {
       console.log('Creating new dashboard window...');
       const w = new WebviewWindow('dashboard', {
-        title: 'System Dashboard — ReOS',
+        title: 'System Dashboard — Talking Rock',
         url: '/?view=dashboard',
         width: 1000,
         height: 800
@@ -1392,7 +1392,7 @@ function buildUi() {
 
     if (actsCache.length === 0) {
       const empty = el('div');
-      empty.textContent = 'No acts yet. Create one to focus ReOS on a specific chapter of your story.';
+      empty.textContent = 'No acts yet. Create one to focus Talking Rock on a specific chapter of your story.';
       empty.style.opacity = '0.5';
       empty.style.fontSize = '11px';
       empty.style.padding = '8px 0';
@@ -2970,7 +2970,7 @@ function buildUi() {
       if (activeActId) await refreshScenes(activeActId);
 
       // Welcome message
-      append('reos', 'Welcome to ReOS! I\'m your Linux assistant. Ask me anything about your system, or use the quick actions on the left. Keyboard shortcuts: Ctrl+K to focus, Ctrl+L to clear, Ctrl+R to refresh status.');
+      append('reos', 'Welcome to Talking Rock! I\'m your Linux assistant. Ask me anything about your system, or use the quick actions on the left. Keyboard shortcuts: Ctrl+K to focus, Ctrl+L to clear, Ctrl+R to refresh status.');
     } catch (e) {
       showJsonInInspector('Startup error', { error: String(e) });
     }
@@ -3328,6 +3328,6 @@ initializeApp().catch((err) => {
     background: #ef4444; color: white; padding: 12px;
     text-align: center; font-size: 14px; z-index: 9999;
   `;
-  errorDiv.textContent = `Failed to initialize ReOS: ${err instanceof Error ? err.message : String(err)}`;
+  errorDiv.textContent = `Failed to initialize Talking Rock: ${err instanceof Error ? err.message : String(err)}`;
   document.body.appendChild(errorDiv);
 });

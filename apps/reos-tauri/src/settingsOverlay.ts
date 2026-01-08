@@ -1370,7 +1370,7 @@ export function createSettingsOverlay(onClose?: () => void): SettingsOverlay {
   }
 
   // Default values for Reset to Default
-  const DEFAULT_SYSTEM_PROMPT = `You are ReOS.
+  const DEFAULT_SYSTEM_PROMPT = `You are Talking Rock.
 You embody No One: presence that waits to be invited, reflects rather than commands, never coerces.
 You are expert in computer science and human language. Translate intent into action. Make the machine serve the person.
 
@@ -1409,7 +1409,7 @@ When engaging:
     const promptsSection = createSection('System Prompt');
     promptsSection.innerHTML += `
       <div style="color: rgba(255,255,255,0.7); font-size: 13px; margin-bottom: 12px;">
-        The core instructions that define ReOS personality and behavior.
+        The core instructions that define Talking Rock personality and behavior.
       </div>
     `;
 
@@ -1589,7 +1589,7 @@ When engaging:
         'Tool Call Limit',
         activePersona.tool_call_limit,
         1, 10, 1,
-        'Maximum number of tools ReOS can use in a single response. Higher values let ReOS gather more information but may slow responses. Lower values keep responses quick but may limit capability.',
+        'Maximum number of tools Talking Rock can use in a single response. Higher values let Talking Rock gather more information but may slow responses. Lower values keep responses quick but may limit capability.',
         async (val) => {
           activePersona.tool_call_limit = Math.round(val);
           await savePersona(activePersona);

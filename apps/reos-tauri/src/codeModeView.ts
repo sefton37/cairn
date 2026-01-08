@@ -214,7 +214,7 @@ export function createCodeModeView(
     <div style="font-size: 48px; margin-bottom: 16px;">🚀</div>
     <div style="font-size: 18px; font-weight: 500; margin-bottom: 8px;">Ready for Code Mode</div>
     <div style="font-size: 13px; max-width: 400px; line-height: 1.5;">
-      Ask ReOS to build something in the chat panel.<br>
+      Ask Talking Rock to build something in the chat panel.<br>
       When you approve a plan, you'll see every step of the execution here.
     </div>
   `;
@@ -268,7 +268,7 @@ export function createCodeModeView(
 
   const chatInput = el('input') as HTMLInputElement;
   chatInput.type = 'text';
-  chatInput.placeholder = 'Ask ReOS to build something...';
+  chatInput.placeholder = 'Ask Talking Rock to build something...';
   chatInput.style.cssText = `
     flex: 1;
     padding: 10px 12px;

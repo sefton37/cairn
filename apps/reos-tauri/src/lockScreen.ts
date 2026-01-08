@@ -65,7 +65,7 @@ export async function showLockScreen(root: HTMLElement, options: LockScreenOptio
   logo.style.cssText = `margin-bottom: 32px;`;
 
   const logoText = el('div');
-  logoText.textContent = 'ReOS';
+  logoText.textContent = 'Talking Rock';
   logoText.style.cssText = `
     font-size: 32px;
     font-weight: 700;
