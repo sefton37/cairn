@@ -115,6 +115,8 @@ def _check_ollama_available() -> tuple[bool, str | None, str | None]:
                         "llama3.2:1b", "llama3.2:3b", "llama3.2",
                         "qwen2.5:0.5b", "qwen2.5:1.5b", "qwen2.5:3b",
                         "phi3:mini", "gemma2:2b",
+                        "mistral",  # 7B - fallback if tiny models not installed
+                        "llama3.1:8b",  # 8B - another reasonable fallback
                     ]
                     for preferred in preferred_order:
                         for model in models:
