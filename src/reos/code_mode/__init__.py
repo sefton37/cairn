@@ -165,6 +165,14 @@ from reos.code_mode.tools import (
     create_tool_provider,
 )
 
+# Web Tools - Search, fetch, documentation
+from reos.code_mode.web_tools import (
+    WebToolProvider,
+    SearchResult,
+    FetchedContent,
+    KNOWN_DOCS,
+)
+
 __all__ = [
     # Core
     "CodeSandbox",
@@ -272,4 +280,9 @@ __all__ = [
     "CompositeToolProvider",
     "NullToolProvider",
     "create_tool_provider",
+    # Web Tools
+    "WebToolProvider",
+    "SearchResult",
+    "FetchedContent",
+    "KNOWN_DOCS",
 ]

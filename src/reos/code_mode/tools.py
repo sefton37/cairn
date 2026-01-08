@@ -447,8 +447,8 @@ def create_tool_provider(
 
     Args:
         sandbox: CodeSandbox for repository operations
-        enable_web: Enable web search/fetch tools (Phase 3)
-        enable_mcp: Enable MCP bridge tools (Phase 5)
+        enable_web: Enable web search/fetch tools
+        enable_mcp: Enable MCP bridge tools (Phase 5 - not yet implemented)
 
     Returns:
         A configured ToolProvider
@@ -458,11 +458,12 @@ def create_tool_provider(
     if sandbox is not None:
         providers.append(SandboxToolProvider(sandbox))
 
-    # Phase 3: Web tools
-    # if enable_web:
-    #     providers.append(WebToolProvider())
+    # Phase 3: Web tools for search and documentation
+    if enable_web:
+        from .web_tools import WebToolProvider
+        providers.append(WebToolProvider())
 
-    # Phase 5: MCP bridge
+    # Phase 5: MCP bridge (future)
     # if enable_mcp:
     #     providers.append(MCPBridgeProvider(db))
 
