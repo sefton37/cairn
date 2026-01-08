@@ -342,12 +342,13 @@ function buildUi() {
     kernelRequest,
   });
 
-  // Handle CAIRN chat messages
+  // Handle CAIRN chat messages (conversational only - no code mode)
   async function handleCairnMessage(message: string): Promise<void> {
     try {
       const result = await kernelRequest<ChatRespondResult>('chat/respond', {
         text: message,
         conversation_id: currentConversationId,
+        skip_code_mode: true,  // CAIRN is conversational, never trigger code mode
       });
       if (result.conversation_id) {
         currentConversationId = result.conversation_id;
@@ -2498,9 +2499,10 @@ function buildUi() {
       };
     }
 
-    // Check if we're in Code Mode (active act with repo_path)
+    // Check if we're in Code Mode (active act with repo_path AND viewing RIVA)
+    // CAIRN view should NOT trigger code mode - it's for conversational chat
     const activeAct = actsCache.find((a) => a.act_id === activeActId);
-    const isCodeMode = activeAct && activeAct.repo_path;
+    const isCodeMode = activeAct && activeAct.repo_path && currentAgent === 'riva';
 
     // Check if message starts with approval words (yes, y, ok, okay, proceed)
     // Allows additional context like "yes proceed" or "yes, generate answers..."

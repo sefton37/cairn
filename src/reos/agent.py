@@ -112,9 +112,10 @@ class ChatAgent:
     - Simple tasks go direct, complex tasks get planned.
     """
 
-    def __init__(self, *, db: Database, llm: LLMProvider | None = None) -> None:
+    def __init__(self, *, db: Database, llm: LLMProvider | None = None, skip_code_mode: bool = False) -> None:
         self._db = db
         self._llm_override = llm
+        self._skip_code_mode = skip_code_mode  # When True, never route to code mode (for CAIRN)
 
         # Initialize steady state collector for system knowledge (RAG)
         # This provides grounded facts about the machine
@@ -894,9 +895,9 @@ class ChatAgent:
         if plan_approval_result is not None:
             return plan_approval_result
 
-        # Check for Code Mode routing
+        # Check for Code Mode routing (skip if CAIRN mode)
         active_act = self._get_active_act()
-        if active_act is not None:
+        if active_act is not None and not self._skip_code_mode:
             # Check if this looks like a code task
             routing = self._code_router.should_use_code_mode(user_text, active_act)
             if routing.use_code_mode:
