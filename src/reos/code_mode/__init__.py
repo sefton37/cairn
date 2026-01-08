@@ -153,6 +153,18 @@ from reos.code_mode.project_memory import (
     ProjectMemoryContext,
 )
 
+# Tool Providers - Unified tool interface for RIVA
+from reos.code_mode.tools import (
+    ToolProvider,
+    ToolInfo,
+    ToolResult,
+    ToolCategory,
+    SandboxToolProvider,
+    CompositeToolProvider,
+    NullToolProvider,
+    create_tool_provider,
+)
+
 __all__ = [
     # Core
     "CodeSandbox",
@@ -251,4 +263,13 @@ __all__ = [
     "CodingSession",
     "CodeChange",
     "ProjectMemoryContext",
+    # Tool Providers
+    "ToolProvider",
+    "ToolInfo",
+    "ToolResult",
+    "ToolCategory",
+    "SandboxToolProvider",
+    "CompositeToolProvider",
+    "NullToolProvider",
+    "create_tool_provider",
 ]
