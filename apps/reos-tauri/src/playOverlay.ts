@@ -623,6 +623,19 @@ export function createPlayOverlay(onClose: () => void): {
         }
       };
 
+      // Text input for manual entry (defined first so browse can update it)
+      const repoInput = el('input') as HTMLInputElement;
+      repoInput.type = 'text';
+      repoInput.placeholder = '/path/to/project';
+      repoInput.style.flex = '2';
+      repoInput.style.padding = '8px 12px';
+      repoInput.style.background = 'rgba(0, 0, 0, 0.3)';
+      repoInput.style.border = '1px solid rgba(255, 255, 255, 0.15)';
+      repoInput.style.borderRadius = '6px';
+      repoInput.style.color = '#fff';
+      repoInput.style.fontSize = '13px';
+      repoInput.value = currentAct?.repo_path ?? '';
+
       // Browse button (folder picker)
       const browseBtn = el('button');
       browseBtn.textContent = 'Browse...';
@@ -644,6 +657,7 @@ export function createPlayOverlay(onClose: () => void): {
             title: 'Select Repository Folder',
           });
           if (selected && typeof selected === 'string') {
+            repoInput.value = selected;  // Update text field immediately
             await assignRepo(selected);
           }
         } catch (e) {
@@ -657,19 +671,6 @@ export function createPlayOverlay(onClose: () => void): {
       orLabel.textContent = 'or';
       orLabel.style.color = 'rgba(255, 255, 255, 0.4)';
       orLabel.style.fontSize = '12px';
-
-      // Text input for manual entry
-      const repoInput = el('input') as HTMLInputElement;
-      repoInput.type = 'text';
-      repoInput.placeholder = '/path/to/project';
-      repoInput.style.flex = '2';
-      repoInput.style.padding = '8px 12px';
-      repoInput.style.background = 'rgba(0, 0, 0, 0.3)';
-      repoInput.style.border = '1px solid rgba(255, 255, 255, 0.15)';
-      repoInput.style.borderRadius = '6px';
-      repoInput.style.color = '#fff';
-      repoInput.style.fontSize = '13px';
-      repoInput.value = currentAct?.repo_path ?? '';
 
       // Set button for manual entry
       const repoBtn = el('button');

@@ -873,6 +873,7 @@ function buildUi() {
             title: 'Select Repository Folder',
           });
           if (selected && typeof selected === 'string') {
+            actRepoPath.value = selected;  // Update text field immediately
             await assignActRepo(selected);
           }
         } catch (err) {
