@@ -6,12 +6,15 @@ Thunderbird remains the source of truth - we just read from it.
 
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -169,8 +172,8 @@ class ThunderbirdBridge:
                             profile_path = base_path / profile_name
                             if profile_path.exists():
                                 return profile_path
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Failed to parse profiles.ini at %s: %s", profiles_ini, e)
 
         return None
 
@@ -261,7 +264,8 @@ class ThunderbirdBridge:
 
             return result
 
-        except sqlite3.Error:
+        except sqlite3.Error as e:
+            logger.warning("Failed to list contacts from Thunderbird: %s", e)
             return []
 
     def get_contact(self, contact_id: str) -> ThunderbirdContact | None:
@@ -307,7 +311,8 @@ class ThunderbirdBridge:
             )
             return contact
 
-        except sqlite3.Error:
+        except sqlite3.Error as e:
+            logger.warning("Failed to get contact %s from Thunderbird: %s", contact_id, e)
             return None
 
     def search_contacts(
@@ -385,7 +390,8 @@ class ThunderbirdBridge:
 
             return events
 
-        except sqlite3.Error:
+        except sqlite3.Error as e:
+            logger.warning("Failed to list calendar events from Thunderbird: %s", e)
             return []
 
     def get_upcoming_events(
@@ -457,7 +463,8 @@ class ThunderbirdBridge:
                 all_day=all_day,
                 ical_data=ical,
             )
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to parse calendar event row: %s", e)
             return None
 
     # =========================================================================
@@ -515,7 +522,8 @@ class ThunderbirdBridge:
 
             return todos
 
-        except sqlite3.Error:
+        except sqlite3.Error as e:
+            logger.warning("Failed to list calendar todos from Thunderbird: %s", e)
             return []
 
     def get_overdue_todos(self) -> list[CalendarTodo]:
@@ -573,7 +581,8 @@ class ThunderbirdBridge:
                 priority=priority,
                 description=description,
             )
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to parse calendar todo row: %s", e)
             return None
 
     # =========================================================================

@@ -258,13 +258,14 @@ class QualityTracker:
 
             # Log to session logger if available
             if self._session_logger:
-                level = "INFO" if event.tier == QualityTier.LLM_SUCCESS else "WARN"
-                self._session_logger.log(
-                    module="quality",
-                    action=f"quality_{event.operation}",
-                    details=event.to_dict(),
-                    level=level,
-                )
+                action = f"quality_{event.operation}"
+                message = f"{event.tier.name}: {event.reason}"
+                data = event.to_dict()
+
+                if event.tier == QualityTier.LLM_SUCCESS:
+                    self._session_logger.log_info("quality", action, message, data)
+                else:
+                    self._session_logger.log_warn("quality", action, message, data)
 
             # Notify observers
             observers = list(self._observers)

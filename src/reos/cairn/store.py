@@ -6,11 +6,14 @@ Handles persistence for CAIRN metadata overlays, contact links, and activity log
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from reos.cairn.models import (
     ActivityLogEntry,

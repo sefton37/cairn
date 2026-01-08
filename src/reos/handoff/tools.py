@@ -12,11 +12,14 @@ the 15-tool-per-agent cap.
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
+
+logger = logging.getLogger(__name__)
 
 from reos.handoff.models import (
     AgentType,
@@ -422,8 +425,8 @@ class SharedToolHandler:
                     "results": results[:limit],
                     "query": query,
                 }
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to search Play store: %s", e)
 
         return {
             "found": 0,

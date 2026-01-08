@@ -6,8 +6,11 @@ Designed to be helpful without being coercive or guilt-inducing.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 from reos.cairn.models import (
     CairnMetadata,
@@ -422,8 +425,8 @@ class CairnSurfacer:
             elif entity_type == "beat":
                 beat = self.play.get_beat(entity_id)
                 return beat.content[:50] if beat else entity_id
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to get entity title for %s/%s: %s", entity_type, entity_id, e)
 
         return entity_id
 

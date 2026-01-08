@@ -1078,8 +1078,73 @@ def _handle_execution_start(
     cwd: str | None = None,
     timeout: int = 300,
 ) -> dict[str, Any]:
-    """Start a streaming command execution."""
+    """Start a streaming command execution.
+
+    Security: All commands are validated before execution:
+    - Dangerous commands (rm -rf /, fork bombs, etc.) are blocked
+    - Rate limiting prevents command flooding
+    - All executions are audit logged
+    """
     from .streaming_executor import get_streaming_executor
+
+    # Security check 1: Validate command is safe
+    is_safe, warning = is_command_safe(command)
+    if not is_safe:
+        audit_log(
+            AuditEventType.COMMAND_BLOCKED,
+            {
+                "command": command[:500],
+                "reason": warning,
+                "execution_id": execution_id,
+            },
+            success=False,
+        )
+        logger.warning(
+            "Blocked dangerous command in execution/start: %s - %s",
+            warning,
+            command[:100],
+        )
+        return {
+            "execution_id": execution_id,
+            "status": "blocked",
+            "error": f"Command blocked: {warning}",
+        }
+
+    # Security check 2: Rate limiting
+    try:
+        # Use 'sudo' rate limit if command contains sudo, otherwise general limit
+        if "sudo " in command:
+            check_rate_limit("sudo")
+        check_rate_limit("service")  # General command rate limit
+    except RateLimitExceeded as e:
+        audit_log(
+            AuditEventType.RATE_LIMIT_EXCEEDED,
+            {
+                "command": command[:500],
+                "execution_id": execution_id,
+                "retry_after": e.retry_after_seconds,
+            },
+            success=False,
+        )
+        return {
+            "execution_id": execution_id,
+            "status": "rate_limited",
+            "error": str(e),
+            "retry_after_seconds": e.retry_after_seconds,
+        }
+
+    # Security check 3: Audit log the execution
+    audit_log(
+        AuditEventType.COMMAND_EXECUTED,
+        {
+            "command": command[:500],
+            "execution_id": execution_id,
+            "cwd": cwd,
+            "timeout": timeout,
+            "has_sudo": "sudo " in command,
+        },
+        success=True,
+    )
 
     executor = get_streaming_executor()
     executor.start(
@@ -3754,15 +3819,20 @@ def _handle_chat_clear(
 # -------------------------------------------------------------------------
 
 # Global state for handoff management (per-session)
+# Protected by _handoff_lock for thread safety
 _handoff_state: dict[str, Any] = {
     "current_agent": "cairn",  # Default entry point
     "pending_handoff": None,
     "handler": None,
 }
+_handoff_lock = threading.Lock()
 
 
 def _get_handoff_handler():
-    """Get or create the handoff handler."""
+    """Get or create the handoff handler.
+
+    Note: Caller must hold _handoff_lock.
+    """
     from reos.handoff import AgentType, SharedToolHandler
 
     if _handoff_state["handler"] is None:
@@ -3775,13 +3845,16 @@ def _handle_handoff_status(_db: Database) -> dict[str, Any]:
     """Get current handoff/agent status."""
     from reos.handoff import get_agent_manifest, AgentType, AGENT_DESCRIPTIONS
 
-    current = _handoff_state["current_agent"]
+    with _handoff_lock:
+        current = _handoff_state["current_agent"]
+        pending_handoff = _handoff_state["pending_handoff"]
+
     manifest = get_agent_manifest(AgentType(current))
     agent_info = AGENT_DESCRIPTIONS[AgentType(current)]
 
     pending = None
-    if _handoff_state["pending_handoff"]:
-        pending = _handoff_state["pending_handoff"].to_dict()
+    if pending_handoff:
+        pending = pending_handoff.to_dict()
 
     return {
         "current_agent": current,
@@ -3805,20 +3878,21 @@ def _handle_handoff_propose(
     open_ui: bool = True,
 ) -> dict[str, Any]:
     """Propose a handoff to another agent (requires user confirmation)."""
-    handler = _get_handoff_handler()
+    with _handoff_lock:
+        handler = _get_handoff_handler()
 
-    result = handler.call_tool("handoff_to_agent", {
-        "target_agent": target_agent,
-        "user_goal": user_goal,
-        "handoff_reason": handoff_reason,
-        "relevant_details": relevant_details or [],
-        "relevant_paths": relevant_paths or [],
-        "open_ui": open_ui,
-    })
+        result = handler.call_tool("handoff_to_agent", {
+            "target_agent": target_agent,
+            "user_goal": user_goal,
+            "handoff_reason": handoff_reason,
+            "relevant_details": relevant_details or [],
+            "relevant_paths": relevant_paths or [],
+            "open_ui": open_ui,
+        })
 
-    # Store pending handoff in global state
-    if handler.pending_handoff:
-        _handoff_state["pending_handoff"] = handler.pending_handoff
+        # Store pending handoff in global state
+        if handler.pending_handoff:
+            _handoff_state["pending_handoff"] = handler.pending_handoff
 
     return result
 
@@ -3827,21 +3901,22 @@ def _handle_handoff_confirm(_db: Database, *, handoff_id: str) -> dict[str, Any]
     """Confirm a pending handoff."""
     from reos.handoff import AgentType, SharedToolHandler
 
-    handler = _get_handoff_handler()
-    result = handler.confirm_handoff(handoff_id)
+    with _handoff_lock:
+        handler = _get_handoff_handler()
+        result = handler.confirm_handoff(handoff_id)
 
-    if result.get("status") == "confirmed":
-        # Update current agent
-        new_agent = result["target_agent"]
-        _handoff_state["current_agent"] = new_agent
-        _handoff_state["pending_handoff"] = None
+        if result.get("status") == "confirmed":
+            # Update current agent
+            new_agent = result["target_agent"]
+            _handoff_state["current_agent"] = new_agent
+            _handoff_state["pending_handoff"] = None
 
-        # Create new handler for new agent
-        _handoff_state["handler"] = SharedToolHandler(
-            current_agent=AgentType(new_agent)
-        )
+            # Create new handler for new agent
+            _handoff_state["handler"] = SharedToolHandler(
+                current_agent=AgentType(new_agent)
+            )
 
-        result["message"] = f"Switched to {new_agent}. How can I help?"
+            result["message"] = f"Switched to {new_agent}. How can I help?"
 
     return result
 
@@ -3853,13 +3928,14 @@ def _handle_handoff_reject(
     reason: str | None = None,
 ) -> dict[str, Any]:
     """Reject a pending handoff."""
-    handler = _get_handoff_handler()
-    result = handler.reject_handoff(
-        handoff_id,
-        reason=reason or "User chose to stay with current agent",
-    )
+    with _handoff_lock:
+        handler = _get_handoff_handler()
+        result = handler.reject_handoff(
+            handoff_id,
+            reason=reason or "User chose to stay with current agent",
+        )
 
-    _handoff_state["pending_handoff"] = None
+        _handoff_state["pending_handoff"] = None
 
     return result
 
@@ -3872,7 +3948,10 @@ def _handle_handoff_detect(
     """Detect if a message should trigger a handoff suggestion."""
     from reos.handoff import detect_handoff_need, AgentType
 
-    current = AgentType(_handoff_state["current_agent"])
+    with _handoff_lock:
+        current_agent = _handoff_state["current_agent"]
+
+    current = AgentType(current_agent)
     decision = detect_handoff_need(current, message)
 
     return decision.to_dict()
@@ -3889,12 +3968,13 @@ def _handle_handoff_switch(
     if target_agent not in ["cairn", "reos", "riva"]:
         return {"status": "error", "reason": f"Unknown agent: {target_agent}"}
 
-    old_agent = _handoff_state["current_agent"]
-    _handoff_state["current_agent"] = target_agent
-    _handoff_state["pending_handoff"] = None
-    _handoff_state["handler"] = SharedToolHandler(
-        current_agent=AgentType(target_agent)
-    )
+    with _handoff_lock:
+        old_agent = _handoff_state["current_agent"]
+        _handoff_state["current_agent"] = target_agent
+        _handoff_state["pending_handoff"] = None
+        _handoff_state["handler"] = SharedToolHandler(
+            current_agent=AgentType(target_agent)
+        )
 
     agent_info = AGENT_DESCRIPTIONS[AgentType(target_agent)]
 
@@ -3916,7 +3996,12 @@ def _handle_handoff_manifest(
     """Get tool manifest for an agent."""
     from reos.handoff import get_agent_manifest, AgentType
 
-    target = agent or _handoff_state["current_agent"]
+    if agent:
+        target = agent
+    else:
+        with _handoff_lock:
+            target = _handoff_state["current_agent"]
+
     manifest = get_agent_manifest(AgentType(target))
 
     return manifest
