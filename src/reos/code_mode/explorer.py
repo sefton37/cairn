@@ -250,8 +250,13 @@ class StepExplorer:
             return alternatives
 
         except Exception as e:
-            logger.warning("Failed to generate alternatives: %s", e)
+            logger.warning(
+                "Failed to generate alternatives: %s. Exploration will be limited.",
+                e,
+                exc_info=True,
+            )
             # Return empty list on failure - caller will handle
+            # Note: This is a silent degradation - callers should be aware
             return []
 
     def _build_context(

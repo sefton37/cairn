@@ -200,6 +200,74 @@ If the AI tries to "fix" your nginx install by deleting system logs? **Blocked.*
 
 ---
 
+## Local-First Reliability Philosophy
+
+ReOS is built for a fundamentally different environment than commercial AI coding tools.
+
+### The Reality of Local Models
+
+Commercial tools like Cursor and Copilot assume:
+- GPT-4/Claude-level reliability (valid JSON 99%+ of the time)
+- Large context windows that preserve all details
+- Consistent instruction following
+- Fast, always-available cloud infrastructure
+
+Local models (Ollama + Mistral/Llama/etc.) have different characteristics:
+- JSON formatting may fail more often
+- Smaller context windows = lost details
+- Variable instruction following quality
+- Need explicit examples, not just instructions
+
+**ReOS is designed for unreliable LLM responses as the norm, not the exception.**
+
+### Graceful Degradation, Not Quality Cliffs
+
+Every layer of ReOS produces useful output. When the LLM fails, we don't fall off a cliff:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ TIER 1: LLM Success                                                  │
+│ ├── Full intent understanding                                        │
+│ ├── Sophisticated decomposition                                      │
+│ └── Generated code with tests                                        │
+├─────────────────────────────────────────────────────────────────────┤
+│ TIER 2: LLM Partial Success                                          │
+│ ├── Intent understood, JSON malformed                                │
+│ ├── Smart heuristic fallback with real implementations               │
+│ └── User notified of degraded mode                                   │
+├─────────────────────────────────────────────────────────────────────┤
+│ TIER 3: LLM Failure                                                  │
+│ ├── Pattern-based code generation (factorial, fibonacci, etc.)       │
+│ ├── Template-driven scaffolding                                      │
+│ └── Transparent "needs completion" markers                           │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Execution is Ground Truth
+
+ReOS doesn't trust the LLM's claim that code works. We verify:
+
+1. **Syntax Check**: Code parses without errors
+2. **Import Check**: Module can be imported
+3. **Function Check**: Functions are callable
+4. **Test Execution**: Actual tests run and pass
+
+*"Verified" means "executed successfully," not "file was created."*
+
+### Transparency Over Hidden Failures
+
+When quality degrades, the user knows:
+
+```
+[QUALITY: TIER 1] ✓ LLM generated verified code
+[QUALITY: TIER 2] ⚠ Heuristic fallback (LLM JSON failed)
+[QUALITY: TIER 3] ⚠ Pattern-based generation (needs review)
+```
+
+This philosophy—build for unreliability, degrade gracefully, verify with execution, be transparent—is what makes local-first AI actually work.
+
+---
+
 ## Quick Start
 
 ```bash

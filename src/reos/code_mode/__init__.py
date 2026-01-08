@@ -125,6 +125,20 @@ from reos.code_mode.explorer import (
     ExplorationState,
 )
 
+# Quality Tier Tracking - Transparency over hidden failures
+from reos.code_mode.quality import (
+    QualityTier,
+    QualityTracker,
+    QualityEvent,
+    OperationTracker,
+    track_quality,
+    quality_context,
+    get_current_tracker,
+    set_current_tracker,
+    format_quality_for_log,
+    TIER_DISPLAY,
+)
+
 # Repository Map - REMOVED for simplification
 # To re-enable, restore repo_map.py, symbol_extractor.py, dependency_graph.py
 
@@ -218,6 +232,17 @@ __all__ = [
     "StepExplorer",
     "StepAlternative",
     "ExplorationState",
+    # Quality Tracking
+    "QualityTier",
+    "QualityTracker",
+    "QualityEvent",
+    "OperationTracker",
+    "track_quality",
+    "quality_context",
+    "get_current_tracker",
+    "set_current_tracker",
+    "format_quality_for_log",
+    "TIER_DISPLAY",
     # Optional
     "ProjectMemoryStore",
     "ProjectDecision",

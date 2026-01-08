@@ -300,8 +300,12 @@ Respond with ONLY one word: CODE or SYSADMIN"""
                     reason="LLM classified as sysadmin request",
                 )
 
-        except Exception:
-            # LLM classification failed, return None to use default
-            pass
+        except Exception as e:
+            # LLM classification failed - log the error, return None to use default
+            logger.warning(
+                "LLM classification failed: %s. Falling back to heuristic routing.",
+                e,
+                exc_info=True,
+            )
 
         return None

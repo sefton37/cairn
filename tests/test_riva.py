@@ -547,10 +547,13 @@ class TestExecuteAction:
         mock_ctx.sandbox.write_file.assert_not_called()
 
     def test_execute_edit_file(self, mock_ctx):
+        # Mock read_file to return existing content (for merge logic)
+        mock_ctx.sandbox.read_file.return_value = "# existing content"
+
         action = Action(ActionType.EDIT, "new content", "existing.py")
         result = execute_action(action, mock_ctx)
 
-        assert "Edited file" in result
+        assert "Edited file" in result or "Merged" in result
         mock_ctx.sandbox.write_file.assert_called_once()
 
     def test_execute_delete_file(self, mock_ctx):

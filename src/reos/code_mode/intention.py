@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any, Callable, Protocol, TypeVar
 if TYPE_CHECKING:
     from reos.code_mode.sandbox import CodeSandbox
     from reos.code_mode.session_logger import SessionLogger
+    from reos.code_mode.quality import QualityTracker
     from reos.providers import LLMProvider
 
 logger = logging.getLogger(__name__)
@@ -403,6 +404,7 @@ class WorkContext:
     llm: "LLMProvider | None"
     checkpoint: HumanCheckpoint | AutoCheckpoint
     session_logger: "SessionLogger | None" = None
+    quality_tracker: "QualityTracker | None" = None  # Track quality tiers
     max_cycles_per_intention: int = 5
     max_depth: int = 10
 
@@ -530,13 +532,16 @@ Rules:
 3. Together, completing all sub-tasks should satisfy the parent
 4. Each sub-task should be simpler than the parent
 5. Include acceptance criteria for each sub-task
+6. IMPORTANT: If multiple functions belong in the same file, mention the filename in each sub-task
+7. First sub-task should create the file, subsequent tasks should ADD to that same file
 
 Respond with ONLY a JSON array of objects with "what" and "acceptance" fields.
 
-Example response format:
+Example - creating multiple functions in one module:
 [
-  {"what": "Create the main module file", "acceptance": "Module file exists with correct structure"},
-  {"what": "Add the core functions", "acceptance": "All functions implemented and callable"}
+  {"what": "Create math_utils.py with factorial function", "acceptance": "math_utils.py exists with working factorial()"},
+  {"what": "Add fibonacci function to math_utils.py", "acceptance": "fibonacci() added to math_utils.py and works"},
+  {"what": "Add is_prime function to math_utils.py", "acceptance": "is_prime() added to math_utils.py and works"}
 ]"""
 
     user_prompt = f"""Decompose this intention into 2-5 smaller, verifiable sub-intentions:
@@ -544,7 +549,8 @@ Example response format:
 INTENTION: {intention.what}
 ACCEPTANCE: {intention.acceptance}
 
-Provide sub-intentions that are concrete and testable."""
+Provide sub-intentions that are concrete and testable.
+If creating multiple functions for one module, reference the SAME filename in each sub-task."""
 
     try:
         response = ctx.llm.chat_json(
@@ -585,6 +591,16 @@ Provide sub-intentions that are concrete and testable."""
                 )
                 children.append(child)
 
+        # Track quality: LLM success
+        if ctx.quality_tracker:
+            from reos.code_mode.quality import QualityTier
+            ctx.quality_tracker.record_event(
+                operation="decomposition",
+                tier=QualityTier.LLM_SUCCESS,
+                reason=f"LLM generated {len(children)} sub-intentions",
+                context={"intention": intention.what[:50], "children_count": len(children)},
+            )
+
         # Human/auto confirmation
         if ctx.checkpoint.approve_decomposition(intention, children):
             if ctx.on_decomposition:
@@ -592,6 +608,14 @@ Provide sub-intentions that are concrete and testable."""
             return children
         else:
             logger.warning("Decomposition rejected, using heuristic")
+            if ctx.quality_tracker:
+                from reos.code_mode.quality import QualityTier
+                ctx.quality_tracker.record_event(
+                    operation="decomposition",
+                    tier=QualityTier.HEURISTIC_FALLBACK,
+                    reason="LLM decomposition rejected by checkpoint",
+                    context={"intention": intention.what[:50]},
+                )
             return _heuristic_decompose(intention, ctx)
 
     except Exception as e:
@@ -604,6 +628,16 @@ Provide sub-intentions that are concrete and testable."""
                     "intention_what": intention.what[:100],
                     "fallback": "heuristic_decompose",
                 })
+        # Track quality: fallback to heuristic
+        if ctx.quality_tracker:
+            from reos.code_mode.quality import QualityTier
+            ctx.quality_tracker.record_event(
+                operation="decomposition",
+                tier=QualityTier.HEURISTIC_FALLBACK,
+                reason=f"LLM decomposition failed: {type(e).__name__}",
+                exception=e,
+                context={"intention": intention.what[:50]},
+            )
         return _heuristic_decompose(intention, ctx)
 
 
@@ -665,35 +699,54 @@ def determine_next_action(intention: Intention, ctx: WorkContext) -> tuple[str, 
             if cycle.reflection:
                 history += f"\n   Reflection: {cycle.reflection[:100]}"
 
+    # Check what files already exist in the repo
+    existing_files = []
+    try:
+        py_files = ctx.sandbox.glob("**/*.py", max_results=20)
+        existing_files = [str(f) for f in py_files]
+    except Exception:
+        pass
+
+    existing_context = ""
+    if existing_files:
+        existing_context = f"\n\nExisting files in repo: {', '.join(existing_files[:10])}"
+        existing_context += "\nIMPORTANT: If adding to an existing file, use 'edit' not 'create'."
+
     system_prompt = """You are determining the next action to satisfy an intention.
+
+CRITICAL RULES:
+1. Write COMPLETE, WORKING code - never use 'pass', 'TODO', or placeholders
+2. If a file already exists and you need to add to it, use "edit" not "create"
+3. Include full function implementations with actual logic
+4. For algorithms (factorial, fibonacci, etc.), write the actual algorithm
 
 Respond with ONLY a JSON object:
 {
   "thought": "What I'm about to try and why",
   "action_type": "one of: command, edit, create, delete, query",
-  "content": "The actual command/code/query",
+  "content": "The actual command/code - MUST be complete working code",
   "target": "file path if applicable, or null"
 }
 
 Valid action_type values:
 - "command": Run a shell command
-- "edit": Modify an existing file
-- "create": Create a new file
+- "edit": Modify/append to an existing file (USE THIS if file exists!)
+- "create": Create a new file (only if file doesn't exist)
 - "delete": Delete a file
-- "query": Ask a question or search
+- "query": Search the codebase
 
-Example response:
-{"thought": "Creating the main module file", "action_type": "create", "content": "def main():\\n    pass", "target": "main.py"}
+Example - creating a factorial function:
+{"thought": "Implementing factorial with recursion", "action_type": "create", "content": "def factorial(n):\\n    if n < 0:\\n        raise ValueError('n must be non-negative')\\n    if n <= 1:\\n        return 1\\n    return n * factorial(n - 1)", "target": "math_utils.py"}
 
-Be specific and concrete. Prefer small, testable actions."""
+Be specific and concrete. Write REAL implementations, not stubs."""
 
     user_prompt = f"""Determine the next action for this intention:
 
 INTENTION: {intention.what}
 ACCEPTANCE: {intention.acceptance}
-{history}
+{history}{existing_context}
 
-What should we try next?"""
+What should we try next? Remember: write COMPLETE working code, not placeholders."""
 
     try:
         response = ctx.llm.chat_json(
@@ -718,6 +771,17 @@ What should we try next?"""
             content=data.get("content", ""),
             target=data.get("target"),
         )
+
+        # Track quality: LLM success
+        if ctx.quality_tracker:
+            from reos.code_mode.quality import QualityTier
+            ctx.quality_tracker.record_event(
+                operation="action_determination",
+                tier=QualityTier.LLM_SUCCESS,
+                reason=f"LLM generated {action.type.value} action",
+                context={"intention": intention.what[:50], "action_type": action.type.value},
+            )
+
         return thought, action
 
     except Exception as e:
@@ -730,6 +794,16 @@ What should we try next?"""
                     "intention_what": intention.what[:100],
                     "fallback": "heuristic_action",
                 })
+        # Track quality: fallback to heuristic
+        if ctx.quality_tracker:
+            from reos.code_mode.quality import QualityTier
+            ctx.quality_tracker.record_event(
+                operation="action_determination",
+                tier=QualityTier.HEURISTIC_FALLBACK,
+                reason=f"LLM action determination failed: {type(e).__name__}",
+                exception=e,
+                context={"intention": intention.what[:50]},
+            )
         return _heuristic_action(intention, ctx)
 
 
@@ -737,19 +811,51 @@ def _heuristic_action(intention: Intention, ctx: WorkContext) -> tuple[str, Acti
     """Fallback heuristic action when LLM unavailable."""
     what_lower = intention.what.lower()
 
-    # File creation
-    if any(w in what_lower for w in ["create", "write", "add file", "new file"]):
-        # Try to extract filename
-        words = intention.what.split()
-        for i, w in enumerate(words):
-            if "." in w and len(w) < 50:  # Looks like a filename
+    # Check for existing files to determine create vs edit
+    existing_files = set()
+    existing_basenames = set()
+    try:
+        py_files = ctx.sandbox.glob("**/*.py", max_results=20)
+        existing_files = {str(f) for f in py_files}
+        # Also track just the basenames for easier matching
+        import os
+        existing_basenames = {os.path.basename(str(f)) for f in py_files}
+    except Exception:
+        pass
+
+    # Try to extract filename from intention
+    target_file = None
+    words = intention.what.split()
+    for w in words:
+        if "." in w and len(w) < 50:  # Looks like a filename
+            target_file = w.strip("'\"(),")
+            break
+
+    # Generate actual code based on common patterns
+    content = _generate_heuristic_code(intention.what)
+
+    # File creation or edit
+    if any(w in what_lower for w in ["create", "write", "add", "implement"]):
+        if target_file:
+            # Check if file exists - use edit instead of create
+            # Compare both full path and basename
+            file_exists = (
+                target_file in existing_files or
+                target_file in existing_basenames or
+                any(target_file in f for f in existing_files)
+            )
+            if file_exists:
                 return (
-                    f"Creating file {w}",
-                    Action(ActionType.CREATE, "# TODO: implement", w)
+                    f"Adding to existing file {target_file}",
+                    Action(ActionType.EDIT, content, target_file)
                 )
+            return (
+                f"Creating file {target_file}",
+                Action(ActionType.CREATE, content, target_file)
+            )
         return (
             "Creating new file",
-            Action(ActionType.CREATE, "# TODO: implement", "new_file.py")
+            Action(ActionType.CREATE, content, "new_file.py")
         )
 
     # Running tests
@@ -764,6 +870,87 @@ def _heuristic_action(intention: Intention, ctx: WorkContext) -> tuple[str, Acti
         "Exploring codebase for context",
         Action(ActionType.QUERY, f"Search for: {intention.what[:50]}", None)
     )
+
+
+def _generate_heuristic_code(intention_what: str) -> str:
+    """Generate actual code based on common patterns in the intention."""
+    what_lower = intention_what.lower()
+
+    # Check for multiple functions mentioned and combine them
+    functions = []
+
+    if "factorial" in what_lower:
+        functions.append('''def factorial(n):
+    """Calculate the factorial of n."""
+    if n < 0:
+        raise ValueError("n must be non-negative")
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)''')
+
+    if "fibonacci" in what_lower:
+        functions.append('''def fibonacci(n):
+    """Return the nth Fibonacci number."""
+    if n < 0:
+        raise ValueError("n must be non-negative")
+    if n <= 1:
+        return n
+    a, b = 0, 1
+    for _ in range(2, n + 1):
+        a, b = b, a + b
+    return b''')
+
+    if "prime" in what_lower or "is_prime" in what_lower:
+        functions.append('''def is_prime(n):
+    """Return True if n is a prime number."""
+    if n < 2:
+        return False
+    if n == 2:
+        return True
+    if n % 2 == 0:
+        return False
+    for i in range(3, int(n ** 0.5) + 1, 2):
+        if n % i == 0:
+            return False
+    return True''')
+
+    # If we found multiple functions, combine them
+    if functions:
+        return '\n\n\n'.join(functions)
+
+    if "add" in what_lower and "subtract" in what_lower:
+        # Calculator-like module
+        return '''def add(a, b):
+    """Return the sum of a and b."""
+    return a + b
+
+def subtract(a, b):
+    """Return a minus b."""
+    return a - b
+
+def multiply(a, b):
+    """Return the product of a and b."""
+    return a * b
+
+def divide(a, b):
+    """Return a divided by b."""
+    if b == 0:
+        raise ValueError("Cannot divide by zero")
+    return a / b'''
+
+    # Try to extract a function name and generate a stub with docstring
+    import re
+    func_match = re.search(r'(?:function|def|implement)\s+(\w+)', what_lower)
+    if func_match:
+        func_name = func_match.group(1)
+        return f'''def {func_name}(*args, **kwargs):
+    """Implementation of {func_name}."""
+    # TODO: Implement {func_name}
+    raise NotImplementedError("{func_name} not yet implemented")'''
+
+    # Default: minimal module structure
+    return '''# Module implementation
+# TODO: Add implementation based on requirements'''
 
 
 def _strip_markdown_code_block(content: str) -> str:
@@ -786,6 +973,84 @@ def _strip_markdown_code_block(content: str) -> str:
         return match.group(1)
 
     return content
+
+
+def _merge_python_content(existing: str, new_content: str) -> str:
+    """Intelligently merge new Python code into existing content.
+
+    Appends new functions/classes without duplicating existing ones.
+    """
+    import re
+
+    # Extract function and class names from existing content
+    existing_defs = set(re.findall(r'^(?:def|class)\s+(\w+)', existing, re.MULTILINE))
+
+    # Extract function and class names from new content
+    new_defs = re.findall(r'^(?:def|class)\s+(\w+)', new_content, re.MULTILINE)
+
+    # If new content defines something already in existing, it's a replacement
+    # If it's entirely new, append it
+    has_overlap = any(name in existing_defs for name in new_defs)
+
+    if has_overlap:
+        # New content redefines existing functions - could be an update
+        # For now, append anyway (user might want both versions during development)
+        # A smarter version could replace the specific functions
+        pass
+
+    # Check if new content has any new definitions
+    new_unique_defs = [name for name in new_defs if name not in existing_defs]
+
+    if not new_unique_defs and not new_content.strip():
+        # Nothing new to add
+        return existing
+
+    # Append new content, handling imports specially
+    new_lines = new_content.strip().split('\n')
+    existing_lines = existing.strip().split('\n')
+
+    # Extract imports from new content
+    new_imports = []
+    new_code = []
+    for line in new_lines:
+        if line.startswith(('import ', 'from ')):
+            if line not in existing:
+                new_imports.append(line)
+        else:
+            new_code.append(line)
+
+    # Build merged content
+    result_lines = []
+
+    # First, existing imports
+    for line in existing_lines:
+        result_lines.append(line)
+        # After the last import, add new imports
+        if line.startswith(('import ', 'from ')):
+            continue
+
+    # Find where to insert new imports (after existing imports)
+    insert_pos = 0
+    for i, line in enumerate(result_lines):
+        if line.startswith(('import ', 'from ')):
+            insert_pos = i + 1
+        elif line.strip() and not line.startswith('#'):
+            break
+
+    # Insert new imports
+    for imp in new_imports:
+        result_lines.insert(insert_pos, imp)
+        insert_pos += 1
+
+    # Append new code at the end
+    if new_code:
+        # Add blank lines before new code
+        if result_lines and result_lines[-1].strip():
+            result_lines.append('')
+            result_lines.append('')
+        result_lines.extend(new_code)
+
+    return '\n'.join(result_lines)
 
 
 def execute_action(action: Action, ctx: WorkContext) -> str:
@@ -828,16 +1093,37 @@ def execute_action(action: Action, ctx: WorkContext) -> str:
 
         elif action.type == ActionType.EDIT:
             if action.target:
-                # Strip markdown code blocks and overwrite
+                # Strip markdown code blocks
                 clean_content = _strip_markdown_code_block(action.content)
-                ctx.sandbox.write_file(action.target, clean_content)
-                if ctx.session_logger:
-                    ctx.session_logger.log_info("riva", "file_edited",
-                        f"Edited file: {action.target}", {
-                            "target": action.target,
-                            "content_length": len(clean_content),
-                        })
-                return f"Edited file: {action.target}"
+
+                # Try to read existing content and append intelligently
+                existing_content = ""
+                try:
+                    existing_content = ctx.sandbox.read_file(action.target)
+                except Exception:
+                    pass  # File might not exist yet
+
+                if existing_content:
+                    # Append new content if it contains new functions/classes
+                    merged = _merge_python_content(existing_content, clean_content)
+                    ctx.sandbox.write_file(action.target, merged)
+                    if ctx.session_logger:
+                        ctx.session_logger.log_info("riva", "file_edited",
+                            f"Merged content into {action.target}", {
+                                "target": action.target,
+                                "original_length": len(existing_content),
+                                "new_length": len(merged),
+                            })
+                    return f"Edited file: {action.target} (merged)"
+                else:
+                    ctx.sandbox.write_file(action.target, clean_content)
+                    if ctx.session_logger:
+                        ctx.session_logger.log_info("riva", "file_edited",
+                            f"Created file: {action.target}", {
+                                "target": action.target,
+                                "content_length": len(clean_content),
+                            })
+                    return f"Edited file: {action.target}"
             return "Error: No target specified for edit action"
 
         elif action.type == ActionType.DELETE:
