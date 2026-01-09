@@ -137,6 +137,52 @@ ReOS: I'll stop these containers:
 - Work with files
 - Run shell commands (with safety checks)
 
+**Shell Integration Philosophy:**
+
+ReOS shell integration follows one core principle: **Never obstruct Linux**.
+
+When you install a package and apt asks `Do you want to continue? [Y/n]`, you type Y. That's how Linux works. ReOS enhances your terminal with natural language - it never breaks the normal flow.
+
+This means:
+- Commands run with full terminal access (stdin/stdout/stderr connected)
+- Interactive prompts work normally - you can always respond
+- ReOS adds capability, never removes it
+- Prefix with `!` to bypass ReOS entirely: `!apt install vim`
+
+```bash
+# Enable shell integration (add to ~/.bashrc)
+source /path/to/ReOS/scripts/reos-shell-integration.sh
+
+# Now just type naturally
+$ install gimp
+[ReOS understands and runs: sudo apt install gimp]
+[apt prompts for Y/n - you type normally]
+```
+
+**Context-Aware Proposals (Parse Gate):**
+
+ReOS checks your system before proposing commands - it knows what's installed:
+
+```
+$ run gimp                           # gimp IS installed
+→ Proposal: gimp                     # Just run it
+
+$ run gimp                           # gimp NOT installed
+→ Proposal: sudo apt install gimp    # Offer to install
+
+$ picture editor                     # Natural language
+→ Found: GIMP (GNU Image Manipulation Program)
+→ Proposal: gimp
+```
+
+How it works:
+1. **Intent Analysis** - Detects verbs: run, install, start, stop, etc.
+2. **System Check** - Queries PATH, packages, services
+3. **Semantic Search** - Finds programs by description ("picture editor" → GIMP)
+4. **Smart Proposal** - Context-aware command suggestion
+
+See [Parse Gate Architecture](docs/parse-gate.md) for technical details.
+
 ### RIVA - The Code Helper
 
 A methodical coding assistant that verifies what you want before acting, writes tests first, and actually runs code to verify it works.
@@ -325,6 +371,12 @@ We believe AI should be:
 - [x] Service, package, container management
 - [x] Safety layer with command blocking
 - [x] Circuit breakers
+- [x] **Parse Gate** - Context-aware command proposals
+  - [x] Intent pattern matching (run/install/service verbs)
+  - [x] System state lookup (PATH, packages, services)
+  - [x] FTS5 full-text search for packages/apps
+  - [x] Semantic vector search (synonym matching)
+  - [x] Three-layer safety extraction
 
 ### RIVA (Code Agent)
 - [x] Intent discovery
@@ -365,6 +417,7 @@ We believe AI should be:
 - [Technical Roadmap](docs/tech-roadmap.md) - Development plans
 - [Security Design](docs/security.md) - How we protect your system
 - [CAIRN Architecture](docs/cairn_architecture.md) - Attention minder design
+- [Parse Gate Architecture](docs/parse-gate.md) - Context-aware shell proposals
 - [The Play System](docs/the-play.md) - Knowledge organization
 
 ---
