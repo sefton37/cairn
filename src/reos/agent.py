@@ -26,6 +26,9 @@ from .quality import (
     DecisionType,
     QualityLevel,
 )
+from .cairn.extended_thinking import CAIRNExtendedThinking, ExtendedThinkingTrace
+from .cairn.identity import build_identity_model
+from .cairn.store import CairnStore
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +104,8 @@ class ChatResponse:
     confidence: float = 1.0
     evidence_summary: str = ""
     has_uncertainties: bool = False
+    # Extended thinking trace (CAIRN)
+    extended_thinking_trace: dict[str, Any] | None = None
 
 
 class ChatAgent:
@@ -843,6 +848,7 @@ class ChatAgent:
         *,
         conversation_id: str | None = None,
         agent_type: str | None = None,
+        extended_thinking: bool | None = None,
     ) -> ChatResponse:
         """Respond to user message with conversation context.
 
@@ -852,6 +858,10 @@ class ChatAgent:
                            If None, creates a new conversation.
             agent_type: The agent type ('cairn', 'riva', 'reos') for persona selection.
                        If None, uses the active persona from settings.
+            extended_thinking: Enable extended thinking mode.
+                             If None, auto-detects based on prompt complexity.
+                             If True, always runs extended thinking.
+                             If False, never runs extended thinking.
 
         Returns:
             ChatResponse with answer and metadata
@@ -971,6 +981,20 @@ class ChatAgent:
         top_p = float(persona.get("top_p") or 0.9)
         tool_call_limit = int(persona.get("tool_call_limit") or 3)
         tool_call_limit = max(0, min(6, tool_call_limit))
+
+        # Extended Thinking (CAIRN only)
+        extended_thinking_trace: dict[str, Any] | None = None
+        if agent_type == "cairn":
+            try:
+                trace = self._run_extended_thinking(
+                    user_text=user_text,
+                    extended_thinking=extended_thinking,
+                    conversation_id=conversation_id,
+                )
+                if trace is not None:
+                    extended_thinking_trace = trace.to_dict()
+            except Exception as e:
+                logger.warning("Extended thinking failed: %s", e)
 
         persona_system = str(persona.get("system_prompt") or "")
         persona_context = str(persona.get("default_context") or "")
@@ -1119,6 +1143,7 @@ class ChatAgent:
             confidence=confidence,
             evidence_summary=evidence_summary,
             has_uncertainties=has_uncertainties,
+            extended_thinking_trace=extended_thinking_trace,
         )
 
     def respond_text(self, user_text: str) -> str:
@@ -1237,6 +1262,90 @@ class ChatAgent:
         except Exception as e:
             logging.getLogger(__name__).debug("Could not get system snapshot: %s", e)
             return {}
+
+    def _run_extended_thinking(
+        self,
+        user_text: str,
+        extended_thinking: bool | None,
+        conversation_id: str,
+    ) -> ExtendedThinkingTrace | None:
+        """Run CAIRN extended thinking on a prompt.
+
+        Args:
+            user_text: The user's prompt
+            extended_thinking: None=auto-detect, True=always, False=never
+            conversation_id: For persistence
+
+        Returns:
+            ExtendedThinkingTrace if ran, None otherwise
+        """
+        from pathlib import Path
+
+        try:
+            # Get data directory for CAIRN store
+            data_dir = Path(self._db.db_path).parent / ".reos-data"
+            cairn_db_path = data_dir / "cairn.db"
+
+            # Build identity model from The Play
+            cairn_store = CairnStore(cairn_db_path)
+            identity = build_identity_model(store=cairn_store)
+
+            if identity is None or not identity.facets:
+                logger.debug("No identity model available for extended thinking")
+                return None
+
+            llm = self._get_provider()
+
+            # Create extended thinking engine
+            engine = CAIRNExtendedThinking(
+                identity=identity,
+                llm=llm,
+                max_depth=3,
+            )
+
+            # Determine if we should run extended thinking
+            should_run = False
+            if extended_thinking is True:
+                # Explicitly requested
+                should_run = True
+            elif extended_thinking is False:
+                # Explicitly disabled
+                should_run = False
+            else:
+                # Auto-detect
+                should_run = engine.should_auto_trigger(user_text)
+
+            if not should_run:
+                return None
+
+            logger.info("Running extended thinking for prompt: %s...", user_text[:50])
+
+            # Run extended thinking
+            trace = engine.think(user_text)
+
+            # Persist the trace
+            try:
+                import json
+                cairn_store.save_extended_thinking_trace(
+                    trace_id=trace.trace_id,
+                    conversation_id=conversation_id,
+                    message_id=trace.trace_id,  # Use trace ID as message ID placeholder
+                    prompt=trace.prompt,
+                    started_at=trace.started_at,
+                    completed_at=trace.completed_at,
+                    trace_json=json.dumps(trace.to_dict()),
+                    summary=trace.summary(),
+                    decision=trace.decision,
+                    final_confidence=trace.final_confidence,
+                )
+            except Exception as e:
+                logger.warning("Failed to persist extended thinking trace: %s", e)
+
+            return trace
+
+        except Exception as e:
+            logger.warning("Extended thinking setup failed: %s", e)
+            return None
 
     def _get_play_context(self) -> str:
         """Build context from The Play hierarchy.

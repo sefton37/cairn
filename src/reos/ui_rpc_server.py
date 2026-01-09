@@ -218,6 +218,7 @@ def _handle_chat_respond(
     conversation_id: str | None = None,
     use_code_mode: bool = False,
     agent_type: str | None = None,
+    extended_thinking: bool | None = None,
 ) -> dict[str, Any]:
     agent = ChatAgent(db=db, use_code_mode=use_code_mode)
 
@@ -277,7 +278,12 @@ def _handle_chat_respond(
                         f"{intent.reference_term} ({resolved.get('type', '')}: {resolved.get('name', resolved.get('id', ''))})"
                     )
 
-    response = agent.respond(text, conversation_id=conversation_id, agent_type=agent_type)
+    response = agent.respond(
+        text,
+        conversation_id=conversation_id,
+        agent_type=agent_type,
+        extended_thinking=extended_thinking,
+    )
     return {
         "answer": response.answer,
         "conversation_id": response.conversation_id,
@@ -286,6 +292,7 @@ def _handle_chat_respond(
         "tool_calls": response.tool_calls,
         "thinking_steps": response.thinking_steps,
         "pending_approval_id": response.pending_approval_id,
+        "extended_thinking_trace": response.extended_thinking_trace,
     }
 
 
@@ -4453,13 +4460,23 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
             conversation_id = params.get("conversation_id")
             use_code_mode = params.get("use_code_mode", False)  # Default is conversational (CAIRN)
             agent_type = params.get("agent_type")  # 'cairn', 'riva', 'reos', or None
+            extended_thinking = params.get("extended_thinking")  # None=auto, True=force, False=disable
             if not isinstance(text, str) or not text.strip():
                 raise RpcError(code=-32602, message="text is required")
             if conversation_id is not None and not isinstance(conversation_id, str):
                 raise RpcError(code=-32602, message="conversation_id must be a string or null")
             if agent_type is not None and not isinstance(agent_type, str):
                 raise RpcError(code=-32602, message="agent_type must be a string or null")
-            result = _handle_chat_respond(db, text=text, conversation_id=conversation_id, use_code_mode=use_code_mode, agent_type=agent_type)
+            if extended_thinking is not None and not isinstance(extended_thinking, bool):
+                raise RpcError(code=-32602, message="extended_thinking must be a boolean or null")
+            result = _handle_chat_respond(
+                db,
+                text=text,
+                conversation_id=conversation_id,
+                use_code_mode=use_code_mode,
+                agent_type=agent_type,
+                extended_thinking=extended_thinking,
+            )
             return _jsonrpc_result(req_id=req_id, result=result)
 
         if method == "intent/detect":

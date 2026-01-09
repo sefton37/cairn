@@ -140,6 +140,34 @@ class CairnStore:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+
+                -- Extended thinking traces (audit trail for CAIRN's reasoning)
+                CREATE TABLE IF NOT EXISTS extended_thinking_traces (
+                    trace_id TEXT PRIMARY KEY,
+                    conversation_id TEXT NOT NULL,
+                    message_id TEXT NOT NULL,
+                    prompt TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT,
+
+                    -- Serialized trace data
+                    trace_json TEXT NOT NULL,
+
+                    -- Quick-access summary fields
+                    understood_count INTEGER DEFAULT 0,
+                    ambiguous_count INTEGER DEFAULT 0,
+                    assumption_count INTEGER DEFAULT 0,
+                    tension_count INTEGER DEFAULT 0,
+                    final_confidence REAL,
+                    decision TEXT,
+
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_ext_thinking_conversation
+                    ON extended_thinking_traces(conversation_id);
+                CREATE INDEX IF NOT EXISTS idx_ext_thinking_decision
+                    ON extended_thinking_traces(decision);
             """)
 
     # =========================================================================
@@ -1293,3 +1321,181 @@ class CairnStore:
         """
         state = self.get_integration_state(integration_id)
         return state is not None and state["state"] == "active"
+
+    # =========================================================================
+    # Extended Thinking Traces
+    # =========================================================================
+
+    def save_extended_thinking_trace(
+        self,
+        trace_id: str,
+        conversation_id: str,
+        message_id: str,
+        prompt: str,
+        started_at: datetime,
+        completed_at: datetime | None,
+        trace_json: str,
+        summary: dict,
+        decision: str,
+        final_confidence: float,
+    ) -> None:
+        """Save an extended thinking trace.
+
+        Args:
+            trace_id: Unique trace identifier.
+            conversation_id: The conversation this belongs to.
+            message_id: The message this thinking was for.
+            prompt: The user's original prompt.
+            started_at: When thinking began.
+            completed_at: When thinking completed.
+            trace_json: Full serialized trace as JSON.
+            summary: Summary counts dict.
+            decision: The final decision (respond/ask/defer).
+            final_confidence: Overall confidence score.
+        """
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO extended_thinking_traces (
+                    trace_id, conversation_id, message_id, prompt,
+                    started_at, completed_at, trace_json,
+                    understood_count, ambiguous_count, assumption_count,
+                    tension_count, final_confidence, decision
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    trace_id,
+                    conversation_id,
+                    message_id,
+                    prompt,
+                    started_at.isoformat(),
+                    completed_at.isoformat() if completed_at else None,
+                    trace_json,
+                    summary.get("understood_count", 0),
+                    summary.get("ambiguous_count", 0),
+                    summary.get("assumption_count", 0),
+                    summary.get("tension_count", 0),
+                    final_confidence,
+                    decision,
+                ),
+            )
+
+    def get_extended_thinking_trace(self, trace_id: str) -> dict | None:
+        """Get an extended thinking trace by ID.
+
+        Args:
+            trace_id: The trace ID to look up.
+
+        Returns:
+            Full trace dict with parsed JSON, or None if not found.
+        """
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM extended_thinking_traces WHERE trace_id = ?",
+                (trace_id,),
+            ).fetchone()
+
+            if row is None:
+                return None
+
+            return {
+                "trace_id": row["trace_id"],
+                "conversation_id": row["conversation_id"],
+                "message_id": row["message_id"],
+                "prompt": row["prompt"],
+                "started_at": row["started_at"],
+                "completed_at": row["completed_at"],
+                "trace": json.loads(row["trace_json"]) if row["trace_json"] else {},
+                "understood_count": row["understood_count"],
+                "ambiguous_count": row["ambiguous_count"],
+                "assumption_count": row["assumption_count"],
+                "tension_count": row["tension_count"],
+                "final_confidence": row["final_confidence"],
+                "decision": row["decision"],
+            }
+
+    def list_extended_thinking_traces(
+        self,
+        conversation_id: str | None = None,
+        decision: str | None = None,
+        since: datetime | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        """List extended thinking traces with optional filters.
+
+        Args:
+            conversation_id: Filter by conversation.
+            decision: Filter by decision type.
+            since: Only return traces after this time.
+            limit: Maximum traces to return.
+
+        Returns:
+            List of trace summary dicts (without full trace_json).
+        """
+        conditions = []
+        params: list[Any] = []
+
+        if conversation_id is not None:
+            conditions.append("conversation_id = ?")
+            params.append(conversation_id)
+
+        if decision is not None:
+            conditions.append("decision = ?")
+            params.append(decision)
+
+        if since is not None:
+            conditions.append("started_at > ?")
+            params.append(since.isoformat())
+
+        where_clause = ""
+        if conditions:
+            where_clause = "WHERE " + " AND ".join(conditions)
+
+        query = f"""
+            SELECT
+                trace_id, conversation_id, message_id, prompt,
+                started_at, completed_at,
+                understood_count, ambiguous_count, assumption_count,
+                tension_count, final_confidence, decision
+            FROM extended_thinking_traces
+            {where_clause}
+            ORDER BY started_at DESC
+            LIMIT ?
+        """
+        params.append(limit)
+
+        with self._get_connection() as conn:
+            rows = conn.execute(query, params).fetchall()
+            return [
+                {
+                    "trace_id": row["trace_id"],
+                    "conversation_id": row["conversation_id"],
+                    "message_id": row["message_id"],
+                    "prompt": row["prompt"][:100] + "..." if len(row["prompt"]) > 100 else row["prompt"],
+                    "started_at": row["started_at"],
+                    "completed_at": row["completed_at"],
+                    "understood_count": row["understood_count"],
+                    "ambiguous_count": row["ambiguous_count"],
+                    "assumption_count": row["assumption_count"],
+                    "tension_count": row["tension_count"],
+                    "final_confidence": row["final_confidence"],
+                    "decision": row["decision"],
+                }
+                for row in rows
+            ]
+
+    def delete_extended_thinking_trace(self, trace_id: str) -> bool:
+        """Delete an extended thinking trace.
+
+        Args:
+            trace_id: The trace ID to delete.
+
+        Returns:
+            True if deleted, False if not found.
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM extended_thinking_traces WHERE trace_id = ?",
+                (trace_id,),
+            )
+            return cursor.rowcount > 0

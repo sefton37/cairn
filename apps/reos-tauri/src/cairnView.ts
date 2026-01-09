@@ -9,7 +9,7 @@
  */
 
 import { el } from './dom';
-import type { ChatRespondResult } from './types';
+import type { ChatRespondResult, ExtendedThinkingTrace, ThinkingNode, FacetCheck, Tension } from './types';
 
 interface CairnViewCallbacks {
   onSendMessage: (message: string) => Promise<void>;
@@ -32,6 +32,8 @@ interface MessageData {
   }>;
   messageId?: string;
   messageType?: string;
+  // Extended thinking trace for CAIRN deep reasoning
+  extendedThinkingTrace?: ExtendedThinkingTrace | null;
 }
 
 interface CairnViewState {
@@ -484,14 +486,21 @@ export function createCairnView(
   // ============ Functions ============
 
   function renderChatMessage(data: MessageData): HTMLElement {
-    const { role, content, thinkingSteps, toolCalls } = data;
+    const { role, content, thinkingSteps, toolCalls, extendedThinkingTrace } = data;
     const hasDetails = role === 'assistant' && ((thinkingSteps && thinkingSteps.length > 0) || (toolCalls && toolCalls.length > 0));
+    const hasExtendedThinking = role === 'assistant' && extendedThinkingTrace != null;
 
     const msgWrapper = el('div');
     msgWrapper.style.cssText = `
       max-width: 85%;
       ${role === 'user' ? 'align-self: flex-end; margin-left: auto;' : 'align-self: flex-start;'}
     `;
+
+    // Extended Thinking panel (above the message when present)
+    if (hasExtendedThinking && extendedThinkingTrace) {
+      const thinkingPanel = renderExtendedThinkingPanel(extendedThinkingTrace);
+      msgWrapper.appendChild(thinkingPanel);
+    }
 
     // Main message bubble
     const msgEl = el('div');
@@ -584,6 +593,226 @@ export function createCairnView(
     return msgWrapper;
   }
 
+  /** Render the Extended Thinking collapsible panel */
+  function renderExtendedThinkingPanel(trace: ExtendedThinkingTrace): HTMLElement {
+    const panel = el('div');
+    panel.className = 'extended-thinking-panel';
+    panel.style.cssText = `
+      margin-bottom: 12px;
+      border: 1px solid rgba(147, 51, 234, 0.3);
+      border-radius: 12px;
+      background: rgba(147, 51, 234, 0.05);
+      overflow: hidden;
+    `;
+
+    // Summary counts for collapsed view
+    const understoodCount = trace.understood?.length || 0;
+    const ambiguousCount = trace.ambiguous?.length || 0;
+    const assumptionCount = trace.assumptions?.length || 0;
+    const tensionCount = trace.tensions?.length || 0;
+    const confidencePercent = Math.round((trace.final_confidence || 0) * 100);
+
+    // Header (always visible)
+    const header = el('div');
+    header.style.cssText = `
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      background: rgba(147, 51, 234, 0.1);
+    `;
+    header.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 16px;">🧠</span>
+        <span style="font-weight: 600; color: #a78bfa;">CAIRN's Thinking</span>
+        <span style="font-size: 11px; padding: 2px 8px; border-radius: 10px; background: rgba(147, 51, 234, 0.2); color: #c4b5fd;">
+          ${confidencePercent}% confident
+        </span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="display: flex; gap: 8px; font-size: 11px; color: rgba(255,255,255,0.5);">
+          ${understoodCount > 0 ? `<span title="Understood">✓ ${understoodCount}</span>` : ''}
+          ${ambiguousCount > 0 ? `<span title="Ambiguous" style="color: #fbbf24;">? ${ambiguousCount}</span>` : ''}
+          ${assumptionCount > 0 ? `<span title="Assumptions" style="color: #60a5fa;">⚠ ${assumptionCount}</span>` : ''}
+          ${tensionCount > 0 ? `<span title="Tensions" style="color: #f87171;">⚡ ${tensionCount}</span>` : ''}
+        </div>
+        <span class="expand-icon" style="color: rgba(255,255,255,0.4); transition: transform 0.2s;">▼</span>
+      </div>
+    `;
+
+    // Content (collapsible)
+    const content = el('div');
+    content.className = 'thinking-content';
+    content.style.cssText = `
+      display: none;
+      padding: 16px;
+      border-top: 1px solid rgba(147, 51, 234, 0.2);
+      max-height: 400px;
+      overflow-y: auto;
+    `;
+
+    // Build content sections
+    let contentHTML = '';
+
+    // Phase 1: What was understood
+    if (understoodCount > 0) {
+      contentHTML += `
+        <div style="margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 6px; color: #22c55e; font-weight: 600; margin-bottom: 8px;">
+            <span>✓</span>
+            <span>Understood</span>
+          </div>
+          <ul style="margin: 0; padding-left: 20px; color: rgba(255,255,255,0.8); font-size: 13px; line-height: 1.6;">
+            ${trace.understood.map(node => `<li>${escapeHtml(node.content)} <span style="color: rgba(255,255,255,0.4); font-size: 11px;">(${Math.round(node.confidence * 100)}%)</span></li>`).join('')}
+          </ul>
+        </div>
+      `;
+    }
+
+    // Ambiguous items
+    if (ambiguousCount > 0) {
+      contentHTML += `
+        <div style="margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 6px; color: #fbbf24; font-weight: 600; margin-bottom: 8px;">
+            <span>?</span>
+            <span>Ambiguous</span>
+          </div>
+          <ul style="margin: 0; padding-left: 20px; color: rgba(255,255,255,0.8); font-size: 13px; line-height: 1.6;">
+            ${trace.ambiguous.map(node => `<li>${escapeHtml(node.content)}</li>`).join('')}
+          </ul>
+        </div>
+      `;
+    }
+
+    // Phase 2: Assumptions made
+    if (assumptionCount > 0) {
+      contentHTML += `
+        <div style="margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 6px; color: #60a5fa; font-weight: 600; margin-bottom: 8px;">
+            <span>⚠</span>
+            <span>Assumptions I made</span>
+          </div>
+          <ul style="margin: 0; padding-left: 20px; color: rgba(255,255,255,0.8); font-size: 13px; line-height: 1.6;">
+            ${trace.assumptions.map(node => `<li>${escapeHtml(node.content)} <span style="color: rgba(255,255,255,0.4); font-size: 11px;">(${Math.round(node.confidence * 100)}%)</span></li>`).join('')}
+          </ul>
+        </div>
+      `;
+    }
+
+    // Questions for user
+    if (trace.questions_for_user && trace.questions_for_user.length > 0) {
+      contentHTML += `
+        <div style="margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 6px; color: #c084fc; font-weight: 600; margin-bottom: 8px;">
+            <span>❓</span>
+            <span>Questions for you</span>
+          </div>
+          <ul style="margin: 0; padding-left: 20px; color: rgba(255,255,255,0.8); font-size: 13px; line-height: 1.6;">
+            ${trace.questions_for_user.map(q => `<li>${escapeHtml(q)}</li>`).join('')}
+          </ul>
+        </div>
+      `;
+    }
+
+    // Phase 3: Identity checks
+    if (trace.identity_facets_checked && trace.identity_facets_checked.length > 0) {
+      contentHTML += `
+        <div style="margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 6px; color: #a78bfa; font-weight: 600; margin-bottom: 8px;">
+            <span>🔍</span>
+            <span>Checked against your identity</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            ${trace.identity_facets_checked.map(fc => {
+              const alignmentColor = fc.alignment > 0.3 ? '#22c55e' : fc.alignment < -0.3 ? '#ef4444' : '#fbbf24';
+              const alignmentText = fc.alignment > 0.3 ? 'aligns' : fc.alignment < -0.3 ? 'conflicts' : 'neutral';
+              return `
+                <div style="padding: 8px 12px; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 13px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="color: #fff;">"${escapeHtml(fc.facet_name)}"</span>
+                    <span style="color: ${alignmentColor};">— ${alignmentText} (${fc.alignment.toFixed(1)})</span>
+                  </div>
+                  <div style="color: rgba(255,255,255,0.5); font-size: 11px; margin-top: 4px;">
+                    From: ${escapeHtml(fc.facet_source)}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    // Tensions detected
+    if (tensionCount > 0) {
+      contentHTML += `
+        <div style="margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 6px; color: #f87171; font-weight: 600; margin-bottom: 8px;">
+            <span>⚡</span>
+            <span>Tensions detected</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            ${trace.tensions.map(t => {
+              const severityColor = t.severity === 'high' ? '#ef4444' : t.severity === 'medium' ? '#f97316' : '#fbbf24';
+              return `
+                <div style="padding: 12px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px;">
+                  <div style="font-size: 13px; color: #fff; margin-bottom: 6px;">
+                    ${escapeHtml(t.description)}
+                  </div>
+                  <div style="font-size: 11px; color: rgba(255,255,255,0.6); margin-bottom: 6px;">
+                    Your "<span style="color: #a78bfa;">${escapeHtml(t.identity_facet)}</span>" vs
+                    "<span style="color: #60a5fa;">${escapeHtml(t.prompt_aspect)}</span>"
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: ${severityColor}20; color: ${severityColor}; text-transform: uppercase;">
+                      ${t.severity}
+                    </span>
+                    <span style="font-size: 11px; color: rgba(255,255,255,0.5);">
+                      ${escapeHtml(t.recommendation)}
+                    </span>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    // Decision summary
+    const decisionIcon = trace.decision === 'respond' ? '✅' : trace.decision === 'ask' ? '❓' : '⏸️';
+    const decisionText = trace.decision === 'respond' ? 'Proceeding with response' :
+                         trace.decision === 'ask' ? 'Need to ask you first' : 'Deferring for later';
+    contentHTML += `
+      <div style="padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
+          <span>${decisionIcon}</span>
+          <span style="color: rgba(255,255,255,0.6);">Decision: <span style="color: #fff;">${decisionText}</span></span>
+        </div>
+      </div>
+    `;
+
+    content.innerHTML = contentHTML;
+
+    // Toggle behavior
+    let expanded = false;
+    const expandIcon = header.querySelector('.expand-icon') as HTMLElement;
+
+    header.addEventListener('click', () => {
+      expanded = !expanded;
+      content.style.display = expanded ? 'block' : 'none';
+      if (expandIcon) {
+        expandIcon.style.transform = expanded ? 'rotate(180deg)' : 'rotate(0deg)';
+      }
+    });
+
+    panel.appendChild(header);
+    panel.appendChild(content);
+
+    return panel;
+  }
+
   function escapeHtml(text: string): string {
     const div = el('div');
     div.textContent = text;
@@ -608,6 +837,7 @@ export function createCairnView(
       toolCalls: result.tool_calls,
       messageId: result.message_id,
       messageType: result.message_type,
+      extendedThinkingTrace: result.extended_thinking_trace,
     };
     state.chatMessages.push(data);
     const msgEl = renderChatMessage(data);

@@ -46,6 +46,14 @@ from reos.cairn.mcp_tools import (
     list_tools as list_cairn_tools,
 )
 
+from reos.cairn.extended_thinking import (
+    ThinkingNode,
+    FacetCheck,
+    Tension,
+    ExtendedThinkingTrace,
+    CAIRNExtendedThinking,
+)
+
 __all__ = [
     # Models
     "CairnMetadata",
@@ -72,4 +80,10 @@ __all__ = [
     "CairnToolHandler",
     "CairnToolError",
     "list_cairn_tools",
+    # Extended Thinking
+    "ThinkingNode",
+    "FacetCheck",
+    "Tension",
+    "ExtendedThinkingTrace",
+    "CAIRNExtendedThinking",
 ]

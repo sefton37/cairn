@@ -16,6 +16,58 @@ export const JsonRpcResponseSchema = z.object({
     .optional()
 });
 
+// Extended Thinking types (CAIRN deep reasoning)
+export type ThinkingNodeType = 'understood' | 'ambiguous' | 'assumption' | 'identity_check' | 'tension' | 'reasoning_step';
+
+export type ThinkingNode = {
+  content: string;
+  type: ThinkingNodeType;
+  confidence: number;  // 0.0 - 1.0
+  children: ThinkingNode[];
+};
+
+export type FacetCheck = {
+  facet_name: string;
+  facet_source: string;  // Where it came from (me.md, Act, Scene)
+  reasoning_branch: string;
+  alignment: number;  // -1.0 (conflicts) to 1.0 (aligns)
+  explanation: string;
+};
+
+export type Tension = {
+  description: string;
+  identity_facet: string;
+  prompt_aspect: string;
+  severity: 'low' | 'medium' | 'high';
+  recommendation: string;
+};
+
+export type ExtendedThinkingTrace = {
+  trace_id: string;
+  prompt: string;
+  started_at: string;
+  completed_at: string | null;
+
+  // Phase 1: Comprehension
+  understood: ThinkingNode[];
+  ambiguous: ThinkingNode[];
+  unknowns: ThinkingNode[];
+
+  // Phase 2: Decomposition
+  questions_for_user: string[];
+  assumptions: ThinkingNode[];
+  facets_to_check: string[];
+
+  // Phase 3: Coherence
+  identity_facets_checked: FacetCheck[];
+  tensions: Tension[];
+
+  // Phase 4: Result
+  final_response: string;
+  final_confidence: number;
+  decision: 'respond' | 'ask' | 'defer';
+};
+
 export type ChatRespondResult = {
   answer: string;
   conversation_id: string;
@@ -36,6 +88,8 @@ export type ChatRespondResult = {
     session_id: string;
     preview: DiffPreview;
   };
+  // Extended Thinking: Deep reasoning trace for CAIRN
+  extended_thinking_trace?: ExtendedThinkingTrace | null;
 };
 
 // Conversation types
