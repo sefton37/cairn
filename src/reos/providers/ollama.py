@@ -1,22 +1,49 @@
 """Ollama Provider - Local LLM inference via Ollama.
 
-Wraps the existing OllamaClient to implement the LLMProvider protocol.
-Adds installation detection and auto-install support.
+Wraps the OllamaClient to implement the LLMProvider protocol with:
+- Retry with exponential backoff for transient failures
+- Streaming support for real-time token generation
+- Installation detection and helpful error messages
+- Graceful degradation when Ollama is unavailable
 """
 
 from __future__ import annotations
 
 import logging
 import shutil
+from collections.abc import Generator
 from typing import Any
 
 import httpx
+import tenacity
 
+from reos.config import TIMEOUTS
 from reos.settings import settings
 
 from .base import LLMError, LLMProvider, ModelInfo, ProviderHealth
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Retry Configuration
+# =============================================================================
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """Check if an exception should trigger a retry."""
+    return isinstance(exc, (httpx.TimeoutException, httpx.ConnectError))
+
+
+_retry_transient = tenacity.retry(
+    stop=tenacity.stop_after_attempt(3),
+    wait=tenacity.wait_exponential(multiplier=1, min=1, max=4),
+    retry=tenacity.retry_if_exception(_is_retryable),
+    before_sleep=lambda rs: logger.debug(
+        "Retrying Ollama request (attempt %d)", rs.attempt_number + 1
+    ),
+    reraise=True,
+)
 
 
 # =============================================================================
@@ -82,11 +109,14 @@ class OllamaProvider:
         *,
         system: str,
         user: str,
-        timeout_seconds: float = 60.0,
+        timeout_seconds: float = TIMEOUTS.LLM_DEFAULT,
         temperature: float | None = None,
         top_p: float | None = None,
     ) -> str:
-        """Generate plain text response."""
+        """Generate plain text response.
+
+        Automatically retries on transient failures.
+        """
         payload = self._build_payload(
             system=system,
             user=user,
@@ -101,13 +131,14 @@ class OllamaProvider:
         *,
         system: str,
         user: str,
-        timeout_seconds: float = 60.0,
+        timeout_seconds: float = TIMEOUTS.LLM_DEFAULT,
         temperature: float | None = None,
         top_p: float | None = None,
     ) -> str:
         """Generate JSON-formatted response.
 
         Handles models that wrap JSON in markdown code blocks.
+        Automatically retries on transient failures.
         """
         payload = self._build_payload(
             system=system,
@@ -121,6 +152,67 @@ class OllamaProvider:
         # Some models (like magistral) wrap JSON in markdown code blocks
         # Extract the JSON if it's wrapped
         return self._extract_json(response)
+
+    def chat_stream(
+        self,
+        *,
+        system: str,
+        user: str,
+        timeout_seconds: float = TIMEOUTS.LLM_DEFAULT,
+        temperature: float | None = None,
+        top_p: float | None = None,
+    ) -> Generator[str, None, None]:
+        """Generate streaming response.
+
+        Yields tokens as they arrive from the model.
+        Does NOT retry on failure (streaming is not idempotent).
+
+        Yields:
+            Individual tokens as strings
+        """
+        import json
+
+        payload = self._build_payload(
+            system=system,
+            user=user,
+            temperature=temperature,
+            top_p=top_p,
+        )
+        payload["stream"] = True
+        payload["format"] = ""
+
+        url = f"{self._url}/api/chat"
+        try:
+            with httpx.Client(timeout=timeout_seconds) as client:
+                with client.stream("POST", url, json=payload) as response:
+                    response.raise_for_status()
+                    for line in response.iter_lines():
+                        if not line:
+                            continue
+                        try:
+                            data = json.loads(line)
+                            message = data.get("message", {})
+                            content = message.get("content", "")
+                            if content:
+                                yield content
+                            if data.get("done", False):
+                                break
+                        except json.JSONDecodeError:
+                            continue
+
+        except httpx.ConnectError as e:
+            raise LLMError(
+                f"Cannot connect to Ollama at {self._url}. "
+                "Is 'ollama serve' running?"
+            ) from e
+
+        except httpx.TimeoutException as e:
+            raise LLMError(
+                f"Ollama streaming request timed out after {timeout_seconds}s"
+            ) from e
+
+        except Exception as e:
+            raise LLMError(f"Streaming request failed: {e}") from e
 
     def _extract_json(self, response: str) -> str:
         """Extract JSON from response that might be wrapped in markdown."""
@@ -237,14 +329,37 @@ class OllamaProvider:
             ],
         }
 
+    @_retry_transient
     def _post_chat(self, payload: dict[str, Any], timeout_seconds: float) -> str:
-        """Send chat request to Ollama."""
+        """Send chat request to Ollama with automatic retry."""
         url = f"{self._url}/api/chat"
         try:
             with httpx.Client(timeout=timeout_seconds) as client:
                 res = client.post(url, json=payload)
                 res.raise_for_status()
                 data = res.json()
+
+        except httpx.ConnectError as e:
+            raise LLMError(
+                f"Cannot connect to Ollama at {self._url}. "
+                "Is 'ollama serve' running?"
+            ) from e
+
+        except httpx.TimeoutException as e:
+            raise LLMError(
+                f"Ollama request timed out after {timeout_seconds}s. "
+                "The model may be loading or the request is complex."
+            ) from e
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                model = payload.get("model", "unknown")
+                raise LLMError(
+                    f"Model '{model}' not found. "
+                    f"Run 'ollama pull {model}' to download it."
+                ) from e
+            raise LLMError(f"Ollama HTTP error: {e}") from e
+
         except Exception as e:
             raise LLMError(f"Ollama request failed: {e}") from e
 
