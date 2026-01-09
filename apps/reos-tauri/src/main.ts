@@ -336,14 +336,14 @@ function buildUi() {
 
   // ============ CAIRN View (Conversational) ============
   const cairnView = createCairnView({
-    onSendMessage: async (message: string) => {
-      return handleCairnMessage(message);
+    onSendMessage: async (message: string, options?: { extendedThinking?: boolean }) => {
+      return handleCairnMessage(message, options);
     },
     kernelRequest,
   });
 
   // Handle CAIRN chat messages (default conversational mode)
-  async function handleCairnMessage(message: string): Promise<void> {
+  async function handleCairnMessage(message: string, options?: { extendedThinking?: boolean }): Promise<void> {
     // Show thinking indicator while waiting for response
     cairnView.showThinking();
     try {
@@ -351,6 +351,9 @@ function buildUi() {
         text: message,
         conversation_id: currentConversationId,
         agent_type: currentAgent,  // Pass current agent for persona selection
+        // Extended thinking: true=force on, undefined=auto-detect, false would disable
+        // When toggle is on, force it. When off, let backend auto-detect for complex prompts.
+        extended_thinking: options?.extendedThinking === true ? true : undefined,
         // No use_code_mode flag - CAIRN is the default conversational agent
       })) as ChatRespondResult;
       cairnView.hideThinking();

@@ -12,7 +12,7 @@ import { el } from './dom';
 import type { ChatRespondResult, ExtendedThinkingTrace, ThinkingNode, FacetCheck, Tension } from './types';
 
 interface CairnViewCallbacks {
-  onSendMessage: (message: string) => Promise<void>;
+  onSendMessage: (message: string, options?: { extendedThinking?: boolean }) => Promise<void>;
   kernelRequest: (method: string, params: unknown) => Promise<unknown>;
 }
 
@@ -39,6 +39,7 @@ interface MessageData {
 interface CairnViewState {
   chatMessages: MessageData[];
   surfacedItems: Array<{ title: string; reason: string; urgency: string }>;
+  extendedThinkingEnabled: boolean;
 }
 
 /**
@@ -59,6 +60,7 @@ export function createCairnView(
   const state: CairnViewState = {
     chatMessages: [],
     surfacedItems: [],
+    extendedThinkingEnabled: false,
   };
 
   // Main container
@@ -424,6 +426,81 @@ export function createCairnView(
     background: rgba(0,0,0,0.1);
   `;
 
+  // Extended thinking toggle row
+  const toggleRow = el('div');
+  toggleRow.style.cssText = `
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  `;
+
+  const thinkingToggle = el('button');
+  thinkingToggle.className = 'thinking-toggle';
+  thinkingToggle.style.cssText = `
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(147, 51, 234, 0.1);
+    border: 1px solid rgba(147, 51, 234, 0.3);
+    border-radius: 16px;
+    color: rgba(255,255,255,0.6);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  `;
+  thinkingToggle.innerHTML = `
+    <span class="toggle-icon">🧠</span>
+    <span class="toggle-label">Think deeply</span>
+  `;
+
+  // Update toggle appearance based on state
+  function updateToggleAppearance() {
+    if (state.extendedThinkingEnabled) {
+      thinkingToggle.style.background = 'rgba(147, 51, 234, 0.3)';
+      thinkingToggle.style.borderColor = 'rgba(147, 51, 234, 0.6)';
+      thinkingToggle.style.color = '#c4b5fd';
+      thinkingToggle.innerHTML = `
+        <span class="toggle-icon">🧠</span>
+        <span class="toggle-label">Think deeply</span>
+        <span style="font-size: 10px; background: rgba(147, 51, 234, 0.4); padding: 2px 6px; border-radius: 8px;">ON</span>
+      `;
+    } else {
+      thinkingToggle.style.background = 'rgba(147, 51, 234, 0.1)';
+      thinkingToggle.style.borderColor = 'rgba(147, 51, 234, 0.3)';
+      thinkingToggle.style.color = 'rgba(255,255,255,0.6)';
+      thinkingToggle.innerHTML = `
+        <span class="toggle-icon">🧠</span>
+        <span class="toggle-label">Think deeply</span>
+      `;
+    }
+  }
+
+  thinkingToggle.addEventListener('click', () => {
+    state.extendedThinkingEnabled = !state.extendedThinkingEnabled;
+    updateToggleAppearance();
+  });
+
+  thinkingToggle.addEventListener('mouseenter', () => {
+    if (!state.extendedThinkingEnabled) {
+      thinkingToggle.style.background = 'rgba(147, 51, 234, 0.2)';
+    }
+  });
+  thinkingToggle.addEventListener('mouseleave', () => {
+    updateToggleAppearance();
+  });
+
+  const toggleHint = el('span');
+  toggleHint.style.cssText = `
+    font-size: 11px;
+    color: rgba(255,255,255,0.4);
+  `;
+  toggleHint.textContent = 'Auto-detects for complex prompts';
+
+  toggleRow.appendChild(thinkingToggle);
+  toggleRow.appendChild(toggleHint);
+
   const inputRow = el('div');
   inputRow.style.cssText = `
     display: flex;
@@ -463,7 +540,7 @@ export function createCairnView(
 
     chatInput.value = '';
     addChatMessage('user', message);
-    await callbacks.onSendMessage(message);
+    await callbacks.onSendMessage(message, { extendedThinking: state.extendedThinkingEnabled });
   };
 
   chatInput.addEventListener('keypress', (e) => {
@@ -473,6 +550,7 @@ export function createCairnView(
 
   inputRow.appendChild(chatInput);
   inputRow.appendChild(sendBtn);
+  inputArea.appendChild(toggleRow);
   inputArea.appendChild(inputRow);
 
   chatPanel.appendChild(chatHeader);
