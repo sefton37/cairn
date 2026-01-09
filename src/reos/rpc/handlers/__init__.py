@@ -20,9 +20,12 @@ from __future__ import annotations
 # Import all handler modules to register them
 from reos.rpc.handlers import approvals  # noqa: F401
 from reos.rpc.handlers import auth  # noqa: F401
+from reos.rpc.handlers import cairn  # noqa: F401
 from reos.rpc.handlers import conversations  # noqa: F401
+from reos.rpc.handlers import handoff  # noqa: F401
 from reos.rpc.handlers import ollama  # noqa: F401
 from reos.rpc.handlers import play  # noqa: F401
 from reos.rpc.handlers import providers  # noqa: F401
+from reos.rpc.handlers import safety  # noqa: F401
 from reos.rpc.handlers import system  # noqa: F401
 from reos.rpc.handlers import tools  # noqa: F401
