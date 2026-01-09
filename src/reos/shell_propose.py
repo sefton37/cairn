@@ -263,11 +263,29 @@ def propose_command(natural_language: str) -> tuple[str, str]:
     db = get_db()
     llm = get_provider(db)
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # NEW: Context Gathering (RIVA: Can I verify this intent?)
+    # ═══════════════════════════════════════════════════════════════════════════
+    context_string = ""
+    try:
+        from .shell_context import get_context_for_proposal
+        context = get_context_for_proposal(natural_language)
+
+        if context.can_verify:
+            context_string = f"\nSystem Context:\n{context.to_context_string()}\n"
+    except Exception:
+        pass  # Context gathering is optional - fail open
+
+    # Build enriched prompt
+    user_prompt = f"Request: {natural_language}"
+    if context_string:
+        user_prompt = f"{context_string}\n{user_prompt}"
+
     # First attempt: standard prompt
     try:
         response = llm.chat_text(
             system=STANDARD_PROMPT,
-            user=f"Request: {natural_language}",
+            user=user_prompt,
             temperature=0.3,
         )
 
