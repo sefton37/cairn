@@ -443,14 +443,14 @@ class SystemIndexer:
     def _get_services(self) -> list[dict[str, Any]]:
         """Get list of ALL running services."""
         try:
-            services = linux_tools.list_services(show_inactive=False)
+            services = linux_tools.list_services(filter_active=True)
             # Include ALL running services - no limit
             return [
                 {
                     "name": s.name,
                     "description": s.description,
-                    "active": s.active,
-                    "enabled": s.enabled,
+                    "active_state": s.active_state,
+                    "load_state": s.load_state,
                 }
                 for s in services
             ]
@@ -1141,7 +1141,18 @@ class SystemIndexer:
         """Get list of users."""
         try:
             users = linux_tools.list_users(system_users=False)
-            return users[:20]  # Limit to 20 users
+            # Convert UserInfo dataclasses to dicts
+            return [
+                {
+                    "username": u.username,
+                    "uid": u.uid,
+                    "gid": u.gid,
+                    "home": u.home,
+                    "shell": u.shell,
+                    "groups": u.groups,
+                }
+                for u in users[:20]  # Limit to 20 users
+            ]
         except Exception as e:
             logger.debug("Could not list users: %s", e)
             return []
@@ -1167,10 +1178,10 @@ class SystemIndexer:
                     info = linux_tools.get_disk_usage(path)
                     storage.append({
                         "path": path,
-                        "total_gb": info.total_gb,
-                        "used_gb": info.used_gb,
-                        "free_gb": info.free_gb,
-                        "percent_used": info.percent_used,
+                        "total_gb": info["total_gb"],
+                        "used_gb": info["used_gb"],
+                        "free_gb": info["free_gb"],
+                        "percent": info["percent"],
                     })
                 except Exception as e:
                     logger.debug("Could not get disk usage for %s: %s", path, e)
@@ -1405,6 +1416,7 @@ def get_or_refresh_context(db: Database) -> str:
     indexer = SystemIndexer(db)
 
     # Check if we need a fresh snapshot
+    snapshot: SystemSnapshot | None
     if indexer.needs_refresh():
         logger.info("Daily system snapshot needed, capturing...")
         snapshot = indexer.capture_snapshot()
