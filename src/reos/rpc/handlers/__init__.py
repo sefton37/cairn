@@ -21,9 +21,16 @@ from __future__ import annotations
 from reos.rpc.handlers import approvals  # noqa: F401
 from reos.rpc.handlers import auth  # noqa: F401
 from reos.rpc.handlers import cairn  # noqa: F401
+from reos.rpc.handlers import chat  # noqa: F401
+from reos.rpc.handlers import code_mode  # noqa: F401
+from reos.rpc.handlers import context  # noqa: F401
 from reos.rpc.handlers import conversations  # noqa: F401
+from reos.rpc.handlers import core  # noqa: F401
+from reos.rpc.handlers import execution  # noqa: F401
 from reos.rpc.handlers import handoff  # noqa: F401
+from reos.rpc.handlers import knowledge  # noqa: F401
 from reos.rpc.handlers import ollama  # noqa: F401
+from reos.rpc.handlers import plan  # noqa: F401
 from reos.rpc.handlers import play  # noqa: F401
 from reos.rpc.handlers import providers  # noqa: F401
 from reos.rpc.handlers import safety  # noqa: F401
