@@ -1,6 +1,23 @@
 """Model selection based on task complexity.
 
-This module selects the appropriate model tier for a task.
+WARNING: THIS MODULE IS NOT INTEGRATED
+======================================
+While the selection logic is implemented, this module is NEVER
+called from the main work() loop in intention.py. It exists as
+scaffolding for future integration.
+
+To use this module, work() would need to:
+1. Analyze task complexity
+2. Call select_model() to get recommended tier
+3. Switch LLM provider based on selection
+
+None of that integration exists yet. This is dead code.
+
+When integrated, remove this warning.
+======================================
+
+Design intent (not yet integrated):
+Select the appropriate model tier for a task.
 Small models for boilerplate, large models for complex tasks.
 
 Goal: Use compute efficiently. Don't use a 70B model to add an import.

@@ -1600,37 +1600,44 @@ def work(intention: Intention, ctx: WorkContext, depth: int = 0) -> None:
             if ctx.trust_budget:
                 should_verify_action = ctx.trust_budget.should_verify(action_risk)
 
+            # Determine actual verification strategy
+            # CRITICAL: Never assume success without SOME form of verification
             if should_verify_action:
-                # Human/auto judgment with actual verification
+                # Immediate verification required (HIGH risk or low trust)
                 cycle.judgment = ctx.checkpoint.judge_action(intention, cycle)
 
                 # Track verification in metrics with actual risk level
                 if ctx.metrics:
                     ctx.metrics.record_verification(action_risk.level.value)
-            else:
-                # Trust budget allows skipping verification
-                # Defer to batch verification if available and action can be batched
-                if ctx.verification_batcher and action_risk.can_batch:
-                    ctx.verification_batcher.defer(
-                        action,
-                        result,
-                        intention.acceptance,
-                    )
-                    if ctx.session_logger:
-                        ctx.session_logger.log_debug("riva", "verification_deferred",
-                            f"Deferred to batch (pending: {ctx.verification_batcher.pending_count})", {
-                                "risk_level": action_risk.level.value,
-                                "can_batch": True,
-                            })
-                else:
-                    if ctx.session_logger:
-                        ctx.session_logger.log_debug("riva", "verification_skipped",
-                            "Low-risk action, trust budget allows skipping", {
-                                "risk_level": action_risk.level.value,
-                                "trust_remaining": ctx.trust_budget.remaining if ctx.trust_budget else 0,
-                            })
-                # Assume success for now (will be verified in batch or at boundary)
+            elif ctx.verification_batcher and action_risk.can_batch:
+                # Trust allows skipping - defer to batch verification
+                ctx.verification_batcher.defer(
+                    action,
+                    result,
+                    intention.acceptance,
+                )
+                if ctx.session_logger:
+                    ctx.session_logger.log_debug("riva", "verification_deferred",
+                        f"Deferred to batch (pending: {ctx.verification_batcher.pending_count})", {
+                            "risk_level": action_risk.level.value,
+                            "can_batch": True,
+                        })
+                # Assume success - will be verified at intention boundary
                 cycle.judgment = Judgment.SUCCESS
+            else:
+                # FALLBACK: Can't batch, must verify immediately
+                # Never skip verification entirely - that's unsafe
+                if ctx.session_logger:
+                    ctx.session_logger.log_debug("riva", "verification_fallback",
+                        "Cannot batch, falling back to immediate verification", {
+                            "risk_level": action_risk.level.value,
+                            "can_batch": action_risk.can_batch,
+                            "has_batcher": ctx.verification_batcher is not None,
+                        })
+                cycle.judgment = ctx.checkpoint.judge_action(intention, cycle)
+
+                if ctx.metrics:
+                    ctx.metrics.record_verification(action_risk.level.value)
 
             if ctx.session_logger:
                 ctx.session_logger.log_info("riva", "cycle_complete",
@@ -1654,21 +1661,42 @@ def work(intention: Intention, ctx: WorkContext, depth: int = 0) -> None:
                                 "passed": batch_result.passed_count,
                                 "failed": batch_result.failed_count,
                             })
-                    # If batch verification found failures, revert to ACTIVE
+
                     if not batch_result.success:
+                        # Batch verification found failures - treat as cycle failure
                         intention.status = IntentionStatus.ACTIVE
                         intention.verified_at = None
+                        cycle.judgment = Judgment.FAILURE  # Mark cycle as failed
+
                         if ctx.trust_budget:
                             ctx.trust_budget.deplete()
+
+                        # Create reflection about batch failure
+                        failed_expectations = [f.expected for f in batch_result.failures]
+                        cycle.reflection = f"Batch verification failed. Failed checks: {', '.join(failed_expectations[:3])}"
+
                         if ctx.session_logger:
                             ctx.session_logger.log_warning("riva", "batch_verification_failed",
-                                "Batch verification failed, reverting to ACTIVE", {
-                                    "failures": [f.expected for f in batch_result.failures],
+                                "Batch verification failed, cycle marked as FAILURE", {
+                                    "failures": failed_expectations,
                                 })
 
-                # Success replenishes trust (only if we actually verified)
-                if ctx.trust_budget and should_verify_action:
-                    ctx.trust_budget.replenish()
+                        # Check if we should decompose instead of retry
+                        if should_decompose(intention, cycle, ctx):
+                            intention.add_cycle(cycle)
+                            if ctx.on_cycle_complete:
+                                ctx.on_cycle_complete(intention, cycle)
+                            break  # Exit to decomposition path
+                    else:
+                        # Batch succeeded - replenish trust for successful deferred verification
+                        # This recovers the trust spent when skipping immediate verification
+                        if ctx.trust_budget:
+                            ctx.trust_budget.replenish(batch_result.passed_count * 3)
+
+                # Success replenishes trust (only if verified immediately and still successful)
+                if intention.status == IntentionStatus.VERIFIED:
+                    if ctx.trust_budget and should_verify_action:
+                        ctx.trust_budget.replenish()
             else:
                 # Verification caught a failure - this is good
                 if ctx.trust_budget and should_verify_action:

@@ -8,6 +8,27 @@ Philosophy: Don't be maximally paranoid about everything.
 Verify more when trust is low, less when trust is high.
 
 The budget has a hard floor - we never skip HIGH risk verification.
+
+Cost Model
+----------
+Trust is "spent" when skipping verification (you're gambling):
+    - Skip LOW risk: -2 trust
+    - Skip MEDIUM risk: -7 trust
+    - Skip HIGH risk: (never allowed)
+
+Trust is "earned" when verification succeeds:
+    - Immediate verify + success: +10 trust (via replenish())
+    - Batch verify + success: +3 per item (called from intention.py)
+    - Catch failure: +5 trust (system working correctly)
+
+Trust is "lost" when verification fails or is missed:
+    - Batch failure: -20 trust (via deplete())
+    - Missed failure: -20 trust
+
+Thresholds:
+    - LOW risk can skip when trust > 70
+    - MEDIUM risk can skip when trust > 85
+    - Floor is 20 (never go below, always verify at floor)
 """
 
 from __future__ import annotations

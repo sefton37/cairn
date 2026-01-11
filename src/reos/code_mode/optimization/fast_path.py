@@ -1,8 +1,20 @@
 """Fast-path handlers for common patterns.
 
-This module provides optimized execution paths for well-known
-patterns. 80% of requests are variations on 20% of patterns.
-We optimize those common patterns and use full RIVA for edge cases.
+WARNING: THIS MODULE IS EXPERIMENTAL SCAFFOLDING
+==========================================
+All handlers currently return False (fall back to full RIVA).
+No fast paths are actually implemented yet. This module exists
+as scaffolding for future optimization work.
+
+DO NOT rely on this module for any functionality. It is exported
+for API completeness but provides no actual optimization benefit.
+
+When handlers are implemented, remove this warning.
+==========================================
+
+Design intent (not yet implemented):
+80% of requests are variations on 20% of patterns.
+We could optimize those common patterns and use full RIVA for edge cases.
 
 Patterns are detected heuristically. When detection fails,
 we fall back to full RIVA - no harm done.
