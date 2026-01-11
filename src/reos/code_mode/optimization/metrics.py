@@ -36,6 +36,11 @@ class ExecutionMetrics:
     llm_provider: str | None = None  # "ollama", "anthropic", "openai", etc.
     llm_model: str | None = None     # "claude-sonnet-4", "gpt-4-turbo", "llama3-70b", etc.
 
+    # Repository context (for repo-specific learning)
+    repo_path: str | None = None     # Absolute path to repository
+    repo_name: str | None = None     # Repository name (friendly)
+    files_changed: list[str] = field(default_factory=list)  # Files modified in this session
+
     # Timing (milliseconds)
     total_duration_ms: int = 0
     llm_time_ms: int = 0
@@ -107,6 +112,29 @@ class ExecutionMetrics:
         """
         self.llm_provider = provider
         self.llm_model = model
+
+    def set_repo_info(self, repo_path: str | None, repo_name: str | None = None) -> None:
+        """Set repository context information.
+
+        Args:
+            repo_path: Absolute path to repository
+            repo_name: Repository name (if None, derived from path)
+        """
+        self.repo_path = repo_path
+        if repo_path and not repo_name:
+            from pathlib import Path
+            self.repo_name = Path(repo_path).name
+        else:
+            self.repo_name = repo_name
+
+    def record_file_changed(self, file_path: str) -> None:
+        """Record a file that was changed in this session.
+
+        Args:
+            file_path: Path to file that was modified
+        """
+        if file_path not in self.files_changed:
+            self.files_changed.append(file_path)
 
     def record_llm_call(
         self,
@@ -475,6 +503,8 @@ class MetricsStore:
                 completed_at TEXT,
                 llm_provider TEXT,
                 llm_model TEXT,
+                repo_path TEXT,
+                repo_name TEXT,
                 total_duration_ms INTEGER,
                 llm_time_ms INTEGER,
                 execution_time_ms INTEGER,
@@ -489,6 +519,11 @@ class MetricsStore:
                 metrics_json TEXT
             )
         """)
+        # Create index for repo-specific queries
+        self.db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_repo_model
+            ON riva_metrics(repo_path, llm_model)
+        """)
 
     def save(self, metrics: ExecutionMetrics) -> None:
         """Save metrics to database."""
@@ -499,11 +534,12 @@ class MetricsStore:
             INSERT OR REPLACE INTO riva_metrics (
                 session_id, started_at, completed_at,
                 llm_provider, llm_model,
+                repo_path, repo_name,
                 total_duration_ms, llm_time_ms, execution_time_ms,
                 llm_calls_total, decomposition_count, max_depth_reached,
                 verifications_total, retry_count, failure_count,
                 success, first_try_success, metrics_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 metrics.session_id,
@@ -511,6 +547,8 @@ class MetricsStore:
                 metrics.completed_at.isoformat() if metrics.completed_at else None,
                 metrics.llm_provider,
                 metrics.llm_model,
+                metrics.repo_path,
+                metrics.repo_name,
                 metrics.total_duration_ms,
                 metrics.llm_time_ms,
                 metrics.execution_time_ms,

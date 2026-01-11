@@ -1594,6 +1594,21 @@ def work(intention: Intention, ctx: WorkContext, depth: int = 0) -> None:
             except Exception as e:
                 logger.warning("Failed to capture LLM info: %s", e)
 
+        # Capture repository context (only once, at start of session)
+        if depth == 0 and ctx.metrics.repo_path is None:
+            try:
+                # Get repo path from sandbox
+                repo_path = getattr(ctx.sandbox, 'repo_path', None) or getattr(ctx.sandbox, 'root_dir', None)
+                if repo_path:
+                    ctx.metrics.set_repo_info(repo_path=str(repo_path))
+                    logger.info(
+                        "Captured repo info: path=%s, name=%s",
+                        ctx.metrics.repo_path,
+                        ctx.metrics.repo_name
+                    )
+            except Exception as e:
+                logger.warning("Failed to capture repo info: %s", e)
+
     # Log start
     if ctx.session_logger:
         ctx.session_logger.log_info("riva", "work_start",
