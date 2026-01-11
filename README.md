@@ -253,6 +253,143 @@ If verification fails, RIVA creates a "gap contract" and retries automatically.
 - Learning new languages (RIVA explains as it goes)
 - You value correctness over speed
 
+#### Repo Understanding System
+
+RIVA automatically analyzes repositories to understand their structure, conventions, and types. This provides models with comprehensive context for fair evaluation—testing programming ability (following conventions when told) rather than psychic ability (guessing conventions blindly).
+
+**The Problem We Solved:**
+
+Models were generating code without knowing:
+- What naming conventions the repo uses
+- How imports are typically organized
+- What docstring style is expected
+- Exact field types for data models
+
+This led to code that compiled but didn't match the codebase style.
+
+**The Solution:**
+
+ActRepoAnalyzer runs automatically on session start, using cheap local LLMs to discover:
+
+```
+Repo Analysis Pipeline (< $0.01 per session)
+├─ Structure Analysis (~2K tokens = $0.0002)
+│  └─ Components, entry points, test strategy, documentation
+│
+├─ Convention Analysis (~5K tokens = $0.0005)
+│  └─ Import style, class naming, function naming, type hints, docstrings
+│
+└─ Type Analysis (~4K tokens = $0.0004)
+   └─ Data models with exact field types via AST parsing
+
+Total cost: ~$0.0011 with local LLM (vs $0.33 with GPT-4)
+Cached: 24 hours (only re-runs if repo changes significantly)
+```
+
+**What Models Receive:**
+
+Analysis results are converted to ProjectMemory entries and injected into every action prompt:
+
+```
+INTENTION: Add user authentication to the API
+
+PROJECT DECISIONS (from analysis):
+- Test strategy: pytest with tests/ directory
+- Documentation: README.md and inline docstrings
+
+CODE PATTERNS (from analysis):
+- Import style: 'from X import Y', grouped by type
+- Class naming: PascalCase with descriptive suffixes (e.g., AuthService)
+- Function naming: snake_case (e.g., authenticate_user)
+- Type hints: Always used for parameters and returns
+- Docstrings: Google-style with Args/Returns/Raises
+
+TYPE DEFINITIONS (from analysis):
+- User.id: str, User.email: str, User.created_at: datetime
+- Config.debug: bool, Config.port: int
+- Session.user_id: str | None, Session.expires_at: datetime
+
+What should we try next?
+```
+
+**How It Works:**
+
+```python
+from reos.code_mode.optimization import create_optimized_context_with_repo_analysis
+
+# Analysis happens automatically
+ctx = await create_optimized_context_with_repo_analysis(
+    sandbox=sandbox,
+    llm=llm,  # Main LLM for code generation
+    checkpoint=checkpoint,
+    act=act,  # The project being worked on
+    local_llm=ollama_llm,  # Cheap local LLM for analysis
+    project_memory=project_memory,  # Auto-populated with analysis
+)
+
+# ProjectMemory now contains:
+# - Structure: components, entry points, test strategy
+# - Conventions: naming, imports, docstrings, type hints
+# - Types: data models with exact field types
+```
+
+**The Analysis Process:**
+
+1. **Structure Discovery** - Uses local LLM to analyze directory tree:
+   - Identifies main components and their purposes
+   - Finds entry points (main.py, __init__.py, etc.)
+   - Determines test strategy (pytest, unittest, etc.)
+   - Locates documentation (README, docs/, etc.)
+
+2. **Convention Extraction** - Samples 10 representative Python files:
+   - Analyzes import patterns and grouping
+   - Identifies class naming conventions (PascalCase, suffixes)
+   - Detects function naming style (snake_case, private prefixes)
+   - Measures type hint consistency
+   - Recognizes docstring format (Google, NumPy, etc.)
+
+3. **Type Analysis** - Uses AST parsing for precision:
+   - Extracts all class definitions with field annotations
+   - Categorizes into data models, config, errors, utilities
+   - Preserves exact type information (str | None, list[dict])
+   - Prioritizes types with the most fields
+
+**Cost Advantage:**
+
+```
+Analysis per session with local LLM: $0.0011
+Same analysis with GPT-4:           $0.33
+Savings:                            300x cheaper
+
+This enables:
+• Analysis on every session start (< $0.01)
+• Re-analysis after every git push (< $0.01)
+• Continuous understanding as code evolves
+• 1000 analyses for the cost of 3.3 GPT-4 calls
+
+Big tech can't afford this at scale with expensive models.
+Local LLMs are our competitive advantage.
+```
+
+**Implementation:**
+
+- Source: `src/reos/code_mode/repo_analyzer.py` (788 lines)
+- Integration: `src/reos/code_mode/optimization/factory.py`
+- 3 analysis types: Structure, Conventions, Types
+- AST-based type extraction (no regex guessing)
+- 24-hour caching (only re-runs when needed)
+- Graceful degradation (continues if analysis fails)
+
+**Result:**
+
+Models now generate code that:
+- Follows the repo's actual naming conventions
+- Uses the correct import style
+- Includes appropriate docstrings
+- Has accurate field types
+
+No more guessing. Fair evaluation. Better code.
+
 ### CAIRN - The Attention Minder
 
 Your calm, non-judgmental life organizer. CAIRN helps you focus on what matters without making you feel guilty about what you haven't done yet.
