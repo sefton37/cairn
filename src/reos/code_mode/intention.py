@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from reos.code_mode.optimization.complexity import TaskComplexity
     from reos.code_mode.optimization.risk import ActionRisk
     from reos.code_mode.optimization.trust import TrustBudget
+    from reos.code_mode.optimization.verification import VerificationBatcher
     from reos.providers import LLMProvider
 
 logger = logging.getLogger(__name__)
@@ -450,6 +451,7 @@ class WorkContext:
     tool_provider: "ToolProvider | None" = None  # Tools for gathering context
     metrics: "ExecutionMetrics | None" = None  # Performance metrics collection
     trust_budget: "TrustBudget | None" = None  # Session trust for verification decisions
+    verification_batcher: "VerificationBatcher | None" = None  # Batch low-risk verifications
     max_cycles_per_intention: int = 5
     max_depth: int = 10
 
@@ -1606,14 +1608,29 @@ def work(intention: Intention, ctx: WorkContext, depth: int = 0) -> None:
                 if ctx.metrics:
                     ctx.metrics.record_verification(action_risk.level.value)
             else:
-                # Trust budget allows skipping verification - assume success
+                # Trust budget allows skipping verification
+                # Defer to batch verification if available and action can be batched
+                if ctx.verification_batcher and action_risk.can_batch:
+                    ctx.verification_batcher.defer(
+                        action,
+                        result,
+                        intention.acceptance,
+                    )
+                    if ctx.session_logger:
+                        ctx.session_logger.log_debug("riva", "verification_deferred",
+                            f"Deferred to batch (pending: {ctx.verification_batcher.pending_count})", {
+                                "risk_level": action_risk.level.value,
+                                "can_batch": True,
+                            })
+                else:
+                    if ctx.session_logger:
+                        ctx.session_logger.log_debug("riva", "verification_skipped",
+                            "Low-risk action, trust budget allows skipping", {
+                                "risk_level": action_risk.level.value,
+                                "trust_remaining": ctx.trust_budget.remaining if ctx.trust_budget else 0,
+                            })
+                # Assume success for now (will be verified in batch or at boundary)
                 cycle.judgment = Judgment.SUCCESS
-                if ctx.session_logger:
-                    ctx.session_logger.log_debug("riva", "verification_skipped",
-                        "Low-risk action, trust budget allows skipping", {
-                            "risk_level": action_risk.level.value,
-                            "trust_remaining": ctx.trust_budget.remaining if ctx.trust_budget else 0,
-                        })
 
             if ctx.session_logger:
                 ctx.session_logger.log_info("riva", "cycle_complete",
@@ -1627,6 +1644,28 @@ def work(intention: Intention, ctx: WorkContext, depth: int = 0) -> None:
             if cycle.judgment == Judgment.SUCCESS:
                 intention.status = IntentionStatus.VERIFIED
                 intention.verified_at = datetime.now(timezone.utc)
+
+                # Flush any deferred verifications at intention boundary
+                if ctx.verification_batcher and ctx.verification_batcher.has_pending():
+                    batch_result = ctx.verification_batcher.flush()
+                    if ctx.session_logger:
+                        ctx.session_logger.log_debug("riva", "batch_verification_flushed",
+                            f"Batch verified: {batch_result.passed_count}/{len(batch_result.results)} passed", {
+                                "passed": batch_result.passed_count,
+                                "failed": batch_result.failed_count,
+                            })
+                    # If batch verification found failures, revert to ACTIVE
+                    if not batch_result.success:
+                        intention.status = IntentionStatus.ACTIVE
+                        intention.verified_at = None
+                        if ctx.trust_budget:
+                            ctx.trust_budget.deplete()
+                        if ctx.session_logger:
+                            ctx.session_logger.log_warning("riva", "batch_verification_failed",
+                                "Batch verification failed, reverting to ACTIVE", {
+                                    "failures": [f.expected for f in batch_result.failures],
+                                })
+
                 # Success replenishes trust (only if we actually verified)
                 if ctx.trust_budget and should_verify_action:
                     ctx.trust_budget.replenish()
