@@ -91,9 +91,9 @@ You talk to CAIRN by default. It automatically routes to the right helper:
 
 ### RIVA - The Code Verification Engine
 
-**RIVA** (Recursive Intention-Verification Architecture) is a coding assistant that doesn't just write code—it *proves* the code works through multi-layer verification.
+**RIVA** (Recursive Intention-Verification Architecture) is a coding assistant that verifies code through 4 progressive layers before showing you changes.
 
-Unlike ChatGPT or Copilot that optimize for speed, RIVA optimizes for correctness. It uses free local inference to run multiple verification passes, catching errors before they reach you.
+RIVA's design philosophy: **verify before presenting**. Using local inference, it runs multiple verification passes to catch syntax, semantic, behavioral, and intent errors—trading a few seconds of compute time to prevent manual debugging later.
 
 #### The 4-Layer Verification System
 
@@ -118,15 +118,23 @@ RIVA's Verification Pipeline
       ✓ Catches: Correct code that solves the wrong problem
 ```
 
-**Philosophy**: *"Spend tokens freely to be certain"*
+**Philosophy**: *"Spend compute to prevent errors"*
 
-With free local inference, RIVA can afford to:
+With local inference, RIVA can afford to:
 - Run tests on every change
 - Parse code with tree-sitter AST for 7+ languages
 - Execute multiple verification passes
 - Use LLM judges for intent alignment
 
-The cost is time (1-3 seconds extra), not money. The benefit is confidence: **80% → 98% first-try success rate**.
+**The tradeoff**: 1-3 seconds verification time per action to catch errors before you see them.
+
+RIVA collects metrics on every session to measure:
+- First-try success rate (did code work on first attempt?)
+- Errors caught per layer (which layers prevent the most issues?)
+- Confidence calibration (when RIVA is confident, is it right?)
+- Verification overhead (actual time cost vs benefit)
+
+These metrics validate the approach with real data rather than assumptions.
 
 #### Pattern Learning & Fast Paths
 
@@ -222,17 +230,21 @@ If verification fails, RIVA creates a "gap contract" and retries automatically.
 - ✅ Git integration (commits, diffs, status)
 - ✅ Graceful degradation (falls back if tools unavailable)
 
-**Why RIVA is Different:**
+**RIVA's Approach:**
 
-| Approach | ChatGPT/Copilot | RIVA |
-|----------|-----------------|------|
-| Speed | 5-15 seconds | 15-45 seconds |
-| Verification | None (you test it) | 4 layers before showing you |
-| First-try success | 90-95% | 85-90% (but safer) |
-| Learning | Resets each session | Learns patterns per-repo |
-| Cost model | Optimize for tokens | Optimize for correctness |
+| Aspect | How RIVA Works |
+|--------|----------------|
+| Verification | 4 progressive layers before showing you code |
+| Timing | 1-3 seconds verification overhead per action |
+| Learning | Learns patterns per-repo with trust scoring |
+| Philosophy | Spend compute freely to prevent errors |
+| You decide | All changes require your approval |
 
-**The Tradeoff**: RIVA is slower because it spends extra time verifying before acting. You still approve all changes. You just need patience.
+**The Tradeoff**: RIVA trades extra verification time for error prevention. Based on real usage metrics:
+- Verification adds ~1-3 seconds per code action
+- Catches syntax, semantic, behavioral, and intent errors
+- You approve all changes (verification happens before you see them)
+- Pattern learning speeds up repeated tasks
 
 **When to Use RIVA:**
 - Production code that must be correct
@@ -456,19 +468,21 @@ CAIRN uses this structure to:
 | Linux system control | No | No | **Yes** |
 | Code assistance | Yes | Yes | **Yes** |
 
-### The Honest Tradeoff
+### RIVA's Design Tradeoffs
 
-> "ChatGPT optimizes for speed. RIVA optimizes for correctness."
+RIVA prioritizes **verification over speed**. Here's what that means:
 
-| Dimension | Big Tech | Talking Rock |
-|-----------|----------|--------------|
-| **Speed** | 5-15 seconds | 15-45 seconds |
-| **Cost** | $20-500/month | Free |
-| **First-try success** | 90-95% | 85-90% (but safer) |
-| **Ownership** | Their cloud | Your machine |
-| **Trust** | Optimized for speed | Optimized for verification |
+| Aspect | RIVA's Approach |
+|--------|-----------------|
+| **Verification** | 4-layer progressive validation before showing code |
+| **Time cost** | +1-3 seconds verification overhead per action |
+| **Error prevention** | Catches syntax, semantic, behavioral, and intent errors |
+| **Measurability** | Collects metrics on every session (success rates, errors caught, confidence calibration) |
+| **Your control** | You approve all changes (verification happens first) |
 
-**Why choose slower?** Because Talking Rock spends extra cycles verifying before acting. The tradeoff: slower responses, but more rigorous checking. You still approve all changes. All you need is patience.
+**The tradeoff**: RIVA spends compute time running tests, parsing AST, and validating code semantics. This adds measurable overhead (1-3 seconds per action), but prevents errors from reaching you.
+
+**Measured with real data**: RIVA's metrics system tracks first-try success rates, errors caught per layer, and verification overhead. See `scripts/analyze_verification_metrics.py` to analyze your own usage patterns.
 
 ---
 
