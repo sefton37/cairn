@@ -8,25 +8,58 @@ while maintaining verification quality. The core philosophy:
 We accept being 3x slower in exchange for more rigorous verification.
 These optimizations reduce unnecessary overhead, not verification rigor.
 
-Modules:
-    metrics: Execution metrics collection and analysis
-    complexity: Task complexity analysis for smart decomposition
-    risk: Action risk classification for confidence-based verification
-    trust: Session-level trust budget management
-    pattern_success: Pattern success tracking for learned trust
-    verification: Batch verification for reduced LLM calls
-    fast_path: Optimized handlers for common patterns
-    model_selector: Task-appropriate model selection
+Quick Start
+-----------
+    from reos.code_mode.optimization import create_optimized_context
 
-Usage:
-    from reos.code_mode.optimization import (
-        ExecutionMetrics,
-        TaskComplexity,
-        analyze_complexity,
-        ActionRisk,
-        assess_risk,
-        TrustBudget,
+    # Create WorkContext with all optimizations enabled
+    ctx = create_optimized_context(
+        sandbox=sandbox,
+        llm=llm,
+        checkpoint=checkpoint,
+        session_id="my-session",
     )
+
+    # Work with RIVA as normal - optimizations happen automatically
+    result = work(intention, ctx)
+
+    # Check optimization status
+    from reos.code_mode.optimization import create_status
+    status = create_status(ctx)
+    print(status.summary())
+
+Factory Functions
+-----------------
+    create_optimized_context   Full optimization (metrics + trust + batching)
+    create_minimal_context     No optimizations (for testing)
+    create_metrics_only_context  Just metrics collection
+    create_high_trust_context  Speed-optimized with high initial trust
+    create_paranoid_context    Maximum verification (verify everything)
+
+Data Flow
+---------
+    action → assess_risk() → trust_budget.should_verify()
+                                  ↓
+                        [HIGH or low trust] → immediate verify
+                        [LOW/MED + high trust] → defer to batcher
+                                  ↓
+                        intention verified → batcher.flush()
+                                  ↓
+                        [batch success] → done
+                        [batch failure] → revert, deplete trust
+
+Modules
+-------
+    metrics         Execution metrics collection and analysis
+    complexity      Task complexity analysis for smart decomposition
+    risk            Action risk classification (HIGH/MEDIUM/LOW)
+    trust           Session-level trust budget management
+    verification    Batch verification for reduced LLM calls
+    pattern_success Pattern success tracking for learned trust
+    fast_path       Optimized handlers for common patterns (scaffolded)
+    model_selector  Task-appropriate model selection (scaffolded)
+    status          Unified status reporting for observability
+    factory         Convenience functions for WorkContext creation
 
 All optimizations are opt-in and can be enabled/disabled via config.
 When in doubt, we fall back to full verification.
