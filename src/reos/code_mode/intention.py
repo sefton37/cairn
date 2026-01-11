@@ -463,6 +463,9 @@ class WorkContext:
     max_cycles_per_intention: int = 5
     max_depth: int = 10
 
+    # Verification control
+    enable_multilayer_verification: bool = True  # Set to False to disable verification (for benchmarking)
+
     # Callbacks for UI integration
     on_intention_start: Callable[[Intention], None] | None = None
     on_intention_complete: Callable[[Intention], None] | None = None
@@ -1704,7 +1707,7 @@ def work(intention: Intention, ctx: WorkContext, depth: int = 0) -> None:
             if should_verify_action:
                 # Immediate verification required (HIGH risk or low trust)
                 # Use multi-layer verification for code actions (EDIT, CREATE)
-                if action.type in (ActionType.EDIT, ActionType.CREATE):
+                if ctx.enable_multilayer_verification and action.type in (ActionType.EDIT, ActionType.CREATE):
                     # Choose verification strategy based on risk level
                     from reos.code_mode.optimization.risk import RiskLevel
                     if action_risk.level == RiskLevel.HIGH:
@@ -1793,7 +1796,7 @@ def work(intention: Intention, ctx: WorkContext, depth: int = 0) -> None:
                         })
 
                 # Use multi-layer verification for code actions (EDIT, CREATE)
-                if action.type in (ActionType.EDIT, ActionType.CREATE):
+                if ctx.enable_multilayer_verification and action.type in (ActionType.EDIT, ActionType.CREATE):
                     # Choose verification strategy based on risk level
                     from reos.code_mode.optimization.risk import RiskLevel
                     if action_risk.level == RiskLevel.HIGH:
