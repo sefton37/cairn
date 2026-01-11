@@ -63,6 +63,13 @@ from reos.code_mode.optimization.status import (
     OptimizationStatus,
     create_status,
 )
+from reos.code_mode.optimization.factory import (
+    create_optimized_context,
+    create_minimal_context,
+    create_metrics_only_context,
+    create_high_trust_context,
+    create_paranoid_context,
+)
 
 __all__ = [
     # Metrics
@@ -93,4 +100,10 @@ __all__ = [
     # Status
     "OptimizationStatus",
     "create_status",
+    # Factory
+    "create_optimized_context",
+    "create_minimal_context",
+    "create_metrics_only_context",
+    "create_high_trust_context",
+    "create_paranoid_context",
 ]
