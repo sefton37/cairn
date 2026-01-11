@@ -1722,6 +1722,17 @@ def work(intention: Intention, ctx: WorkContext, depth: int = 0) -> None:
     if intention.status != IntentionStatus.VERIFIED:
         if not verifiable or should_decompose(intention, intention.trace[-1] if intention.trace else None, ctx):
 
+            # Clear any pending batch verifications from the failed approach
+            # These were for cycles we're abandoning - don't let them pollute child verification
+            if ctx.verification_batcher and ctx.verification_batcher.has_pending():
+                pending_count = ctx.verification_batcher.pending_count
+                ctx.verification_batcher.clear()
+                if ctx.session_logger:
+                    ctx.session_logger.log_debug("riva", "batch_cleared_on_decompose",
+                        f"Cleared {pending_count} pending verifications before decomposition", {
+                            "pending_count": pending_count,
+                        })
+
             if ctx.session_logger:
                 ctx.session_logger.log_info("riva", "decomposing",
                     f"Decomposing: {intention.what[:50]}...")
