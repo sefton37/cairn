@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from reos.code_mode.quality import QualityTracker
     from reos.code_mode.tools import ToolProvider
     from reos.code_mode.optimization.metrics import ExecutionMetrics
+    from reos.code_mode.optimization.complexity import TaskComplexity
     from reos.providers import LLMProvider
 
 logger = logging.getLogger(__name__)
@@ -462,12 +463,62 @@ def can_verify_directly(intention: Intention, ctx: WorkContext) -> bool:
     Ask: "Can I write a test, run a command, or observe an outcome
     that tells me this intention is satisfied?"
 
-    Heuristics:
-    - Single observable behavior mentioned
-    - "Done" can be described in one sentence
-    - There's a command that would prove it works
-    - No compound actions (and, then, also)
+    Uses complexity analyzer for smarter decomposition decisions,
+    with fallback to simple heuristics.
     """
+    # Try complexity analyzer first (Phase 2 optimization)
+    try:
+        from reos.code_mode.optimization.complexity import analyze_complexity
+
+        complexity = analyze_complexity(intention.what, intention.acceptance)
+
+        # Log complexity analysis
+        logger.debug(
+            "Complexity analysis: score=%.2f, level=%s, should_decompose=%s, confidence=%.2f, reason=%s",
+            complexity.score,
+            complexity.level.value,
+            complexity.should_decompose,
+            complexity.confidence,
+            complexity.reason,
+        )
+
+        # Log to session logger if available
+        if ctx.session_logger:
+            ctx.session_logger.log_debug("riva", "complexity_analysis", complexity.reason, {
+                "score": complexity.score,
+                "level": complexity.level.value,
+                "should_decompose": complexity.should_decompose,
+                "confidence": complexity.confidence,
+                "factors": {
+                    "estimated_files": complexity.estimated_files,
+                    "estimated_functions": complexity.estimated_functions,
+                    "has_external_deps": complexity.has_external_deps,
+                    "scope_ambiguous": complexity.scope_ambiguous,
+                    "has_compound": complexity.has_compound_structure,
+                },
+            })
+
+        # If complexity analyzer is confident, use its decision
+        if complexity.confidence >= 0.7:
+            # Track in metrics if analyzer suggests we could skip decomposition
+            if ctx.metrics and not complexity.should_decompose:
+                # This is a potential optimization - we're NOT decomposing
+                pass  # Will track skippable_decompositions when we have baseline
+
+            # Return True if we DON'T need to decompose (can verify directly)
+            return not complexity.should_decompose
+
+        # Low confidence - fall through to heuristics
+        logger.debug("Complexity analyzer low confidence (%.2f), using heuristics", complexity.confidence)
+
+    except ImportError:
+        # Optimization module not available, use heuristics
+        pass
+    except Exception as e:
+        # Any error in complexity analysis - fall back to heuristics
+        logger.warning("Complexity analysis failed, using heuristics: %s", e)
+
+    # Fallback: Original heuristics
     what_lower = intention.what.lower()
     acceptance_lower = intention.acceptance.lower()
 
