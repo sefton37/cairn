@@ -644,16 +644,143 @@ async def _verify_intent_layer(
     Returns:
         LayerResult with pass/fail and confidence
     """
-    # TODO: Implement intent verification with LLM
-    # For now, placeholder
-    return LayerResult(
-        layer=VerificationLayer.INTENT,
-        passed=True,
-        confidence=0.8,
-        reason="Intent verification not yet implemented (placeholder)",
-        details={"status": "placeholder"},
-        tokens_used=0,
-    )
+    # If no LLM available, skip intent verification
+    if not ctx.llm:
+        logger.warning("No LLM available for intent verification, skipping Layer 4")
+        return LayerResult(
+            layer=VerificationLayer.INTENT,
+            passed=True,
+            confidence=0.5,  # Neutral - can't verify without LLM
+            reason="Intent verification skipped (no LLM available)",
+            details={"status": "skipped"},
+            tokens_used=0,
+        )
+
+    # Extract code content from action
+    if action.type.value == "create":
+        code_content = action.content
+        context = f"Creating new file: {action.target}"
+    elif action.type.value == "edit":
+        code_content = action.content
+        context = f"Editing file: {action.target}"
+    else:
+        # Intent verification only makes sense for code actions
+        return LayerResult(
+            layer=VerificationLayer.INTENT,
+            passed=True,
+            confidence=0.5,
+            reason="Intent verification skipped (not a code action)",
+            details={"status": "skipped"},
+            tokens_used=0,
+        )
+
+    # Build LLM prompt for intent verification
+    system_prompt = """You are a code verification assistant. Your job is to determine if generated code matches the user's original intent.
+
+You will be given:
+1. The user's original request (what they wanted)
+2. The acceptance criteria (how to verify success)
+3. The generated code
+
+Your task: Judge if the code accomplishes what was requested.
+
+Respond with EXACTLY this format:
+ALIGNED: yes/no
+CONFIDENCE: 0.0-1.0
+REASON: brief explanation
+
+Example responses:
+ALIGNED: yes
+CONFIDENCE: 0.95
+REASON: Code implements the requested hello() function that returns a greeting string
+
+ALIGNED: no
+CONFIDENCE: 0.85
+REASON: Code implements fibonacci instead of factorial as requested"""
+
+    user_prompt = f"""Original Request: {intention.what}
+
+Acceptance Criteria: {intention.acceptance}
+
+Context: {context}
+
+Generated Code:
+```
+{code_content[:1000]}  # Limit to first 1000 chars to avoid huge prompts
+```
+
+Does this code accomplish what was requested? Respond in the required format."""
+
+    try:
+        # Call LLM
+        response = ctx.llm.chat_text(
+            system=system_prompt,
+            user=user_prompt,
+            timeout_seconds=30.0,
+            temperature=0.1,  # Low temperature for consistent judgments
+        )
+
+        # Parse response
+        aligned = None
+        confidence = 0.5
+        reason = "Could not parse LLM response"
+
+        for line in response.strip().split("\n"):
+            line = line.strip()
+            if line.startswith("ALIGNED:"):
+                aligned_str = line.split(":", 1)[1].strip().lower()
+                aligned = aligned_str in ("yes", "true", "1")
+            elif line.startswith("CONFIDENCE:"):
+                try:
+                    confidence = float(line.split(":", 1)[1].strip())
+                    # Clamp to valid range
+                    confidence = max(0.0, min(1.0, confidence))
+                except (ValueError, IndexError):
+                    pass
+            elif line.startswith("REASON:"):
+                reason = line.split(":", 1)[1].strip()
+
+        # If we couldn't parse alignment, treat as failure
+        if aligned is None:
+            logger.warning("Could not parse ALIGNED status from LLM response: %s", response[:200])
+            return LayerResult(
+                layer=VerificationLayer.INTENT,
+                passed=False,
+                confidence=0.3,
+                reason="Failed to parse LLM intent verification response",
+                details={"llm_response": response[:500]},
+                tokens_used=100,  # Estimate
+            )
+
+        logger.info(
+            "Intent verification: aligned=%s, confidence=%.2f, reason=%s",
+            aligned,
+            confidence,
+            reason,
+        )
+
+        return LayerResult(
+            layer=VerificationLayer.INTENT,
+            passed=aligned,
+            confidence=confidence if aligned else (1.0 - confidence),
+            reason=reason,
+            details={
+                "llm_response": response[:500],
+                "aligned": aligned,
+            },
+            tokens_used=100,  # Estimate - could track actual tokens if needed
+        )
+
+    except Exception as e:
+        logger.error("Intent verification failed with exception: %s", e)
+        return LayerResult(
+            layer=VerificationLayer.INTENT,
+            passed=False,
+            confidence=0.0,
+            reason=f"Intent verification error: {str(e)[:200]}",
+            details={"error": str(e)},
+            tokens_used=0,
+        )
 
 
 def _infer_language(file_path: str) -> str:

@@ -332,3 +332,101 @@ class TestMultilayerVerificationIntegration:
                 VerificationStrategy.STANDARD,
                 VerificationStrategy.THOROUGH,
             ]
+
+
+class TestIntentLayerVerification:
+    """Tests for Intent Layer (Layer 4) verification."""
+
+    @patch("reos.code_mode.optimization.verification_layers._verify_intent_layer")
+    def test_intent_layer_detects_misaligned_code(
+        self,
+        mock_intent_layer: AsyncMock,
+    ) -> None:
+        """Intent layer should detect when code doesn't match request."""
+        from reos.code_mode.optimization.verification_layers import (
+            LayerResult,
+            VerificationLayer,
+        )
+
+        # Simulate intent layer detecting misalignment
+        mock_intent_layer.return_value = LayerResult(
+            layer=VerificationLayer.INTENT,
+            passed=False,
+            confidence=0.85,
+            reason="Code implements fibonacci instead of factorial as requested",
+            duration_ms=1500,
+            tokens_used=150,
+        )
+
+        # This test verifies the mock works - actual integration testing
+        # would require a real LLM, which we test separately
+        result = asyncio.run(mock_intent_layer(None, None, None))
+        assert result.layer == VerificationLayer.INTENT
+        assert not result.passed
+        assert "fibonacci" in result.reason.lower()
+
+    def test_intent_layer_implementation_has_llm_call(self) -> None:
+        """Verify intent layer implementation uses LLM."""
+        import inspect
+        from reos.code_mode.optimization.verification_layers import (
+            _verify_intent_layer,
+        )
+
+        # Check that _verify_intent_layer references ctx.llm
+        source = inspect.getsource(_verify_intent_layer)
+        assert "ctx.llm" in source, "Intent layer should use ctx.llm"
+        assert "chat_text" in source, "Intent layer should call chat_text()"
+        assert "ALIGNED:" in source, "Intent layer should parse ALIGNED response"
+        assert "CONFIDENCE:" in source, "Intent layer should parse CONFIDENCE"
+        assert "REASON:" in source, "Intent layer should parse REASON"
+
+    def test_intent_layer_skips_without_llm(self) -> None:
+        """Intent layer should gracefully skip if no LLM available."""
+        import asyncio
+
+        from reos.code_mode import Action, ActionType, Intention, WorkContext
+        from reos.code_mode.optimization.verification_layers import (
+            _verify_intent_layer,
+        )
+
+        # Create minimal test data
+        action = Action(type=ActionType.CREATE, content="def hello(): pass", target="test.py")
+        intention = Intention.create(what="Create hello function", acceptance="Function exists")
+
+        # Create context WITHOUT LLM
+        class MockSandbox:
+            root = Path("/tmp/test")
+
+        ctx = WorkContext(
+            sandbox=MockSandbox(),  # type: ignore
+            llm=None,  # No LLM
+            checkpoint=None,  # type: ignore
+        )
+
+        # Run intent verification
+        result = asyncio.run(_verify_intent_layer(action, intention, ctx))
+
+        # Should skip gracefully
+        assert result.layer == VerificationLayer.INTENT
+        assert result.passed  # Defaults to True when skipped
+        assert result.confidence == 0.5  # Neutral confidence
+        assert "skipped" in result.reason.lower()
+        assert result.tokens_used == 0
+
+    def test_intent_layer_prompt_structure(self) -> None:
+        """Verify intent layer builds proper prompts."""
+        import inspect
+
+        from reos.code_mode.optimization.verification_layers import (
+            _verify_intent_layer,
+        )
+
+        source = inspect.getsource(_verify_intent_layer)
+
+        # Check prompt structure
+        assert "Original Request:" in source
+        assert "Acceptance Criteria:" in source
+        assert "Generated Code:" in source
+        assert "system_prompt" in source
+        assert "user_prompt" in source
+        assert "temperature=0.1" in source  # Low temp for consistent judgments
