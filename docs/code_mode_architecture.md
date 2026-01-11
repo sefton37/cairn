@@ -342,6 +342,37 @@ Success indicators:              Failure indicators:           Unclear:
 
 These limits are configured in `src/reos/config.py` and can be tuned via environment variables.
 
+### Performance Optimization
+
+RIVA accepts being **3x slower than big tech** in exchange for **verification guarantees**. The optimization philosophy:
+
+> "ChatGPT is faster but sometimes makes shit up. RIVA is slower but never lies."
+
+**Key Optimizations:**
+
+| Strategy | Purpose | Impact |
+|----------|---------|--------|
+| Smart decomposition | Only decompose when necessary | Fewer meta-calls |
+| Batch verification | Verify plans, not micro-decisions | 50% fewer LLM calls |
+| Confidence-based verification | High scrutiny for high-risk only | Dynamic efficiency |
+| Pattern memory | Trust patterns that worked before | Skip redundant checks |
+| Parallel verification | Independent checks run concurrently | Faster verification |
+| Fast-path patterns | Optimized paths for common requests | 80/20 optimization |
+| Model selection | Right-size model to task complexity | Compute efficiency |
+| Progressive enhancement | Ship basic fast, enhance after | Better UX |
+| Trust budget | Dynamic verification cadence | Avoid constant paranoia |
+
+**Target Performance:**
+
+| Metric | Target | Notes |
+|--------|--------|-------|
+| Response time | 15-45s | 3x slower than cloud, acceptable |
+| Token usage | 4-6k | 2x more, but free locally |
+| First-try success | 85-90% | Slightly lower, but safer |
+| Decomposition ratio | <20% simple tasks | Avoid over-decomposition |
+
+See [RIVA Performance Strategy](./riva-performance-strategy.md) for detailed implementation.
+
 ### Data Structures (`intention.py`)
 
 ```python

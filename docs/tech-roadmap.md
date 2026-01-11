@@ -45,6 +45,11 @@ All three share the same principles:
 - Capability transfer over dependency
 - Safety without surveillance
 
+**The core value proposition:**
+> "ChatGPT is faster but sometimes makes shit up. RIVA is slower but never lies."
+
+We don't compete on speed. We compete on **reliability and trust**.
+
 ---
 
 ## Architecture Overview
@@ -579,6 +584,18 @@ class DocumentationLookup:
 
 ## Implementation Priority
 
+### Tier 0: Performance Optimization (Current Focus)
+
+| Feature | Why | Effort |
+|---------|-----|--------|
+| **Smart Decomposition Thresholds** | Stop over-decomposing simple tasks | Medium |
+| **Batch Verification** | Reduce LLM calls by 50% | Medium |
+| **Confidence-Based Verification** | High scrutiny only where needed | Medium |
+| **Pattern Memory** | Learn and trust successful patterns | High |
+| **Trust Budget** | Dynamic verification cadence | Medium |
+
+See [RIVA Performance Strategy](./riva-performance-strategy.md) for full details.
+
 ### Tier 1: High Impact, Build Next
 
 | Feature | Why | Effort |
@@ -642,7 +659,18 @@ class DocumentationLookup:
 
 ### The Talking Rock Advantage
 
-What we can do that they can't:
+**The Honest Tradeoff:**
+
+| Dimension | Big Tech | Talking Rock |
+|-----------|----------|--------------|
+| **Speed** | 5-15 seconds | 15-45 seconds (3x slower) |
+| **Cost** | $20-500/month | Free forever |
+| **First-try success** | 90-95% | 85-90% (slightly lower, but safer) |
+| **Token usage** | 2-3k | 4-6k (2x more, but local) |
+| **Ownership** | Their cloud, their rules | Your machine, your data |
+| **Trust** | Hope it's right | Verification guarantees |
+
+**What we can do that they can't:**
 
 1. **Fully Local**: Some users can't/won't send code to cloud. Period.
 2. **Open Source**: Security audits, bug fixes, feature additions by community
@@ -650,6 +678,11 @@ What we can do that they can't:
 4. **User Sovereignty**: Optimized for user, not engagement metrics
 5. **Linux Integration**: Unique combination of sysadmin + coding
 6. **Federated Improvement**: Learn from corrections without centralizing data
+
+**User perception we design for:**
+> "Takes longer and sometimes needs tweaking, but never does anything unexpected, I own everything, and it's free."
+
+**Value proposition:** All you need is patience.
 
 ---
 
@@ -745,13 +778,18 @@ Applied to RIVA (Code Mode):
 
 ## Timeline
 
-**Q1 2025: Foundation**
+**Q1 2025: Foundation + Performance**
 - [x] Code Mode core (intent, contract, execution loop)
 - [x] Self-debugging loop
 - [x] Execution-based verification
+- [ ] Smart decomposition thresholds
+- [ ] Batch verification (50% fewer LLM calls)
+- [ ] Confidence-based verification levels
 - [ ] Diff preview UI (in progress)
 
-**Q2 2025: Codebase Understanding**
+**Q2 2025: Learning & Codebase Understanding**
+- [ ] Pattern memory (trust successful patterns)
+- [ ] Trust budget (dynamic verification)
 - [ ] Repository map (dependency graph)
 - [ ] Semantic search (embeddings)
 - [ ] LSP integration (pyright, typescript)
@@ -760,18 +798,21 @@ Applied to RIVA (Code Mode):
 - [ ] Long-term project memory
 - [ ] Test-first contracts (generate test code)
 - [ ] Multi-path exploration
+- [ ] Fast-path for common patterns (80/20)
 
 **Q4 2025: Polish**
 - [ ] Streaming execution UI
 - [ ] Inspector pane
 - [ ] Documentation lookup
 - [ ] Pluggable model backends
+- [ ] Model selection by task complexity
 
 **2026: Ecosystem**
 - [ ] Browser automation
 - [ ] More language support
 - [ ] Plugin system
 - [ ] Community patterns library
+- [ ] Parallel verification pipeline
 
 ---
 

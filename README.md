@@ -338,6 +338,20 @@ CAIRN uses this structure to:
 | Linux system control | No | No | **Yes** |
 | Code assistance | Yes | Yes | **Yes** |
 
+### The Honest Tradeoff
+
+> "ChatGPT is faster but sometimes makes shit up. RIVA is slower but never lies."
+
+| Dimension | Big Tech | Talking Rock |
+|-----------|----------|--------------|
+| **Speed** | 5-15 seconds | 15-45 seconds |
+| **Cost** | $20-500/month | Free |
+| **First-try success** | 90-95% | 85-90% (but safer) |
+| **Ownership** | Their cloud | Your machine |
+| **Trust** | Hope it's right | Verification guarantees |
+
+**Why choose slower?** Because Talking Rock verifies before acting. It won't hallucinate an API that doesn't exist. It won't make changes you didn't approve. All you need is patience.
+
 ---
 
 ## The Mission
@@ -416,8 +430,11 @@ We believe AI should be:
 
 - [Beginner's Guide](docs/beginners-guide.md) - New to Linux? Start here
 - [Technical Roadmap](docs/tech-roadmap.md) - Development plans
+- [App Vision](docs/app-vision.md) - What we're building and why
+- [RIVA Performance Strategy](docs/riva-performance-strategy.md) - How we compete with big tech
 - [Security Design](docs/security.md) - How we protect your system
 - [CAIRN Architecture](docs/cairn_architecture.md) - Attention minder design
+- [RIVA Architecture](docs/code_mode_architecture.md) - Code agent design
 - [Parse Gate Architecture](docs/parse-gate.md) - Context-aware shell proposals
 - [The Play System](docs/the-play.md) - Knowledge organization
 
