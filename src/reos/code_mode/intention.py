@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from reos.code_mode.optimization.metrics import ExecutionMetrics
     from reos.code_mode.optimization.complexity import TaskComplexity
     from reos.code_mode.optimization.risk import ActionRisk
+    from reos.code_mode.optimization.trust import TrustBudget
     from reos.providers import LLMProvider
 
 logger = logging.getLogger(__name__)
@@ -448,6 +449,7 @@ class WorkContext:
     quality_tracker: "QualityTracker | None" = None  # Track quality tiers
     tool_provider: "ToolProvider | None" = None  # Tools for gathering context
     metrics: "ExecutionMetrics | None" = None  # Performance metrics collection
+    trust_budget: "TrustBudget | None" = None  # Session trust for verification decisions
     max_cycles_per_intention: int = 5
     max_depth: int = 10
 
@@ -1591,25 +1593,48 @@ def work(intention: Intention, ctx: WorkContext, depth: int = 0) -> None:
                 judgment=Judgment.UNCLEAR,  # Will be set by checkpoint
             )
 
-            # Human/auto judgment
-            cycle.judgment = ctx.checkpoint.judge_action(intention, cycle)
+            # Determine if we should verify based on trust budget
+            should_verify_action = True
+            if ctx.trust_budget:
+                should_verify_action = ctx.trust_budget.should_verify(action_risk)
 
-            # Track verification in metrics with actual risk level
-            if ctx.metrics:
-                ctx.metrics.record_verification(action_risk.level.value)
+            if should_verify_action:
+                # Human/auto judgment with actual verification
+                cycle.judgment = ctx.checkpoint.judge_action(intention, cycle)
+
+                # Track verification in metrics with actual risk level
+                if ctx.metrics:
+                    ctx.metrics.record_verification(action_risk.level.value)
+            else:
+                # Trust budget allows skipping verification - assume success
+                cycle.judgment = Judgment.SUCCESS
+                if ctx.session_logger:
+                    ctx.session_logger.log_debug("riva", "verification_skipped",
+                        "Low-risk action, trust budget allows skipping", {
+                            "risk_level": action_risk.level.value,
+                            "trust_remaining": ctx.trust_budget.remaining if ctx.trust_budget else 0,
+                        })
 
             if ctx.session_logger:
                 ctx.session_logger.log_info("riva", "cycle_complete",
                     f"Judgment: {cycle.judgment.value}", {
                         "result_preview": result[:200],
                         "risk_level": action_risk.level.value,
-                        "requires_verification": action_risk.requires_verification,
+                        "verified": should_verify_action,
+                        "trust_remaining": ctx.trust_budget.remaining if ctx.trust_budget else None,
                     })
 
             if cycle.judgment == Judgment.SUCCESS:
                 intention.status = IntentionStatus.VERIFIED
                 intention.verified_at = datetime.now(timezone.utc)
+                # Success replenishes trust (only if we actually verified)
+                if ctx.trust_budget and should_verify_action:
+                    ctx.trust_budget.replenish()
             else:
+                # Verification caught a failure - this is good
+                if ctx.trust_budget and should_verify_action:
+                    ctx.trust_budget.record_failure_caught()
+
                 # Reflect on failure
                 cycle.reflection = reflect(intention, cycle, ctx)
 
