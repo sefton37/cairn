@@ -59,6 +59,10 @@ from reos.code_mode.optimization.model_selector import (
     ModelSelection,
     select_model,
 )
+from reos.code_mode.optimization.status import (
+    OptimizationStatus,
+    create_status,
+)
 
 __all__ = [
     # Metrics
@@ -86,4 +90,7 @@ __all__ = [
     "ModelTier",
     "ModelSelection",
     "select_model",
+    # Status
+    "OptimizationStatus",
+    "create_status",
 ]
