@@ -32,9 +32,45 @@ if TYPE_CHECKING:
     from reos.code_mode.session_logger import SessionLogger
     from reos.code_mode.quality import QualityTracker
     from reos.code_mode.tools import ToolProvider
+    from reos.code_mode.optimization.metrics import ExecutionMetrics
     from reos.providers import LLMProvider
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Metrics timing helper
+# =============================================================================
+
+import time
+from contextlib import contextmanager
+
+
+@contextmanager
+def _timed_operation(metrics: "ExecutionMetrics | None", purpose: str):
+    """Context manager to time an operation and record it in metrics.
+
+    Args:
+        metrics: ExecutionMetrics instance (or None to skip tracking)
+        purpose: One of "decomposition", "action", "verification", "reflection"
+
+    Usage:
+        with _timed_operation(ctx.metrics, "action") as timer:
+            result = do_llm_call()
+        # timer.duration_ms is now set
+    """
+    class Timer:
+        duration_ms: int = 0
+
+    timer = Timer()
+    start = time.perf_counter()
+    try:
+        yield timer
+    finally:
+        elapsed = time.perf_counter() - start
+        timer.duration_ms = int(elapsed * 1000)
+        if metrics:
+            metrics.record_llm_call(purpose, timer.duration_ms)
 
 
 class IntentionStatus(Enum):
@@ -409,6 +445,7 @@ class WorkContext:
     session_logger: "SessionLogger | None" = None
     quality_tracker: "QualityTracker | None" = None  # Track quality tiers
     tool_provider: "ToolProvider | None" = None  # Tools for gathering context
+    metrics: "ExecutionMetrics | None" = None  # Performance metrics collection
     max_cycles_per_intention: int = 5
     max_depth: int = 10
 
@@ -698,11 +735,17 @@ Provide sub-intentions that are concrete and testable.
 If creating multiple functions for one module, reference the SAME filename in each sub-task."""
 
     try:
-        response = ctx.llm.chat_json(
-            system=system_prompt,
-            user=user_prompt,
-            timeout_seconds=30.0,
-        )
+        # Time the LLM call for metrics
+        with _timed_operation(ctx.metrics, "decomposition"):
+            response = ctx.llm.chat_json(
+                system=system_prompt,
+                user=user_prompt,
+                timeout_seconds=30.0,
+            )
+
+        # Track decomposition in metrics
+        if ctx.metrics:
+            ctx.metrics.record_decomposition(depth=0)  # Depth tracked separately in work()
 
         # Log LLM call
         if ctx.session_logger:
@@ -899,10 +942,12 @@ ACCEPTANCE: {intention.acceptance}
 What should we try next? Remember: write COMPLETE working code, not placeholders."""
 
     try:
-        response = ctx.llm.chat_json(
-            system=system_prompt,
-            user=user_prompt,
-            timeout_seconds=30.0,
+        # Time the LLM call for metrics
+        with _timed_operation(ctx.metrics, "action"):
+            response = ctx.llm.chat_json(
+                system=system_prompt,
+                user=user_prompt,
+                timeout_seconds=30.0,
         )
 
         if ctx.session_logger:
@@ -1205,6 +1250,9 @@ def _merge_python_content(existing: str, new_content: str) -> str:
 
 def execute_action(action: Action, ctx: WorkContext) -> str:
     """Execute an action and return the result."""
+    # Track execution time for metrics
+    exec_start = time.perf_counter()
+
     if ctx.session_logger:
         ctx.session_logger.log_debug("riva", "execute_start",
             f"Executing {action.type.value}: {action.content[:50]}...", {
@@ -1312,7 +1360,15 @@ def execute_action(action: Action, ctx: WorkContext) -> str:
                 "error": str(e),
             })
         logger.error("Action execution failed: %s", e)
+        if ctx.metrics:
+            ctx.metrics.record_failure()
         return error_msg
+
+    finally:
+        # Record execution time in metrics
+        if ctx.metrics:
+            elapsed_ms = int((time.perf_counter() - exec_start) * 1000)
+            ctx.metrics.execution_time_ms += elapsed_ms
 
 
 def reflect(intention: Intention, cycle: Cycle, ctx: WorkContext) -> str:
@@ -1342,11 +1398,17 @@ JUDGMENT: {cycle.judgment.value}
 Why did this fail and what should we do?"""
 
     try:
-        response = ctx.llm.chat_text(
-            system=system_prompt,
-            user=user_prompt,
-            timeout_seconds=20.0,
-        )
+        # Time the LLM call for metrics
+        with _timed_operation(ctx.metrics, "reflection"):
+            response = ctx.llm.chat_text(
+                system=system_prompt,
+                user=user_prompt,
+                timeout_seconds=20.0,
+            )
+
+        # Track retry in metrics
+        if ctx.metrics:
+            ctx.metrics.record_retry()
 
         if ctx.session_logger:
             ctx.session_logger.log_llm_call(
@@ -1417,7 +1479,13 @@ def work(intention: Intention, ctx: WorkContext, depth: int = 0) -> None:
     if depth > ctx.max_depth:
         logger.error("Max depth exceeded, failing intention")
         intention.status = IntentionStatus.FAILED
+        if ctx.metrics:
+            ctx.metrics.record_failure()
         return
+
+    # Track depth in metrics
+    if ctx.metrics:
+        ctx.metrics.max_depth_reached = max(ctx.metrics.max_depth_reached, depth)
 
     # Log start
     if ctx.session_logger:
@@ -1467,6 +1535,10 @@ def work(intention: Intention, ctx: WorkContext, depth: int = 0) -> None:
 
             # Human/auto judgment
             cycle.judgment = ctx.checkpoint.judge_action(intention, cycle)
+
+            # Track verification in metrics
+            if ctx.metrics:
+                ctx.metrics.record_verification("medium")  # Default risk level for now
 
             if ctx.session_logger:
                 ctx.session_logger.log_info("riva", "cycle_complete",
@@ -1536,6 +1608,12 @@ def work(intention: Intention, ctx: WorkContext, depth: int = 0) -> None:
                 "cycles": len(intention.trace),
                 "children": len(intention._child_intentions),
             })
+
+    # Finalize metrics at root level
+    if depth == 0 and ctx.metrics:
+        success = intention.status == IntentionStatus.VERIFIED
+        ctx.metrics.complete(success)
+        logger.info("Metrics: %s", ctx.metrics.summary())
 
     if ctx.on_intention_complete:
         ctx.on_intention_complete(intention)

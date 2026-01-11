@@ -188,3 +188,143 @@ class ExecutionMetrics:
 def create_metrics(session_id: str) -> ExecutionMetrics:
     """Create a new metrics instance for a session."""
     return ExecutionMetrics(session_id=session_id)
+
+
+class MetricsStore:
+    """Database-backed storage for execution metrics.
+
+    Stores metrics for analysis and baseline measurement.
+    """
+
+    def __init__(self, db: Any):
+        """Initialize metrics store.
+
+        Args:
+            db: Database connection with execute/fetchall methods
+        """
+        self.db = db
+        self._ensure_table()
+
+    def _ensure_table(self) -> None:
+        """Create metrics table if it doesn't exist."""
+        self.db.execute("""
+            CREATE TABLE IF NOT EXISTS riva_metrics (
+                session_id TEXT PRIMARY KEY,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                total_duration_ms INTEGER,
+                llm_time_ms INTEGER,
+                execution_time_ms INTEGER,
+                llm_calls_total INTEGER,
+                decomposition_count INTEGER,
+                max_depth_reached INTEGER,
+                verifications_total INTEGER,
+                retry_count INTEGER,
+                failure_count INTEGER,
+                success INTEGER,
+                first_try_success INTEGER,
+                metrics_json TEXT
+            )
+        """)
+
+    def save(self, metrics: ExecutionMetrics) -> None:
+        """Save metrics to database."""
+        import json
+
+        self.db.execute(
+            """
+            INSERT OR REPLACE INTO riva_metrics (
+                session_id, started_at, completed_at,
+                total_duration_ms, llm_time_ms, execution_time_ms,
+                llm_calls_total, decomposition_count, max_depth_reached,
+                verifications_total, retry_count, failure_count,
+                success, first_try_success, metrics_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                metrics.session_id,
+                metrics.started_at.isoformat(),
+                metrics.completed_at.isoformat() if metrics.completed_at else None,
+                metrics.total_duration_ms,
+                metrics.llm_time_ms,
+                metrics.execution_time_ms,
+                metrics.llm_calls_total,
+                metrics.decomposition_count,
+                metrics.max_depth_reached,
+                metrics.verifications_total,
+                metrics.retry_count,
+                metrics.failure_count,
+                1 if metrics.success else 0,
+                1 if metrics.first_try_success else 0,
+                json.dumps(metrics.to_dict()),
+            ),
+        )
+
+    def get_baseline_stats(self, limit: int = 100) -> dict[str, Any]:
+        """Calculate baseline statistics from recent executions.
+
+        Returns aggregate stats useful for optimization decisions.
+        """
+        rows = self.db.fetchall(
+            """
+            SELECT
+                COUNT(*) as total_sessions,
+                AVG(total_duration_ms) as avg_duration_ms,
+                AVG(llm_time_ms) as avg_llm_time_ms,
+                AVG(llm_calls_total) as avg_llm_calls,
+                AVG(decomposition_count) as avg_decompositions,
+                AVG(verifications_total) as avg_verifications,
+                SUM(success) as success_count,
+                SUM(first_try_success) as first_try_count,
+                AVG(max_depth_reached) as avg_depth
+            FROM riva_metrics
+            WHERE completed_at IS NOT NULL
+            ORDER BY started_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+
+        if not rows or not rows[0]:
+            return {"error": "No metrics data available"}
+
+        row = rows[0]
+        total = row[0] or 0
+
+        return {
+            "sample_size": total,
+            "avg_duration_ms": round(row[1] or 0, 1),
+            "avg_llm_time_ms": round(row[2] or 0, 1),
+            "avg_llm_calls": round(row[3] or 0, 2),
+            "avg_decompositions": round(row[4] or 0, 2),
+            "avg_verifications": round(row[5] or 0, 2),
+            "success_rate": round((row[6] or 0) / total * 100, 1) if total > 0 else 0,
+            "first_try_rate": round((row[7] or 0) / total * 100, 1) if total > 0 else 0,
+            "avg_depth": round(row[8] or 0, 2),
+        }
+
+    def get_recent(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Get recent metrics for review."""
+        rows = self.db.fetchall(
+            """
+            SELECT session_id, started_at, total_duration_ms,
+                   llm_calls_total, decomposition_count, success
+            FROM riva_metrics
+            WHERE completed_at IS NOT NULL
+            ORDER BY started_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+
+        return [
+            {
+                "session_id": row[0],
+                "started_at": row[1],
+                "duration_ms": row[2],
+                "llm_calls": row[3],
+                "decompositions": row[4],
+                "success": bool(row[5]),
+            }
+            for row in rows
+        ]

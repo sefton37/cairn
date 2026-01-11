@@ -32,7 +32,11 @@ All optimizations are opt-in and can be enabled/disabled via config.
 When in doubt, we fall back to full verification.
 """
 
-from reos.code_mode.optimization.metrics import ExecutionMetrics
+from reos.code_mode.optimization.metrics import (
+    ExecutionMetrics,
+    MetricsStore,
+    create_metrics,
+)
 from reos.code_mode.optimization.complexity import (
     TaskComplexity,
     analyze_complexity,
@@ -59,6 +63,8 @@ from reos.code_mode.optimization.model_selector import (
 __all__ = [
     # Metrics
     "ExecutionMetrics",
+    "MetricsStore",
+    "create_metrics",
     # Complexity
     "TaskComplexity",
     "analyze_complexity",
