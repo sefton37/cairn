@@ -1,14 +1,18 @@
-# Code Mode Architecture
+# RIVA Architecture (Code Mode)
 
 ## Overview
 
-Code Mode is ReOS's agentic coding system that autonomously understands, plans, and executes code changes. This document describes the architecture, components, and the new RIVA (Recursive Intention-Verification Architecture) integration.
+**RIVA** (Recursive Intention-Verification Architecture) is Talking Rock's coding agent. It autonomously understands, plans, and executes code changes through a contract-based, test-first approach.
+
+RIVA's core kernel principle: **"If you can't verify it, decompose it."**
+
+This document describes RIVA's architecture, components, and execution flow.
 
 ## Execution Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           Code Mode Execution                            │
+│                        RIVA Execution Flow                               │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │   User Prompt                                                           │
@@ -337,6 +341,37 @@ Success indicators:              Failure indicators:           Unclear:
 | `wall_clock_timeout` | 300s | Real-time safety |
 
 These limits are configured in `src/reos/config.py` and can be tuned via environment variables.
+
+### Performance Optimization
+
+RIVA accepts being **3x slower than big tech** in exchange for **more rigorous verification**. The optimization philosophy:
+
+> "ChatGPT optimizes for speed. RIVA optimizes for correctness."
+
+**Key Optimizations:**
+
+| Strategy | Purpose | Impact |
+|----------|---------|--------|
+| Smart decomposition | Only decompose when necessary | Fewer meta-calls |
+| Batch verification | Verify plans, not micro-decisions | 50% fewer LLM calls |
+| Confidence-based verification | High scrutiny for high-risk only | Dynamic efficiency |
+| Pattern memory | Trust patterns that worked before | Skip redundant checks |
+| Parallel verification | Independent checks run concurrently | Faster verification |
+| Fast-path patterns | Optimized paths for common requests | 80/20 optimization |
+| Model selection | Right-size model to task complexity | Compute efficiency |
+| Progressive enhancement | Ship basic fast, enhance after | Better UX |
+| Trust budget | Dynamic verification cadence | Avoid constant paranoia |
+
+**Target Performance:**
+
+| Metric | Target | Notes |
+|--------|--------|-------|
+| Response time | 15-45s | 3x slower than cloud, acceptable |
+| Token usage | 4-6k | 2x more, but free locally |
+| First-try success | 85-90% | Slightly lower, but safer |
+| Decomposition ratio | <20% simple tasks | Avoid over-decomposition |
+
+See [RIVA Performance Strategy](./riva-performance-strategy.md) for detailed implementation.
 
 ### Data Structures (`intention.py`)
 

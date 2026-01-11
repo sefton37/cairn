@@ -338,9 +338,25 @@ CAIRN uses this structure to:
 | Linux system control | No | No | **Yes** |
 | Code assistance | Yes | Yes | **Yes** |
 
+### The Honest Tradeoff
+
+> "ChatGPT optimizes for speed. RIVA optimizes for correctness."
+
+| Dimension | Big Tech | Talking Rock |
+|-----------|----------|--------------|
+| **Speed** | 5-15 seconds | 15-45 seconds |
+| **Cost** | $20-500/month | Free |
+| **First-try success** | 90-95% | 85-90% (but safer) |
+| **Ownership** | Their cloud | Your machine |
+| **Trust** | Optimized for speed | Optimized for verification |
+
+**Why choose slower?** Because Talking Rock spends extra cycles verifying before acting. The tradeoff: slower responses, but more rigorous checking. You still approve all changes. All you need is patience.
+
 ---
 
 ## The Mission
+
+> **Don't rent a data center. Center your data around you.**
 
 Big tech companies want AI to be a subscription you pay forever. They collect your data, train on your conversations, and can change the rules anytime.
 
@@ -416,8 +432,11 @@ We believe AI should be:
 
 - [Beginner's Guide](docs/beginners-guide.md) - New to Linux? Start here
 - [Technical Roadmap](docs/tech-roadmap.md) - Development plans
+- [App Vision](docs/app-vision.md) - What we're building and why
+- [RIVA Performance Strategy](docs/riva-performance-strategy.md) - How we compete with big tech
 - [Security Design](docs/security.md) - How we protect your system
 - [CAIRN Architecture](docs/cairn_architecture.md) - Attention minder design
+- [RIVA Architecture](docs/code_mode_architecture.md) - Code agent design
 - [Parse Gate Architecture](docs/parse-gate.md) - Context-aware shell proposals
 - [The Play System](docs/the-play.md) - Knowledge organization
 

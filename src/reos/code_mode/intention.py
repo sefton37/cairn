@@ -32,9 +32,49 @@ if TYPE_CHECKING:
     from reos.code_mode.session_logger import SessionLogger
     from reos.code_mode.quality import QualityTracker
     from reos.code_mode.tools import ToolProvider
+    from reos.code_mode.optimization.metrics import ExecutionMetrics
+    from reos.code_mode.optimization.complexity import TaskComplexity
+    from reos.code_mode.optimization.risk import ActionRisk
+    from reos.code_mode.optimization.trust import TrustBudget
+    from reos.code_mode.optimization.verification import VerificationBatcher
     from reos.providers import LLMProvider
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Metrics timing helper
+# =============================================================================
+
+import time
+from contextlib import contextmanager
+
+
+@contextmanager
+def _timed_operation(metrics: "ExecutionMetrics | None", purpose: str):
+    """Context manager to time an operation and record it in metrics.
+
+    Args:
+        metrics: ExecutionMetrics instance (or None to skip tracking)
+        purpose: One of "decomposition", "action", "verification", "reflection"
+
+    Usage:
+        with _timed_operation(ctx.metrics, "action") as timer:
+            result = do_llm_call()
+        # timer.duration_ms is now set
+    """
+    class Timer:
+        duration_ms: int = 0
+
+    timer = Timer()
+    start = time.perf_counter()
+    try:
+        yield timer
+    finally:
+        elapsed = time.perf_counter() - start
+        timer.duration_ms = int(elapsed * 1000)
+        if metrics:
+            metrics.record_llm_call(purpose, timer.duration_ms)
 
 
 class IntentionStatus(Enum):
@@ -409,6 +449,9 @@ class WorkContext:
     session_logger: "SessionLogger | None" = None
     quality_tracker: "QualityTracker | None" = None  # Track quality tiers
     tool_provider: "ToolProvider | None" = None  # Tools for gathering context
+    metrics: "ExecutionMetrics | None" = None  # Performance metrics collection
+    trust_budget: "TrustBudget | None" = None  # Session trust for verification decisions
+    verification_batcher: "VerificationBatcher | None" = None  # Batch low-risk verifications
     max_cycles_per_intention: int = 5
     max_depth: int = 10
 
@@ -425,12 +468,62 @@ def can_verify_directly(intention: Intention, ctx: WorkContext) -> bool:
     Ask: "Can I write a test, run a command, or observe an outcome
     that tells me this intention is satisfied?"
 
-    Heuristics:
-    - Single observable behavior mentioned
-    - "Done" can be described in one sentence
-    - There's a command that would prove it works
-    - No compound actions (and, then, also)
+    Uses complexity analyzer for smarter decomposition decisions,
+    with fallback to simple heuristics.
     """
+    # Try complexity analyzer first (Phase 2 optimization)
+    try:
+        from reos.code_mode.optimization.complexity import analyze_complexity
+
+        complexity = analyze_complexity(intention.what, intention.acceptance)
+
+        # Log complexity analysis
+        logger.debug(
+            "Complexity analysis: score=%.2f, level=%s, should_decompose=%s, confidence=%.2f, reason=%s",
+            complexity.score,
+            complexity.level.value,
+            complexity.should_decompose,
+            complexity.confidence,
+            complexity.reason,
+        )
+
+        # Log to session logger if available
+        if ctx.session_logger:
+            ctx.session_logger.log_debug("riva", "complexity_analysis", complexity.reason, {
+                "score": complexity.score,
+                "level": complexity.level.value,
+                "should_decompose": complexity.should_decompose,
+                "confidence": complexity.confidence,
+                "factors": {
+                    "estimated_files": complexity.estimated_files,
+                    "estimated_functions": complexity.estimated_functions,
+                    "has_external_deps": complexity.has_external_deps,
+                    "scope_ambiguous": complexity.scope_ambiguous,
+                    "has_compound": complexity.has_compound_structure,
+                },
+            })
+
+        # If complexity analyzer is confident, use its decision
+        if complexity.confidence >= 0.7:
+            # Track in metrics if analyzer suggests we could skip decomposition
+            if ctx.metrics and not complexity.should_decompose:
+                # This is a potential optimization - we're NOT decomposing
+                pass  # Will track skippable_decompositions when we have baseline
+
+            # Return True if we DON'T need to decompose (can verify directly)
+            return not complexity.should_decompose
+
+        # Low confidence - fall through to heuristics
+        logger.debug("Complexity analyzer low confidence (%.2f), using heuristics", complexity.confidence)
+
+    except ImportError:
+        # Optimization module not available, use heuristics
+        pass
+    except Exception as e:
+        # Any error in complexity analysis - fall back to heuristics
+        logger.warning("Complexity analysis failed, using heuristics: %s", e)
+
+    # Fallback: Original heuristics
     what_lower = intention.what.lower()
     acceptance_lower = intention.acceptance.lower()
 
@@ -698,11 +791,17 @@ Provide sub-intentions that are concrete and testable.
 If creating multiple functions for one module, reference the SAME filename in each sub-task."""
 
     try:
-        response = ctx.llm.chat_json(
-            system=system_prompt,
-            user=user_prompt,
-            timeout_seconds=30.0,
-        )
+        # Time the LLM call for metrics
+        with _timed_operation(ctx.metrics, "decomposition"):
+            response = ctx.llm.chat_json(
+                system=system_prompt,
+                user=user_prompt,
+                timeout_seconds=30.0,
+            )
+
+        # Track decomposition in metrics
+        if ctx.metrics:
+            ctx.metrics.record_decomposition(depth=0)  # Depth tracked separately in work()
 
         # Log LLM call
         if ctx.session_logger:
@@ -899,10 +998,12 @@ ACCEPTANCE: {intention.acceptance}
 What should we try next? Remember: write COMPLETE working code, not placeholders."""
 
     try:
-        response = ctx.llm.chat_json(
-            system=system_prompt,
-            user=user_prompt,
-            timeout_seconds=30.0,
+        # Time the LLM call for metrics
+        with _timed_operation(ctx.metrics, "action"):
+            response = ctx.llm.chat_json(
+                system=system_prompt,
+                user=user_prompt,
+                timeout_seconds=30.0,
         )
 
         if ctx.session_logger:
@@ -1205,6 +1306,9 @@ def _merge_python_content(existing: str, new_content: str) -> str:
 
 def execute_action(action: Action, ctx: WorkContext) -> str:
     """Execute an action and return the result."""
+    # Track execution time for metrics
+    exec_start = time.perf_counter()
+
     if ctx.session_logger:
         ctx.session_logger.log_debug("riva", "execute_start",
             f"Executing {action.type.value}: {action.content[:50]}...", {
@@ -1312,7 +1416,15 @@ def execute_action(action: Action, ctx: WorkContext) -> str:
                 "error": str(e),
             })
         logger.error("Action execution failed: %s", e)
+        if ctx.metrics:
+            ctx.metrics.record_failure()
         return error_msg
+
+    finally:
+        # Record execution time in metrics
+        if ctx.metrics:
+            elapsed_ms = int((time.perf_counter() - exec_start) * 1000)
+            ctx.metrics.execution_time_ms += elapsed_ms
 
 
 def reflect(intention: Intention, cycle: Cycle, ctx: WorkContext) -> str:
@@ -1342,11 +1454,17 @@ JUDGMENT: {cycle.judgment.value}
 Why did this fail and what should we do?"""
 
     try:
-        response = ctx.llm.chat_text(
-            system=system_prompt,
-            user=user_prompt,
-            timeout_seconds=20.0,
-        )
+        # Time the LLM call for metrics
+        with _timed_operation(ctx.metrics, "reflection"):
+            response = ctx.llm.chat_text(
+                system=system_prompt,
+                user=user_prompt,
+                timeout_seconds=20.0,
+            )
+
+        # Track retry in metrics
+        if ctx.metrics:
+            ctx.metrics.record_retry()
 
         if ctx.session_logger:
             ctx.session_logger.log_llm_call(
@@ -1417,7 +1535,13 @@ def work(intention: Intention, ctx: WorkContext, depth: int = 0) -> None:
     if depth > ctx.max_depth:
         logger.error("Max depth exceeded, failing intention")
         intention.status = IntentionStatus.FAILED
+        if ctx.metrics:
+            ctx.metrics.record_failure()
         return
+
+    # Track depth in metrics
+    if ctx.metrics:
+        ctx.metrics.max_depth_reached = max(ctx.metrics.max_depth_reached, depth)
 
     # Log start
     if ctx.session_logger:
@@ -1442,16 +1566,65 @@ def work(intention: Intention, ctx: WorkContext, depth: int = 0) -> None:
             f"Intention {'can' if verifiable else 'cannot'} be verified directly")
 
     if verifiable:
-        # 2. Try to satisfy it with action cycles
+        # 2a. Check for fast path optimization
+        # Fast paths handle common patterns with minimal overhead
+        try:
+            from reos.code_mode.optimization.fast_path import (
+                detect_pattern,
+                execute_fast_path,
+                is_pattern_available,
+            )
+
+            pattern_match = detect_pattern(intention.what, intention.acceptance)
+            if pattern_match.is_match and is_pattern_available(pattern_match.pattern):
+                if ctx.session_logger:
+                    ctx.session_logger.log_info("riva", "fast_path_attempt",
+                        f"Attempting fast path: {pattern_match.pattern.value}", {
+                            "pattern": pattern_match.pattern.value,
+                            "confidence": pattern_match.confidence,
+                            "extracted": pattern_match.extracted,
+                        })
+
+                # Try the fast path handler
+                if execute_fast_path(pattern_match.pattern, intention, ctx):
+                    # Fast path succeeded - skip normal RIVA cycle
+                    if ctx.session_logger:
+                        ctx.session_logger.log_info("riva", "fast_path_success",
+                            f"Fast path handled: {pattern_match.pattern.value}", {
+                                "pattern": pattern_match.pattern.value,
+                            })
+                    if ctx.metrics:
+                        ctx.metrics.record_action()  # Record the fast path action
+                    if ctx.on_intention_complete:
+                        ctx.on_intention_complete(intention)
+                    return
+
+                # Fast path failed - fall back to normal RIVA
+                if ctx.session_logger:
+                    ctx.session_logger.log_debug("riva", "fast_path_fallback",
+                        "Fast path failed, falling back to full RIVA", {
+                            "pattern": pattern_match.pattern.value,
+                        })
+        except Exception as e:
+            # Fast path system error - log and continue with normal RIVA
+            logger.warning("Fast path detection failed: %s", e)
+
+        # 2b. Try to satisfy it with action cycles
         while intention.status == IntentionStatus.ACTIVE:
             # Determine next action
             thought, action = determine_next_action(intention, ctx)
+
+            # Assess risk before execution
+            from reos.code_mode.optimization.risk import assess_risk
+            action_risk = assess_risk(action)
 
             if ctx.session_logger:
                 ctx.session_logger.log_debug("riva", "cycle_start",
                     f"Thought: {thought[:50]}...", {
                         "action_type": action.type.value,
                         "action_content": action.content[:100],
+                        "risk_level": action_risk.level.value,
+                        "risk_factors": action_risk.factors,
                     })
 
             # Execute action
@@ -1465,19 +1638,113 @@ def work(intention: Intention, ctx: WorkContext, depth: int = 0) -> None:
                 judgment=Judgment.UNCLEAR,  # Will be set by checkpoint
             )
 
-            # Human/auto judgment
-            cycle.judgment = ctx.checkpoint.judge_action(intention, cycle)
+            # Determine if we should verify based on trust budget
+            should_verify_action = True
+            if ctx.trust_budget:
+                should_verify_action = ctx.trust_budget.should_verify(action_risk)
+
+            # Determine actual verification strategy
+            # CRITICAL: Never assume success without SOME form of verification
+            if should_verify_action:
+                # Immediate verification required (HIGH risk or low trust)
+                cycle.judgment = ctx.checkpoint.judge_action(intention, cycle)
+
+                # Track verification in metrics with actual risk level
+                if ctx.metrics:
+                    ctx.metrics.record_verification(action_risk.level.value)
+            elif ctx.verification_batcher and action_risk.can_batch:
+                # Trust allows skipping - defer to batch verification
+                ctx.verification_batcher.defer(
+                    action,
+                    result,
+                    intention.acceptance,
+                )
+                if ctx.session_logger:
+                    ctx.session_logger.log_debug("riva", "verification_deferred",
+                        f"Deferred to batch (pending: {ctx.verification_batcher.pending_count})", {
+                            "risk_level": action_risk.level.value,
+                            "can_batch": True,
+                        })
+                # Assume success - will be verified at intention boundary
+                cycle.judgment = Judgment.SUCCESS
+            else:
+                # FALLBACK: Can't batch, must verify immediately
+                # Never skip verification entirely - that's unsafe
+                if ctx.session_logger:
+                    ctx.session_logger.log_debug("riva", "verification_fallback",
+                        "Cannot batch, falling back to immediate verification", {
+                            "risk_level": action_risk.level.value,
+                            "can_batch": action_risk.can_batch,
+                            "has_batcher": ctx.verification_batcher is not None,
+                        })
+                cycle.judgment = ctx.checkpoint.judge_action(intention, cycle)
+
+                if ctx.metrics:
+                    ctx.metrics.record_verification(action_risk.level.value)
 
             if ctx.session_logger:
                 ctx.session_logger.log_info("riva", "cycle_complete",
                     f"Judgment: {cycle.judgment.value}", {
                         "result_preview": result[:200],
+                        "risk_level": action_risk.level.value,
+                        "verified": should_verify_action,
+                        "trust_remaining": ctx.trust_budget.remaining if ctx.trust_budget else None,
                     })
 
             if cycle.judgment == Judgment.SUCCESS:
                 intention.status = IntentionStatus.VERIFIED
                 intention.verified_at = datetime.now(timezone.utc)
+
+                # Flush any deferred verifications at intention boundary
+                if ctx.verification_batcher and ctx.verification_batcher.has_pending():
+                    batch_result = ctx.verification_batcher.flush()
+                    if ctx.session_logger:
+                        ctx.session_logger.log_debug("riva", "batch_verification_flushed",
+                            f"Batch verified: {batch_result.passed_count}/{len(batch_result.results)} passed", {
+                                "passed": batch_result.passed_count,
+                                "failed": batch_result.failed_count,
+                            })
+
+                    if not batch_result.success:
+                        # Batch verification found failures - treat as cycle failure
+                        intention.status = IntentionStatus.ACTIVE
+                        intention.verified_at = None
+                        cycle.judgment = Judgment.FAILURE  # Mark cycle as failed
+
+                        if ctx.trust_budget:
+                            ctx.trust_budget.deplete()
+
+                        # Create reflection about batch failure
+                        failed_expectations = [f.expected for f in batch_result.failures]
+                        cycle.reflection = f"Batch verification failed. Failed checks: {', '.join(failed_expectations[:3])}"
+
+                        if ctx.session_logger:
+                            ctx.session_logger.log_warning("riva", "batch_verification_failed",
+                                "Batch verification failed, cycle marked as FAILURE", {
+                                    "failures": failed_expectations,
+                                })
+
+                        # Check if we should decompose instead of retry
+                        if should_decompose(intention, cycle, ctx):
+                            intention.add_cycle(cycle)
+                            if ctx.on_cycle_complete:
+                                ctx.on_cycle_complete(intention, cycle)
+                            break  # Exit to decomposition path
+                    else:
+                        # Batch succeeded - replenish trust for successful deferred verification
+                        # This recovers the trust spent when skipping immediate verification
+                        if ctx.trust_budget:
+                            ctx.trust_budget.replenish(batch_result.passed_count * 3)
+
+                # Success replenishes trust (only if verified immediately and still successful)
+                if intention.status == IntentionStatus.VERIFIED:
+                    if ctx.trust_budget and should_verify_action:
+                        ctx.trust_budget.replenish()
             else:
+                # Verification caught a failure - this is good
+                if ctx.trust_budget and should_verify_action:
+                    ctx.trust_budget.record_failure_caught()
+
                 # Reflect on failure
                 cycle.reflection = reflect(intention, cycle, ctx)
 
@@ -1497,6 +1764,17 @@ def work(intention: Intention, ctx: WorkContext, depth: int = 0) -> None:
     # 3. If not verifiable or should decompose, break it down
     if intention.status != IntentionStatus.VERIFIED:
         if not verifiable or should_decompose(intention, intention.trace[-1] if intention.trace else None, ctx):
+
+            # Clear any pending batch verifications from the failed approach
+            # These were for cycles we're abandoning - don't let them pollute child verification
+            if ctx.verification_batcher and ctx.verification_batcher.has_pending():
+                pending_count = ctx.verification_batcher.pending_count
+                ctx.verification_batcher.clear()
+                if ctx.session_logger:
+                    ctx.session_logger.log_debug("riva", "batch_cleared_on_decompose",
+                        f"Cleared {pending_count} pending verifications before decomposition", {
+                            "pending_count": pending_count,
+                        })
 
             if ctx.session_logger:
                 ctx.session_logger.log_info("riva", "decomposing",
@@ -1536,6 +1814,12 @@ def work(intention: Intention, ctx: WorkContext, depth: int = 0) -> None:
                 "cycles": len(intention.trace),
                 "children": len(intention._child_intentions),
             })
+
+    # Finalize metrics at root level
+    if depth == 0 and ctx.metrics:
+        success = intention.status == IntentionStatus.VERIFIED
+        ctx.metrics.complete(success)
+        logger.info("Metrics: %s", ctx.metrics.summary())
 
     if ctx.on_intention_complete:
         ctx.on_intention_complete(intention)
