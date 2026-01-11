@@ -621,14 +621,40 @@ def _extract_import_statement(what: str) -> str | None:
     return None
 
 
-def _find_import_insert_position(lines: list[str], import_stmt: str) -> int:
+def _find_import_insert_position(lines: list[str], import_stmt: str, file_path: str | None = None) -> int:
     """Find the best position to insert an import.
+
+    Uses tree-sitter if available for accurate positioning, falls back to regex.
 
     Strategy:
     - After __future__ imports
     - Group with similar imports (stdlib, third-party, local)
     - After docstrings and before code
+
+    Args:
+        lines: Source code lines
+        import_stmt: Import statement to insert
+        file_path: Optional file path to determine language
+
+    Returns:
+        Line index (0-based) where import should be inserted
     """
+    # Try tree-sitter first
+    if file_path:
+        try:
+            from reos.code_mode.optimization.parsers import get_parser
+
+            lang = _infer_language_from_path(file_path)
+            parser = get_parser(lang)
+            if parser:
+                code = "".join(lines)
+                # get_import_location returns 1-indexed line number
+                line_num = parser.get_import_location(code)
+                return max(0, line_num - 1)  # Convert to 0-indexed
+        except Exception as e:
+            logger.debug("Tree-sitter import positioning failed, using fallback: %s", e)
+
+    # Fall back to regex-based positioning
     last_import_line = 0
     in_docstring = False
     docstring_end = 0
@@ -666,8 +692,24 @@ def _find_import_insert_position(lines: list[str], import_stmt: str) -> int:
 def _verify_python_syntax(content: str, file_path: str) -> bool:
     """Verify Python syntax is valid.
 
+    Uses tree-sitter if available for faster validation, falls back to ast.parse.
+
     Returns True if syntax is valid, False otherwise.
     """
+    # Try tree-sitter first (faster and more lenient)
+    try:
+        from reos.code_mode.optimization.parsers import get_parser
+
+        parser = get_parser("python")
+        if parser:
+            is_valid, error = parser.validate_syntax(content)
+            if not is_valid:
+                logger.debug("Tree-sitter syntax error in %s: %s", file_path, error)
+            return is_valid
+    except Exception as e:
+        logger.debug("Tree-sitter validation failed, falling back to ast.parse: %s", e)
+
+    # Fall back to ast.parse
     import ast
 
     try:
@@ -722,7 +764,7 @@ def _handle_create_class(intention: "Intention", ctx: "WorkContext") -> bool:
     return False
 
 
-def _extract_function_name(what: str) -> str | None:
+def _extract_function_name(what: str, code: str | None = None, file_path: str | None = None) -> str | None:
     """Extract function name from intention description.
 
     Handles patterns like:
@@ -730,7 +772,32 @@ def _extract_function_name(what: str) -> str | None:
     - "add calculate_total function"
     - "write a function called process_data"
     - "def parse_json(data):" -> "parse_json"
+
+    Args:
+        what: Intention description
+        code: Optional existing code to parse for context
+        file_path: Optional file path to determine language
+
+    Returns:
+        Function name or None
     """
+    # Try tree-sitter first if we have code and a supported language
+    if code and file_path:
+        try:
+            from reos.code_mode.optimization.parsers import get_parser
+
+            lang = _infer_language_from_path(file_path)
+            parser = get_parser(lang)
+            if parser:
+                # Check if intention mentions an existing function
+                functions = parser.find_functions(code)
+                for func in functions:
+                    if func.name.lower() in what.lower():
+                        return func.name
+        except Exception as e:
+            logger.debug("Tree-sitter extraction failed, falling back to regex: %s", e)
+
+    # Fall back to regex extraction from description
     # Pattern: "def func_name(...)" - explicit function definition
     match = re.search(r"def\s+(\w+)\s*\(", what)
     if match:
@@ -747,6 +814,29 @@ def _extract_function_name(what: str) -> str | None:
         return match.group(1)
 
     return None
+
+
+def _infer_language_from_path(file_path: str) -> str:
+    """Infer programming language from file extension.
+
+    Args:
+        file_path: Path to file
+
+    Returns:
+        Language name (python, javascript, rust, etc.)
+    """
+    ext = file_path.lower().split(".")[-1]
+    if ext == "py":
+        return "python"
+    elif ext in ("js", "jsx", "mjs"):
+        return "javascript"
+    elif ext in ("ts", "tsx"):
+        return "typescript"
+    elif ext == "rs":
+        return "rust"
+    elif ext in ("go"):
+        return "go"
+    return "unknown"
 
 
 def _generate_function_template(func_name: str, description: str) -> str:
