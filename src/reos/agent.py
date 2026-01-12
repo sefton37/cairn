@@ -1592,7 +1592,8 @@ class ChatAgent:
         # Also check for questions that reference "me" or "my" prominently
         # but NOT system-related contexts
         if any(word in t for word in ["me", "my", "myself", "i"]):
-            # Exclude system-related contexts
+            # Exclude system-related contexts AND CAIRN-managed data
+            # These should use tools, not THE_PLAY context
             system_contexts = [
                 "my computer",
                 "my machine",
@@ -1608,6 +1609,20 @@ class ChatAgent:
                 "my process",
                 "my network",
                 "my package",
+                # CAIRN-managed data (Thunderbird integration)
+                "my calendar",
+                "my schedule",
+                "my appointments",
+                "my meetings",
+                "my events",
+                "my contacts",
+                "my address book",
+                "my todos",
+                "my tasks",
+                "my email",
+                "calendar",
+                "schedule",
+                "appointments",
             ]
             if not any(ctx in t for ctx in system_contexts):
                 # Check for question words that suggest personal inquiry
@@ -1767,20 +1782,28 @@ class ChatAgent:
             persona_prefix
             + "\n\n"
             + "You are deciding which tools to call to answer the user.\n\n"
-            + "CRITICAL - PERSONAL vs SYSTEM QUESTIONS:\n"
+            + "CRITICAL - PERSONAL vs SYSTEM vs CAIRN QUESTIONS:\n"
             + "- Questions about 'me', 'myself', 'my goals', 'what do you know about me' = PERSONAL\n"
-            + "- For PERSONAL questions: Return EMPTY tool_calls []. Use THE_PLAY context instead!\n"
+            + "- For PERSONAL questions: Return EMPTY tool_calls []. Use THE_PLAY context!\n"
             + "- Questions about 'this machine', 'CPU', 'memory', 'services', 'containers' = SYSTEM\n"
-            + "- For SYSTEM questions: Use appropriate tools below\n\n"
-            + "SYSTEM TOOLS (only for computer/hardware questions):\n"
-            + "- linux_system_info: CPU, memory, disk, uptime (NOT for personal info!)\n"
+            + "- Questions about 'calendar', 'schedule', 'contacts', 'appointments', 'events' = CAIRN\n"
+            + "- For SYSTEM questions: Use linux_* tools\n"
+            + "- For CAIRN questions: Use cairn_* tools\n\n"
+            + "SYSTEM TOOLS (computer/hardware):\n"
+            + "- linux_system_info: CPU, memory, disk, uptime\n"
             + "- linux_list_services: Systemd services\n"
             + "- linux_docker_containers: Docker containers\n"
-            + "- reos_git_summary: Git repository info\n"
-            + "- linux_run_command: Execute shell commands (docker, apt, systemctl)\n\n"
+            + "- linux_run_command: Execute shell commands\n\n"
+            + "CAIRN TOOLS (calendar/contacts/tasks):\n"
+            + "- cairn_get_calendar: Get calendar events from Thunderbird\n"
+            + "- cairn_get_upcoming_events: Get upcoming events in next N hours\n"
+            + "- cairn_search_contacts: Search Thunderbird contacts\n"
+            + "- cairn_get_todos: Get todos/tasks from Thunderbird\n"
+            + "- cairn_surface_today: Get today's events and due items\n"
+            + "- cairn_thunderbird_status: Check Thunderbird integration status\n\n"
             + "RULES:\n"
+            + "- When user asks about calendar/schedule: USE cairn_get_calendar or cairn_get_upcoming_events\n"
             + "- When user says 'yes', 'proceed', 'do it': USE linux_run_command to execute\n"
-            + "- linux_run_command takes {\"command\": \"shell command\"}\n"
             + f"- Call 0-{tool_call_limit} tools. Empty is OK for personal questions!\n\n"
             + "Return JSON:\n"
             + "{\"tool_calls\": [{\"name\": \"tool_name\", \"arguments\": {}}]}\n"
@@ -1837,6 +1860,20 @@ class ChatAgent:
                 "docker_containers": "linux_docker_containers",
                 "git_summary": "reos_git_summary",
                 "git": "reos_git_summary",
+                # CAIRN tool mappings
+                "get_calendar": "cairn_get_calendar",
+                "calendar": "cairn_get_calendar",
+                "get_events": "cairn_get_calendar",
+                "upcoming_events": "cairn_get_upcoming_events",
+                "get_upcoming_events": "cairn_get_upcoming_events",
+                "search_contacts": "cairn_search_contacts",
+                "contacts": "cairn_search_contacts",
+                "get_todos": "cairn_get_todos",
+                "todos": "cairn_get_todos",
+                "tasks": "cairn_get_todos",
+                "surface_today": "cairn_surface_today",
+                "today": "cairn_surface_today",
+                "thunderbird_status": "cairn_thunderbird_status",
             }
             if name in name_mapping:
                 name = name_mapping[name]

@@ -588,6 +588,83 @@ def list_tools() -> list[Tool]:
         ),
     ])
 
+    # =========================================================================
+    # CAIRN Tools (Knowledge Management & Thunderbird Integration)
+    # CAIRN is the Attention Minder - helps manage tasks, calendar, contacts
+    # =========================================================================
+    tools.extend([
+        Tool(
+            name="cairn_get_calendar",
+            description=(
+                "Get calendar events from Thunderbird for a date range. "
+                "Use this to see the user's schedule, appointments, and meetings."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "start": {"type": "string", "description": "Start date (ISO format, default: now)"},
+                    "end": {"type": "string", "description": "End date (ISO format, default: 30 days from start)"},
+                },
+            },
+        ),
+        Tool(
+            name="cairn_get_upcoming_events",
+            description=(
+                "Get upcoming calendar events in the next N hours. "
+                "Great for showing what's coming up soon."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "hours": {"type": "number", "description": "Hours to look ahead (default: 24)"},
+                    "limit": {"type": "number", "description": "Max events to return (default: 10)"},
+                },
+            },
+        ),
+        Tool(
+            name="cairn_get_todos",
+            description="Get todos/tasks from Thunderbird calendar.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "include_completed": {"type": "boolean", "description": "Include completed todos (default: false)"},
+                },
+            },
+        ),
+        Tool(
+            name="cairn_search_contacts",
+            description="Search Thunderbird contacts by name, email, or organization.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "limit": {"type": "number", "description": "Max results (default: 20)"},
+                },
+                "required": ["query"],
+            },
+        ),
+        Tool(
+            name="cairn_thunderbird_status",
+            description="Check Thunderbird integration status (detected paths, availability).",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="cairn_surface_today",
+            description="Get everything relevant for today (calendar events, due items, priorities).",
+            input_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="cairn_surface_next",
+            description="Get the next thing that needs attention based on priority, due dates, and context.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "max_items": {"type": "number", "description": "Max items to surface (default: 5)"},
+                },
+            },
+        ),
+    ])
+
     return tools
 
 
@@ -1254,6 +1331,38 @@ def call_tool(db: Database, *, name: str, arguments: dict[str, Any] | None) -> A
             "stdout": result.stdout,
             "stderr": result.stderr,
         }
+
+    # --- CAIRN Tools (Knowledge Management & Thunderbird Integration) ---
+    if name.startswith("cairn_"):
+        from pathlib import Path
+        from .cairn.mcp_tools import CairnToolHandler, CairnToolError
+        from .cairn.store import CairnStore
+        from .rpc.handlers.cairn import get_current_play_path
+        import logging
+
+        cairn_logger = logging.getLogger("reos.cairn")
+        cairn_logger.info("CAIRN tool called: %s with args: %s", name, args)
+
+        try:
+            play_path = get_current_play_path(db)
+            if not play_path:
+                cairn_logger.warning("CAIRN tool %s failed: No Play path configured", name)
+                return {"error": "No Play path configured. Select or create an Act first.", "tool": name}
+
+            store_path = Path(play_path) / ".cairn" / "cairn.db"
+            store = CairnStore(store_path)
+            handler = CairnToolHandler(store=store)
+
+            result = handler.call_tool(name, args)
+            cairn_logger.info("CAIRN tool %s succeeded: %s", name, result)
+            return result
+
+        except CairnToolError as e:
+            cairn_logger.error("CAIRN tool %s error: %s", name, e.message)
+            return {"error": e.message, "code": e.code, "tool": name}
+        except Exception as e:
+            cairn_logger.exception("CAIRN tool %s unexpected error: %s", name, e)
+            return {"error": str(e), "tool": name}
 
     raise ToolError(code="unknown_tool", message=f"Unknown tool: {name}")
 
