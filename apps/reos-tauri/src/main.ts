@@ -284,6 +284,102 @@ function buildUi() {
 
   navContent.appendChild(navTitle);
   navContent.appendChild(agentSelector);
+
+  // ============ Context Usage Indicator (opens Context Overlay) ============
+  const navContextMeter = el('div');
+  navContextMeter.className = 'nav-context-meter';
+  navContextMeter.title = 'Click to view context details';
+  navContextMeter.style.cssText = `
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+  `;
+
+  const contextUsageBar = el('div');
+  contextUsageBar.style.cssText = `
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 6px;
+  `;
+
+  const contextUsageFill = el('div');
+  contextUsageFill.style.cssText = `
+    height: 100%;
+    width: 0%;
+    background: #22c55e;
+    border-radius: 3px;
+    transition: width 0.3s, background 0.3s;
+  `;
+  contextUsageBar.appendChild(contextUsageFill);
+
+  const contextUsageLabel = el('div');
+  contextUsageLabel.style.cssText = `
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
+  `;
+  contextUsageLabel.innerHTML = `
+    <span>🧠 Context</span>
+    <span class="context-usage-value">Loading...</span>
+  `;
+
+  navContextMeter.appendChild(contextUsageBar);
+  navContextMeter.appendChild(contextUsageLabel);
+
+  // Update context meter periodically
+  let lastContextMeterUpdate = 0;
+  async function updateNavContextMeter() {
+    try {
+      const stats = await kernelRequest('context/stats', {
+        conversation_id: currentConversationId,
+      }) as ContextStatsResult;
+
+      const percent = Math.min(100, stats.usage_percent);
+      const color = stats.warning_level === 'critical' ? '#ef4444' :
+                    stats.warning_level === 'warning' ? '#f59e0b' : '#22c55e';
+
+      contextUsageFill.style.width = `${percent}%`;
+      contextUsageFill.style.background = color;
+
+      const valueEl = contextUsageLabel.querySelector('.context-usage-value');
+      if (valueEl) {
+        valueEl.textContent = `${Math.round(percent)}% • ${stats.available_tokens.toLocaleString()} left`;
+        (valueEl as HTMLElement).style.color = color;
+      }
+    } catch {
+      // Silently fail - context stats may not be available
+    }
+  }
+
+  // Poll context every 30s
+  setInterval(() => {
+    const now = Date.now();
+    if (now - lastContextMeterUpdate > 30000) {
+      lastContextMeterUpdate = now;
+      void updateNavContextMeter();
+    }
+  }, 5000);
+
+  // Initial load
+  setTimeout(() => void updateNavContextMeter(), 1000);
+
+  navContextMeter.addEventListener('mouseenter', () => {
+    navContextMeter.style.background = 'rgba(0, 0, 0, 0.3)';
+  });
+  navContextMeter.addEventListener('mouseleave', () => {
+    navContextMeter.style.background = 'rgba(0, 0, 0, 0.2)';
+  });
+
+  // Note: Click handler to open contextOverlay is added after contextOverlay is created
+
+  navContent.appendChild(navContextMeter);
   navContent.appendChild(systemSection);
   navContent.appendChild(dashboardBtn);
   navContent.appendChild(playSection);
@@ -464,6 +560,13 @@ function buildUi() {
   // Create Context overlay
   const contextOverlay = createContextOverlay();
   root.appendChild(contextOverlay.element);
+
+  // Wire up nav context meter to open the overlay
+  navContextMeter.addEventListener('click', () => {
+    contextOverlay.show(currentConversationId);
+    // Update meter after viewing (user might have toggled sources)
+    setTimeout(() => void updateNavContextMeter(), 500);
+  });
 
   // Create Diff Preview overlay for code changes
   const diffPreviewOverlay = createDiffPreviewOverlay();
@@ -3066,58 +3169,143 @@ async function buildDashboardWindow() {
   root.innerHTML = '';
 
   const wrap = el('div');
-  wrap.style.padding = '16px';
-  wrap.style.height = '100vh';
-  wrap.style.boxSizing = 'border-box';
-  wrap.style.overflow = 'auto';
-  wrap.style.fontFamily = 'system-ui, sans-serif';
+  wrap.style.cssText = `
+    padding: 20px;
+    height: 100vh;
+    box-sizing: border-box;
+    overflow: auto;
+    font-family: system-ui, sans-serif;
+    background: #1a1a1a;
+    color: #e5e7eb;
+  `;
 
   const header = el('div');
-  header.style.display = 'flex';
-  header.style.justifyContent = 'space-between';
-  header.style.alignItems = 'center';
-  header.style.marginBottom = '20px';
+  header.style.cssText = `
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+  `;
 
   const title = el('div');
-  title.textContent = 'System Dashboard';
-  title.style.fontWeight = '600';
-  title.style.fontSize = '18px';
+  title.textContent = '💻 System Dashboard';
+  title.style.cssText = 'font-weight: 600; font-size: 20px; color: #fff;';
 
   const refreshBtn = el('button');
   refreshBtn.textContent = '↻ Refresh';
-  refreshBtn.style.padding = '6px 12px';
-  refreshBtn.style.fontSize = '12px';
-  refreshBtn.style.border = '1px solid #ddd';
-  refreshBtn.style.borderRadius = '6px';
-  refreshBtn.style.background = 'white';
-  refreshBtn.style.cursor = 'pointer';
+  refreshBtn.style.cssText = `
+    padding: 8px 16px;
+    font-size: 12px;
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 6px;
+    background: rgba(255,255,255,0.1);
+    color: #e5e7eb;
+    cursor: pointer;
+    transition: all 0.2s;
+  `;
+  refreshBtn.addEventListener('mouseenter', () => {
+    refreshBtn.style.background = 'rgba(255,255,255,0.2)';
+  });
+  refreshBtn.addEventListener('mouseleave', () => {
+    refreshBtn.style.background = 'rgba(255,255,255,0.1)';
+  });
 
   header.appendChild(title);
   header.appendChild(refreshBtn);
 
+  // System metrics row (CPU, RAM, Disk)
+  const metricsRow = el('div');
+  metricsRow.style.cssText = `
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  `;
+
+  // Gauge helper
+  function createGauge(label: string, icon: string): { container: HTMLElement; value: HTMLElement; bar: HTMLElement } {
+    const container = el('div');
+    container.style.cssText = `
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 16px;
+    `;
+
+    const labelRow = el('div');
+    labelRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 12px;';
+    labelRow.innerHTML = `<span style="font-size: 18px;">${icon}</span><span style="font-weight: 500; color: rgba(255,255,255,0.8);">${label}</span>`;
+
+    const value = el('div');
+    value.style.cssText = 'font-size: 28px; font-weight: 700; color: #22c55e; margin-bottom: 8px;';
+    value.textContent = '--%';
+
+    const barContainer = el('div');
+    barContainer.style.cssText = `
+      height: 8px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 4px;
+      overflow: hidden;
+    `;
+
+    const bar = el('div');
+    bar.style.cssText = `
+      height: 100%;
+      width: 0%;
+      background: #22c55e;
+      border-radius: 4px;
+      transition: width 0.3s, background 0.3s;
+    `;
+    barContainer.appendChild(bar);
+
+    container.appendChild(labelRow);
+    container.appendChild(value);
+    container.appendChild(barContainer);
+
+    return { container, value, bar };
+  }
+
+  const cpuGauge = createGauge('CPU', '⚡');
+  const ramGauge = createGauge('Memory', '💾');
+  const diskGauge = createGauge('Disk', '📁');
+
+  metricsRow.appendChild(cpuGauge.container);
+  metricsRow.appendChild(ramGauge.container);
+  metricsRow.appendChild(diskGauge.container);
+
   // Grid layout for sections
   const grid = el('div');
-  grid.style.display = 'grid';
-  grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
-  grid.style.gap = '16px';
+  grid.style.cssText = `
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  `;
 
   // Section helper
-  function createSection(sectionTitle: string): { section: HTMLElement; content: HTMLElement } {
+  function createSection(sectionTitle: string, icon: string): { section: HTMLElement; content: HTMLElement } {
     const section = el('div');
-    section.style.background = 'white';
-    section.style.borderRadius = '8px';
-    section.style.border = '1px solid #e5e7eb';
-    section.style.padding = '16px';
+    section.style.cssText = `
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 16px;
+      min-height: 200px;
+    `;
 
     const sectionHeader = el('div');
-    sectionHeader.textContent = sectionTitle;
-    sectionHeader.style.fontWeight = '600';
-    sectionHeader.style.fontSize = '14px';
-    sectionHeader.style.marginBottom = '12px';
-    sectionHeader.style.color = '#374151';
+    sectionHeader.style.cssText = `
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 12px;
+      color: rgba(255,255,255,0.9);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    `;
+    sectionHeader.innerHTML = `<span>${icon}</span>${sectionTitle}`;
 
     const content = el('div');
-    content.style.fontSize = '13px';
+    content.style.cssText = 'font-size: 13px;';
 
     section.appendChild(sectionHeader);
     section.appendChild(content);
@@ -3126,10 +3314,10 @@ async function buildDashboardWindow() {
   }
 
   // Create sections
-  const servicesSection = createSection('Services');
-  const containersSection = createSection('Containers');
-  const portsSection = createSection('Listening Ports');
-  const trafficSection = createSection('Network Traffic');
+  const servicesSection = createSection('Services', '🔧');
+  const containersSection = createSection('Containers', '🐳');
+  const portsSection = createSection('Listening Ports', '🔌');
+  const trafficSection = createSection('Network Traffic', '📡');
 
   grid.appendChild(servicesSection.section);
   grid.appendChild(containersSection.section);
@@ -3137,8 +3325,16 @@ async function buildDashboardWindow() {
   grid.appendChild(trafficSection.section);
 
   wrap.appendChild(header);
+  wrap.appendChild(metricsRow);
   wrap.appendChild(grid);
   root.appendChild(wrap);
+
+  // Helper to get color based on percentage
+  function getGaugeColor(percent: number): string {
+    if (percent >= 90) return '#ef4444';
+    if (percent >= 70) return '#f59e0b';
+    return '#22c55e';
+  }
 
   // Refresh function
   async function refreshDashboard() {
@@ -3150,33 +3346,68 @@ async function buildDashboardWindow() {
     try {
       const result = await kernelRequest('system/live_state', {}) as SystemLiveStateResult;
 
+      // Update CPU gauge
+      const cpuPercent = result.cpu_percent ?? 0;
+      const cpuColor = getGaugeColor(cpuPercent);
+      cpuGauge.value.textContent = `${Math.round(cpuPercent)}%`;
+      cpuGauge.value.style.color = cpuColor;
+      cpuGauge.bar.style.width = `${cpuPercent}%`;
+      cpuGauge.bar.style.background = cpuColor;
+
+      // Update RAM gauge (memory is nested object with percent field)
+      const memoryData = result.memory as { percent?: number } | undefined;
+      const ramPercent = memoryData?.percent ?? 0;
+      const ramColor = getGaugeColor(ramPercent);
+      ramGauge.value.textContent = `${Math.round(ramPercent)}%`;
+      ramGauge.value.style.color = ramColor;
+      ramGauge.bar.style.width = `${ramPercent}%`;
+      ramGauge.bar.style.background = ramColor;
+
+      // Update Disk gauge (disks is array, use first/root disk or calculate average)
+      const disksData = result.disks as Array<{ percent?: number }> | undefined;
+      const diskPercent = disksData && disksData.length > 0 ? (disksData[0]?.percent ?? 0) : 0;
+      const diskColor = getGaugeColor(diskPercent);
+      diskGauge.value.textContent = `${Math.round(diskPercent)}%`;
+      diskGauge.value.style.color = diskColor;
+      diskGauge.bar.style.width = `${diskPercent}%`;
+      diskGauge.bar.style.background = diskColor;
+
       // Render services
       const services = result.services ?? [];
       if (services.length === 0) {
-        servicesSection.content.innerHTML = '<span style="opacity: 0.6">No services found</span>';
+        servicesSection.content.innerHTML = '<span style="opacity: 0.5; color: rgba(255,255,255,0.6);">No services found</span>';
       } else {
         servicesSection.content.innerHTML = '';
         for (const svc of services) {
           const row = el('div');
-          row.style.display = 'flex';
-          row.style.alignItems = 'center';
-          row.style.gap = '8px';
-          row.style.padding = '6px 0';
-          row.style.borderBottom = '1px solid #f3f4f6';
+          row.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+          `;
 
           const dot = el('span');
           dot.textContent = '●';
-          dot.style.fontSize = '10px';
-          dot.style.color = svc.status === 'failed' ? '#ef4444' : svc.active ? '#22c55e' : '#9ca3af';
+          dot.style.cssText = `
+            font-size: 10px;
+            color: ${svc.status === 'failed' ? '#ef4444' : svc.active ? '#22c55e' : '#6b7280'};
+          `;
 
           const name = el('span');
           name.textContent = svc.name;
-          name.style.flex = '1';
+          name.style.cssText = 'flex: 1; color: rgba(255,255,255,0.9);';
 
           const status = el('span');
           status.textContent = svc.status;
-          status.style.fontSize = '11px';
-          status.style.opacity = '0.6';
+          status.style.cssText = `
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: ${svc.status === 'failed' ? 'rgba(239,68,68,0.2)' : svc.active ? 'rgba(34,197,94,0.2)' : 'rgba(107,114,128,0.2)'};
+            color: ${svc.status === 'failed' ? '#ef4444' : svc.active ? '#22c55e' : '#9ca3af'};
+          `;
 
           row.appendChild(dot);
           row.appendChild(name);
@@ -3188,31 +3419,37 @@ async function buildDashboardWindow() {
       // Render containers
       const containers = result.containers ?? [];
       if (containers.length === 0) {
-        containersSection.content.innerHTML = '<span style="opacity: 0.6">No containers found</span>';
+        containersSection.content.innerHTML = '<span style="opacity: 0.5; color: rgba(255,255,255,0.6);">No containers found</span>';
       } else {
         containersSection.content.innerHTML = '';
         for (const ctr of containers) {
           const row = el('div');
-          row.style.display = 'flex';
-          row.style.alignItems = 'center';
-          row.style.gap = '8px';
-          row.style.padding = '6px 0';
-          row.style.borderBottom = '1px solid #f3f4f6';
+          row.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+          `;
 
           const isRunning = ctr.status.toLowerCase().includes('up');
           const dot = el('span');
           dot.textContent = '●';
-          dot.style.fontSize = '10px';
-          dot.style.color = isRunning ? '#22c55e' : '#9ca3af';
+          dot.style.cssText = `font-size: 10px; color: ${isRunning ? '#22c55e' : '#6b7280'};`;
 
           const name = el('span');
           name.textContent = ctr.name;
-          name.style.flex = '1';
+          name.style.cssText = 'flex: 1; color: rgba(255,255,255,0.9);';
 
           const image = el('span');
           image.textContent = ctr.image.split(':')[0].split('/').pop() ?? ctr.image;
-          image.style.fontSize = '11px';
-          image.style.opacity = '0.6';
+          image.style.cssText = `
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.6);
+          `;
 
           row.appendChild(dot);
           row.appendChild(name);
@@ -3224,34 +3461,41 @@ async function buildDashboardWindow() {
       // Render ports
       const ports = result.ports ?? [];
       if (ports.length === 0) {
-        portsSection.content.innerHTML = '<span style="opacity: 0.6">No listening ports</span>';
+        portsSection.content.innerHTML = '<span style="opacity: 0.5; color: rgba(255,255,255,0.6);">No listening ports</span>';
       } else {
         portsSection.content.innerHTML = '';
         for (const port of ports) {
           const row = el('div');
-          row.style.display = 'flex';
-          row.style.alignItems = 'center';
-          row.style.gap = '8px';
-          row.style.padding = '6px 0';
-          row.style.borderBottom = '1px solid #f3f4f6';
+          row.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+          `;
 
           const portNum = el('span');
           portNum.textContent = `:${port.port}`;
-          portNum.style.fontFamily = 'monospace';
-          portNum.style.fontWeight = '600';
-          portNum.style.minWidth = '60px';
+          portNum.style.cssText = `
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            min-width: 60px;
+            color: #60a5fa;
+          `;
 
           const addr = el('span');
           addr.textContent = port.address === '0.0.0.0' || port.address === '*' ? 'all interfaces' : port.address;
-          addr.style.flex = '1';
-          addr.style.opacity = '0.7';
+          addr.style.cssText = 'flex: 1; color: rgba(255,255,255,0.6);';
 
           const process = el('span');
           process.textContent = port.process || `PID ${port.pid ?? '?'}`;
-          process.style.fontSize = '11px';
-          process.style.background = '#f3f4f6';
-          process.style.padding = '2px 6px';
-          process.style.borderRadius = '4px';
+          process.style.cssText = `
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: rgba(59,130,246,0.2);
+            color: #93c5fd;
+          `;
 
           row.appendChild(portNum);
           row.appendChild(addr);
@@ -3263,29 +3507,30 @@ async function buildDashboardWindow() {
       // Render traffic
       const traffic = result.traffic ?? [];
       if (traffic.length === 0) {
-        trafficSection.content.innerHTML = '<span style="opacity: 0.6">No network interfaces</span>';
+        trafficSection.content.innerHTML = '<span style="opacity: 0.5; color: rgba(255,255,255,0.6);">No network interfaces</span>';
       } else {
         trafficSection.content.innerHTML = '';
         for (const iface of traffic) {
           const row = el('div');
-          row.style.display = 'flex';
-          row.style.alignItems = 'center';
-          row.style.gap = '8px';
-          row.style.padding = '8px 0';
-          row.style.borderBottom = '1px solid #f3f4f6';
+          row.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+          `;
 
           const name = el('span');
           name.textContent = iface.interface;
-          name.style.fontWeight = '500';
-          name.style.minWidth = '100px';
+          name.style.cssText = 'font-weight: 500; min-width: 80px; color: rgba(255,255,255,0.9);';
 
           const rx = el('span');
-          rx.innerHTML = `<span style="color: #22c55e">↓</span> ${iface.rx_formatted}`;
-          rx.style.flex = '1';
+          rx.innerHTML = `<span style="color: #22c55e;">↓</span> ${iface.rx_formatted}`;
+          rx.style.cssText = 'flex: 1; font-family: monospace; font-size: 12px;';
 
           const tx = el('span');
-          tx.innerHTML = `<span style="color: #3b82f6">↑</span> ${iface.tx_formatted}`;
-          tx.style.flex = '1';
+          tx.innerHTML = `<span style="color: #3b82f6;">↑</span> ${iface.tx_formatted}`;
+          tx.style.cssText = 'flex: 1; font-family: monospace; font-size: 12px;';
 
           row.appendChild(name);
           row.appendChild(rx);
@@ -3294,10 +3539,16 @@ async function buildDashboardWindow() {
         }
       }
     } catch (e) {
-      servicesSection.content.innerHTML = `<span style="color: #ef4444">Error: ${String(e)}</span>`;
+      const errorMsg = `<span style="color: #ef4444;">Error: ${String(e)}</span>`;
+      servicesSection.content.innerHTML = errorMsg;
       containersSection.content.innerHTML = '';
       portsSection.content.innerHTML = '';
       trafficSection.content.innerHTML = '';
+
+      // Reset gauges on error
+      cpuGauge.value.textContent = '--%';
+      ramGauge.value.textContent = '--%';
+      diskGauge.value.textContent = '--%';
     }
   }
 

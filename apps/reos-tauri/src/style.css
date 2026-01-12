@@ -1,4 +1,28 @@
 :root {
+	/* Core colors */
+	--color-primary: #3b82f6;
+	--color-success: #22c55e;
+	--color-warning: #f59e0b;
+	--color-error: #ef4444;
+	--color-info: #60a5fa;
+
+	/* Dark theme (default) */
+	--bg-primary: #1a1a2e;
+	--bg-secondary: #16213e;
+	--bg-tertiary: #0f3460;
+	--bg-surface: rgba(26, 26, 46, 0.95);
+	--bg-elevated: rgba(255, 255, 255, 0.05);
+	--bg-input: rgba(0, 0, 0, 0.4);
+
+	--text-primary: rgba(255, 255, 255, 0.97);
+	--text-secondary: rgba(255, 255, 255, 0.7);
+	--text-tertiary: rgba(255, 255, 255, 0.5);
+	--text-muted: rgba(255, 255, 255, 0.3);
+
+	--border-color: rgba(255, 255, 255, 0.1);
+	--border-focus: rgba(34, 197, 94, 0.6);
+
+	/* Legacy variables for compatibility */
 	--chat-user-bg: rgba(43, 108, 176, 0.74);
 	--chat-reos-bg: rgba(34, 197, 94, 0.72);
 	--chat-bubble-text: rgba(255, 255, 255, 0.97);
@@ -6,6 +30,28 @@
 	--linux-green: #22c55e;
 	--linux-dark: #1a1a2e;
 	--terminal-bg: rgba(26, 26, 46, 0.95);
+}
+
+/* Light theme override (for future use) */
+[data-theme="light"] {
+	--bg-primary: #f8fafc;
+	--bg-secondary: #e2e8f0;
+	--bg-tertiary: #cbd5e1;
+	--bg-surface: #ffffff;
+	--bg-elevated: rgba(0, 0, 0, 0.03);
+	--bg-input: #f1f5f9;
+
+	--text-primary: #1e293b;
+	--text-secondary: #475569;
+	--text-tertiary: #64748b;
+	--text-muted: #94a3b8;
+
+	--border-color: #e2e8f0;
+	--border-focus: #22c55e;
+
+	--chat-user-bg: rgba(59, 130, 246, 0.9);
+	--chat-reos-bg: rgba(34, 197, 94, 0.9);
+	--chat-bubble-text: #ffffff;
 }
 
 /* Thinking indicator animation */
@@ -402,6 +448,69 @@ body,
 .tree-new-btn.beat-level {
 	margin-left: 40px;
 	width: calc(100% - 40px);
+}
+
+/* Active Act indicator */
+.tree-item.act.active {
+	background: rgba(34, 197, 94, 0.15);
+	border-left: 3px solid #22c55e;
+	padding-left: 9px;
+}
+
+/* Beat status badges */
+.beat-status {
+	font-size: 9px;
+	font-weight: 600;
+	padding: 2px 6px;
+	border-radius: 4px;
+	margin-left: auto;
+	text-transform: uppercase;
+	letter-spacing: 0.3px;
+}
+
+.beat-status-pending {
+	background: rgba(156, 163, 175, 0.2);
+	color: #9ca3af;
+}
+
+.beat-status-in_progress {
+	background: rgba(59, 130, 246, 0.2);
+	color: #60a5fa;
+}
+
+.beat-status-completed {
+	background: rgba(34, 197, 94, 0.2);
+	color: #22c55e;
+}
+
+.beat-status-blocked {
+	background: rgba(239, 68, 68, 0.2);
+	color: #ef4444;
+}
+
+/* Scene count badge */
+.tree-count {
+	font-size: 10px;
+	padding: 1px 6px;
+	border-radius: 10px;
+	background: rgba(255, 255, 255, 0.1);
+	color: rgba(255, 255, 255, 0.5);
+	margin-left: auto;
+}
+
+/* Hierarchy connector lines */
+.tree-connector {
+	position: relative;
+}
+
+.tree-connector::before {
+	content: '';
+	position: absolute;
+	left: 20px;
+	top: 0;
+	bottom: 0;
+	width: 1px;
+	background: rgba(255, 255, 255, 0.1);
 }
 
 /* Content area */

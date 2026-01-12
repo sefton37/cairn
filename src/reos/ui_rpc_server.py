@@ -3897,6 +3897,7 @@ def _handle_thunderbird_check(db: Database) -> dict[str, Any]:
         ThunderbirdAccount,
     )
     from .cairn.store import CairnStore
+    from .rpc.handlers.cairn import get_current_play_path
 
     # Get integration state from Thunderbird
     integration = get_thunderbird_integration_state()
@@ -3955,6 +3956,7 @@ def _handle_thunderbird_configure(
 ) -> dict[str, Any]:
     """Configure Thunderbird integration."""
     from .cairn.store import CairnStore
+    from .rpc.handlers.cairn import get_current_play_path
 
     play_path = get_current_play_path(db)
     if not play_path:
@@ -3976,6 +3978,7 @@ def _handle_thunderbird_configure(
 def _handle_thunderbird_decline(db: Database) -> dict[str, Any]:
     """Mark Thunderbird integration as declined (never ask again)."""
     from .cairn.store import CairnStore
+    from .rpc.handlers.cairn import get_current_play_path
 
     play_path = get_current_play_path(db)
     if not play_path:
@@ -3990,6 +3993,7 @@ def _handle_thunderbird_decline(db: Database) -> dict[str, Any]:
 def _handle_thunderbird_reset(db: Database) -> dict[str, Any]:
     """Reset Thunderbird integration (re-enable prompts)."""
     from .cairn.store import CairnStore
+    from .rpc.handlers.cairn import get_current_play_path
 
     play_path = get_current_play_path(db)
     if not play_path:

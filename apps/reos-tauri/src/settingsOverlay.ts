@@ -9,7 +9,7 @@
 import { kernelRequest } from './kernel';
 import { el } from './dom';
 
-type SettingsTab = 'llm' | 'persona' | 'safety' | 'integrations';
+type SettingsTab = 'llm' | 'persona' | 'safety' | 'learning' | 'integrations';
 
 // Thunderbird integration types
 interface ThunderbirdAccount {
@@ -342,11 +342,13 @@ export function createSettingsOverlay(onClose?: () => void): SettingsOverlay {
   const llmTab = createTab('llm', 'LLM Provider', '🤖');
   const personaTab = createTab('persona', 'Agent Persona', '🎭');
   const safetyTab = createTab('safety', 'Safety', '🛡️');
+  const learningTab = createTab('learning', 'Learning', '🧠');
   const integrationsTab = createTab('integrations', 'Integrations', '🔗');
 
   tabsContainer.appendChild(llmTab);
   tabsContainer.appendChild(personaTab);
   tabsContainer.appendChild(safetyTab);
+  tabsContainer.appendChild(learningTab);
   tabsContainer.appendChild(integrationsTab);
 
   // Content area
@@ -505,6 +507,8 @@ export function createSettingsOverlay(onClose?: () => void): SettingsOverlay {
     personaTab.style.borderBottomColor = activeTab === 'persona' ? '#3b82f6' : 'transparent';
     safetyTab.style.color = activeTab === 'safety' ? '#fff' : 'rgba(255,255,255,0.6)';
     safetyTab.style.borderBottomColor = activeTab === 'safety' ? '#3b82f6' : 'transparent';
+    learningTab.style.color = activeTab === 'learning' ? '#fff' : 'rgba(255,255,255,0.6)';
+    learningTab.style.borderBottomColor = activeTab === 'learning' ? '#3b82f6' : 'transparent';
     integrationsTab.style.color = activeTab === 'integrations' ? '#fff' : 'rgba(255,255,255,0.6)';
     integrationsTab.style.borderBottomColor = activeTab === 'integrations' ? '#3b82f6' : 'transparent';
 
@@ -516,6 +520,8 @@ export function createSettingsOverlay(onClose?: () => void): SettingsOverlay {
       renderPersonaTab();
     } else if (activeTab === 'safety') {
       renderSafetyTab();
+    } else if (activeTab === 'learning') {
+      renderLearningTab();
     } else if (activeTab === 'integrations') {
       renderIntegrationsTab();
     }
@@ -2415,6 +2421,186 @@ When executing:
     container.appendChild(descEl);
 
     return container;
+  }
+
+  // ============ Learning Tab ============
+  function renderLearningTab() {
+    // Header
+    const headerInfo = el('div');
+    headerInfo.style.cssText = `
+      padding: 16px;
+      background: rgba(139, 92, 246, 0.1);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      border-radius: 8px;
+      margin-bottom: 20px;
+    `;
+    headerInfo.innerHTML = `
+      <div style="display: flex; align-items: flex-start; gap: 12px;">
+        <span style="font-size: 24px;">🧠</span>
+        <div>
+          <div style="font-weight: 600; color: #fff; margin-bottom: 4px;">Learning & Optimization</div>
+          <div style="font-size: 13px; color: rgba(255,255,255,0.7); line-height: 1.5;">
+            Talking Rock learns from your patterns and optimizes over time. This page shows how the system
+            adapts to your workflow.
+          </div>
+        </div>
+      </div>
+    `;
+    content.appendChild(headerInfo);
+
+    // Pattern Success Tracking
+    const patternsSection = createSection('Pattern Success Tracking');
+    patternsSection.innerHTML += `
+      <div style="color: rgba(255,255,255,0.6); font-size: 12px; margin-bottom: 16px;">
+        The system tracks which patterns succeed or fail and adjusts trust levels accordingly.
+        Patterns with high success rates skip unnecessary verification steps.
+      </div>
+    `;
+
+    // Pattern types
+    const patternTypes = [
+      { name: 'ADD_IMPORT', desc: 'Adding imports to files', color: '#22c55e' },
+      { name: 'FIX_IMPORT', desc: 'Fixing broken imports', color: '#3b82f6' },
+      { name: 'CREATE_FUNCTION', desc: 'Creating new functions', color: '#8b5cf6' },
+      { name: 'ADD_TEST', desc: 'Adding test cases', color: '#f59e0b' },
+    ];
+
+    const patternGrid = el('div');
+    patternGrid.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 12px;';
+
+    for (const pattern of patternTypes) {
+      const card = el('div');
+      card.style.cssText = `
+        padding: 14px;
+        background: rgba(0,0,0,0.2);
+        border-radius: 8px;
+        border-left: 3px solid ${pattern.color};
+      `;
+      card.innerHTML = `
+        <div style="font-weight: 500; color: #fff; margin-bottom: 4px;">${pattern.name}</div>
+        <div style="font-size: 11px; color: rgba(255,255,255,0.5); margin-bottom: 8px;">${pattern.desc}</div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 12px; color: rgba(255,255,255,0.6);">Trust Level</span>
+          <span style="font-size: 11px; padding: 2px 8px; background: ${pattern.color}30; color: ${pattern.color}; border-radius: 4px;">Learning</span>
+        </div>
+      `;
+      patternGrid.appendChild(card);
+    }
+
+    patternsSection.appendChild(patternGrid);
+    content.appendChild(patternsSection);
+
+    // Verification Optimization
+    const verifySection = createSection('Verification Optimization');
+    verifySection.innerHTML += `
+      <div style="color: rgba(255,255,255,0.6); font-size: 12px; margin-bottom: 16px;">
+        Multi-layer verification catches errors early. High-trust patterns skip to faster verification.
+      </div>
+    `;
+
+    const layers = [
+      { name: 'Layer 1: Syntax', desc: 'AST parsing (~1ms)', color: '#22c55e', always: true },
+      { name: 'Layer 2: Semantic', desc: 'Undefined names, imports (~10ms)', color: '#3b82f6', always: false },
+      { name: 'Layer 3: Behavioral', desc: 'Test execution (~100ms-1s)', color: '#f59e0b', always: false },
+      { name: 'Layer 4: Intent', desc: 'LLM judge alignment (~500ms-2s)', color: '#ef4444', always: false },
+    ];
+
+    const layersList = el('div');
+    layersList.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+
+    for (const layer of layers) {
+      const item = el('div');
+      item.style.cssText = `
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px;
+        background: rgba(0,0,0,0.2);
+        border-radius: 8px;
+        border-left: 3px solid ${layer.color};
+      `;
+      item.innerHTML = `
+        <div>
+          <div style="font-weight: 500; color: #fff;">${layer.name}</div>
+          <div style="font-size: 11px; color: rgba(255,255,255,0.5);">${layer.desc}</div>
+        </div>
+        <span style="font-size: 10px; padding: 2px 8px; background: ${layer.always ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.1)'}; color: ${layer.always ? '#22c55e' : 'rgba(255,255,255,0.5)'}; border-radius: 4px;">
+          ${layer.always ? 'Always' : 'Risk-Based'}
+        </span>
+      `;
+      layersList.appendChild(item);
+    }
+
+    verifySection.appendChild(layersList);
+    content.appendChild(verifySection);
+
+    // Repository Understanding
+    const repoSection = createSection('Repository Understanding');
+    repoSection.innerHTML += `
+      <div style="color: rgba(255,255,255,0.6); font-size: 12px; margin-bottom: 16px;">
+        When you start a code session, Talking Rock analyzes the repository to understand its conventions.
+      </div>
+    `;
+
+    const features = [
+      { icon: '📁', name: 'Project Structure', desc: 'File organization and patterns' },
+      { icon: '📝', name: 'Code Conventions', desc: 'Naming, formatting, style' },
+      { icon: '🔧', name: 'Dependencies', desc: 'Package and import patterns' },
+      { icon: '🧪', name: 'Test Patterns', desc: 'Testing framework and conventions' },
+    ];
+
+    const featuresGrid = el('div');
+    featuresGrid.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 12px;';
+
+    for (const feat of features) {
+      const card = el('div');
+      card.style.cssText = `
+        padding: 12px;
+        background: rgba(0,0,0,0.2);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      `;
+      card.innerHTML = `
+        <span style="font-size: 20px;">${feat.icon}</span>
+        <div>
+          <div style="font-weight: 500; color: #fff; font-size: 13px;">${feat.name}</div>
+          <div style="font-size: 11px; color: rgba(255,255,255,0.5);">${feat.desc}</div>
+        </div>
+      `;
+      featuresGrid.appendChild(card);
+    }
+
+    repoSection.appendChild(featuresGrid);
+    content.appendChild(repoSection);
+
+    // Project Memory
+    const memorySection = createSection('Project Memory');
+    memorySection.innerHTML += `
+      <div style="color: rgba(255,255,255,0.6); font-size: 12px; margin-bottom: 16px;">
+        Each Act stores learned preferences and corrections specific to that project.
+      </div>
+    `;
+
+    const memoryCard = el('div');
+    memoryCard.style.cssText = `
+      padding: 16px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 8px;
+      text-align: center;
+    `;
+    memoryCard.innerHTML = `
+      <div style="font-size: 32px; margin-bottom: 8px;">📚</div>
+      <div style="color: rgba(255,255,255,0.6); font-size: 13px;">
+        Project memories are stored in each Act's knowledge base.
+        <br><br>
+        Open <strong>The Play</strong> to view and manage your project-specific learnings.
+      </div>
+    `;
+
+    memorySection.appendChild(memoryCard);
+    content.appendChild(memorySection);
   }
 
   // ============ Integrations Tab ============

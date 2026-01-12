@@ -10,6 +10,7 @@
 
 import { el } from './dom';
 import type { ChatRespondResult, ExtendedThinkingTrace, ThinkingNode, FacetCheck, Tension } from './types';
+import { highlight, injectSyntaxHighlightStyles } from './syntaxHighlight';
 
 interface CairnViewCallbacks {
   onSendMessage: (message: string, options?: { extendedThinking?: boolean }) => Promise<void>;
@@ -62,6 +63,9 @@ export function createCairnView(
     surfacedItems: [],
     extendedThinkingEnabled: false,
   };
+
+  // Inject syntax highlighting styles
+  injectSyntaxHighlightStyles();
 
   // Main container
   const container = el('div');
@@ -592,7 +596,12 @@ export function createCairnView(
         : 'background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.9);'
       }
     `;
-    msgEl.textContent = content;
+    // Render content with syntax highlighting for code blocks
+    if (content.includes('```')) {
+      msgEl.innerHTML = renderContentWithCodeBlocks(content);
+    } else {
+      msgEl.textContent = content;
+    }
     msgWrapper.appendChild(msgEl);
 
     // Expandable details for assistant messages
@@ -895,6 +904,73 @@ export function createCairnView(
     const div = el('div');
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  /**
+   * Parse content and render code blocks with syntax highlighting.
+   * Handles markdown-style ``` code blocks.
+   */
+  function renderContentWithCodeBlocks(content: string): string {
+    // Match code blocks: ```language\ncode\n```
+    const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
+    let result = '';
+    let lastIndex = 0;
+
+    for (const match of content.matchAll(codeBlockRegex)) {
+      const [fullMatch, language, code] = match;
+      const index = match.index!;
+
+      // Add text before the code block
+      if (index > lastIndex) {
+        result += escapeHtml(content.slice(lastIndex, index));
+      }
+
+      // Add the highlighted code block
+      const lang = language || 'text';
+      const highlightedCode = highlight(code.trimEnd(), lang);
+      result += `
+        <div style="
+          margin: 8px 0;
+          background: rgba(0,0,0,0.4);
+          border-radius: 8px;
+          overflow: hidden;
+        ">
+          <div style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 12px;
+            background: rgba(0,0,0,0.3);
+            font-size: 11px;
+            color: rgba(255,255,255,0.5);
+          ">
+            <span>${lang}</span>
+          </div>
+          <pre style="
+            margin: 0;
+            padding: 12px;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+          "><code>${highlightedCode}</code></pre>
+        </div>
+      `;
+
+      lastIndex = index + fullMatch.length;
+    }
+
+    // Add any remaining text after the last code block
+    if (lastIndex < content.length) {
+      result += escapeHtml(content.slice(lastIndex));
+    }
+
+    // Replace newlines with <br> in non-code content
+    result = result.replace(/\n/g, '<br>');
+
+    return result;
   }
 
   function addChatMessage(role: 'user' | 'assistant', content: string): void {

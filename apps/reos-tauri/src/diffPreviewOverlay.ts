@@ -5,9 +5,10 @@
  * to review, approve, or reject changes before they are applied.
  *
  * Features:
+ * - Unified and side-by-side diff views (toggle between them)
  * - Full diff view with syntax highlighting
  * - Apply/reject individual files or all at once
- * - Keyboard shortcuts: Enter to apply all, Escape to close
+ * - Keyboard shortcuts: Enter to apply all, Escape to close, Tab to toggle view
  * - Click outside to close
  */
 
@@ -21,12 +22,17 @@ import type {
   CodeDiffRejectResult,
 } from './types';
 
+// View mode for diff display
+type DiffViewMode = 'unified' | 'split';
+
 // Color scheme for diff display
 const COLORS = {
   added: '#22c55e',
   addedBg: 'rgba(34, 197, 94, 0.15)',
+  addedBgSolid: '#1a3a2a',
   removed: '#ef4444',
   removedBg: 'rgba(239, 68, 68, 0.15)',
+  removedBgSolid: '#3a1a1a',
   context: '#9ca3af',
   header: '#60a5fa',
   filename: '#fbbf24',
@@ -35,6 +41,8 @@ const COLORS = {
   bgDark: '#1e1e1e',
   bgMedium: '#262626',
   bgLight: '#2d2d2d',
+  toggleActive: '#3b82f6',
+  toggleInactive: '#4b5563',
 };
 
 export interface DiffPreviewOverlay {
@@ -42,6 +50,8 @@ export interface DiffPreviewOverlay {
   show: (preview: DiffPreview, sessionId: string, onComplete?: () => void) => void;
   hide: () => void;
   isVisible: () => boolean;
+  setViewMode: (mode: DiffViewMode) => void;
+  getViewMode: () => DiffViewMode;
 }
 
 export function createDiffPreviewOverlay(): DiffPreviewOverlay {
@@ -49,6 +59,7 @@ export function createDiffPreviewOverlay(): DiffPreviewOverlay {
   let currentSessionId: string | null = null;
   let onCompleteCallback: (() => void) | null = null;
   let remainingChanges: Set<string> = new Set();
+  let viewMode: DiffViewMode = 'unified'; // Default to unified view
 
   // Create overlay container
   const overlay = el('div');
@@ -120,6 +131,73 @@ export function createDiffPreviewOverlay(): DiffPreviewOverlay {
   const headerActions = el('div');
   headerActions.style.cssText = 'display: flex; align-items: center; gap: 12px;';
 
+  // View mode toggle buttons
+  const viewToggle = el('div');
+  viewToggle.style.cssText = `
+    display: flex;
+    background: ${COLORS.bgLight};
+    border-radius: 6px;
+    padding: 2px;
+    gap: 2px;
+  `;
+
+  const unifiedBtn = el('button');
+  unifiedBtn.textContent = 'Unified';
+  unifiedBtn.className = 'view-toggle-unified';
+  unifiedBtn.style.cssText = `
+    padding: 4px 10px;
+    border: none;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: ${COLORS.toggleActive};
+    color: #fff;
+  `;
+
+  const splitBtn = el('button');
+  splitBtn.textContent = 'Side-by-Side';
+  splitBtn.className = 'view-toggle-split';
+  splitBtn.style.cssText = `
+    padding: 4px 10px;
+    border: none;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: transparent;
+    color: ${COLORS.context};
+  `;
+
+  viewToggle.appendChild(unifiedBtn);
+  viewToggle.appendChild(splitBtn);
+
+  function updateViewToggleStyles() {
+    if (viewMode === 'unified') {
+      unifiedBtn.style.background = COLORS.toggleActive;
+      unifiedBtn.style.color = '#fff';
+      splitBtn.style.background = 'transparent';
+      splitBtn.style.color = COLORS.context;
+    } else {
+      splitBtn.style.background = COLORS.toggleActive;
+      splitBtn.style.color = '#fff';
+      unifiedBtn.style.background = 'transparent';
+      unifiedBtn.style.color = COLORS.context;
+    }
+  }
+
+  unifiedBtn.addEventListener('click', () => {
+    viewMode = 'unified';
+    updateViewToggleStyles();
+    render();
+  });
+
+  splitBtn.addEventListener('click', () => {
+    viewMode = 'split';
+    updateViewToggleStyles();
+    render();
+  });
+
   // Keyboard hint
   const keyHint = el('span');
   keyHint.style.cssText = `
@@ -129,7 +207,7 @@ export function createDiffPreviewOverlay(): DiffPreviewOverlay {
     background: ${COLORS.bgLight};
     border-radius: 4px;
   `;
-  keyHint.innerHTML = '<kbd style="font-family: monospace; color: #fff;">Enter</kbd> Apply All &nbsp; <kbd style="font-family: monospace; color: #fff;">Esc</kbd> Close';
+  keyHint.innerHTML = '<kbd style="font-family: monospace; color: #fff;">Enter</kbd> Apply &nbsp; <kbd style="font-family: monospace; color: #fff;">Tab</kbd> Toggle View &nbsp; <kbd style="font-family: monospace; color: #fff;">Esc</kbd> Close';
 
   const closeBtn = el('button');
   closeBtn.textContent = '✕';
@@ -153,6 +231,7 @@ export function createDiffPreviewOverlay(): DiffPreviewOverlay {
   });
   closeBtn.addEventListener('click', hide);
 
+  headerActions.appendChild(viewToggle);
   headerActions.appendChild(keyHint);
   headerActions.appendChild(closeBtn);
 
@@ -245,6 +324,11 @@ export function createDiffPreviewOverlay(): DiffPreviewOverlay {
     } else if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleApplyAll();
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      viewMode = viewMode === 'unified' ? 'split' : 'unified';
+      updateViewToggleStyles();
+      render();
     }
   }
 
@@ -384,6 +468,268 @@ export function createDiffPreviewOverlay(): DiffPreviewOverlay {
     }
 
     container.appendChild(linesContainer);
+    return container;
+  }
+
+  /**
+   * Render a hunk in side-by-side (split) view.
+   * Shows old content on the left, new content on the right.
+   */
+  function renderHunkSplit(hunk: DiffHunk): HTMLElement {
+    const container = el('div');
+    container.style.cssText = `
+      font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      margin-bottom: 12px;
+    `;
+
+    // Hunk header
+    const headerEl = el('div');
+    headerEl.textContent = hunk.header;
+    headerEl.style.cssText = `
+      color: ${COLORS.header};
+      padding: 6px 12px;
+      background: rgba(96, 165, 250, 0.1);
+      border-radius: 4px 4px 0 0;
+      border-left: 3px solid ${COLORS.header};
+    `;
+    container.appendChild(headerEl);
+
+    // Split view container
+    const splitContainer = el('div');
+    splitContainer.style.cssText = `
+      display: flex;
+      flex-direction: column;
+      border-left: 3px solid ${COLORS.border};
+      background: ${COLORS.bgLight};
+      border-radius: 0 0 4px 0;
+    `;
+
+    // Column headers
+    const columnHeaders = el('div');
+    columnHeaders.style.cssText = `
+      display: flex;
+      border-bottom: 1px solid ${COLORS.border};
+      background: rgba(0,0,0,0.3);
+    `;
+
+    const leftHeader = el('div');
+    leftHeader.style.cssText = `
+      flex: 1;
+      padding: 4px 12px;
+      font-size: 10px;
+      font-weight: 600;
+      color: ${COLORS.removed};
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-right: 1px solid ${COLORS.border};
+    `;
+    leftHeader.textContent = 'Original';
+
+    const rightHeader = el('div');
+    rightHeader.style.cssText = `
+      flex: 1;
+      padding: 4px 12px;
+      font-size: 10px;
+      font-weight: 600;
+      color: ${COLORS.added};
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    `;
+    rightHeader.textContent = 'Modified';
+
+    columnHeaders.appendChild(leftHeader);
+    columnHeaders.appendChild(rightHeader);
+    splitContainer.appendChild(columnHeaders);
+
+    // Lines container
+    const linesWrapper = el('div');
+    linesWrapper.style.cssText = 'display: flex;';
+
+    // Left side (old/removed)
+    const leftSide = el('div');
+    leftSide.style.cssText = `
+      flex: 1;
+      border-right: 1px solid ${COLORS.border};
+      overflow-x: auto;
+    `;
+
+    // Right side (new/added)
+    const rightSide = el('div');
+    rightSide.style.cssText = `
+      flex: 1;
+      overflow-x: auto;
+    `;
+
+    // Parse lines into left/right columns
+    // We need to align removed lines on left with added lines on right
+    type LinePair = { left: string | null; right: string | null; leftNum: number | null; rightNum: number | null };
+    const pairs: LinePair[] = [];
+
+    let oldLineNum = hunk.old_start;
+    let newLineNum = hunk.new_start;
+
+    // Group consecutive removals and additions together
+    let i = 0;
+    while (i < hunk.lines.length) {
+      const line = hunk.lines[i];
+      const prefix = line.charAt(0);
+
+      if (prefix === '-') {
+        // Collect all consecutive removals
+        const removals: { line: string; num: number }[] = [];
+        while (i < hunk.lines.length && hunk.lines[i].charAt(0) === '-') {
+          removals.push({ line: hunk.lines[i], num: oldLineNum++ });
+          i++;
+        }
+        // Collect all consecutive additions that follow
+        const additions: { line: string; num: number }[] = [];
+        while (i < hunk.lines.length && hunk.lines[i].charAt(0) === '+') {
+          additions.push({ line: hunk.lines[i], num: newLineNum++ });
+          i++;
+        }
+        // Pair them up
+        const maxLen = Math.max(removals.length, additions.length);
+        for (let j = 0; j < maxLen; j++) {
+          pairs.push({
+            left: j < removals.length ? removals[j].line : null,
+            right: j < additions.length ? additions[j].line : null,
+            leftNum: j < removals.length ? removals[j].num : null,
+            rightNum: j < additions.length ? additions[j].num : null,
+          });
+        }
+      } else if (prefix === '+') {
+        // Standalone addition (not paired with removal)
+        pairs.push({
+          left: null,
+          right: line,
+          leftNum: null,
+          rightNum: newLineNum++,
+        });
+        i++;
+      } else {
+        // Context line - appears on both sides
+        const text = line;
+        pairs.push({
+          left: text,
+          right: text,
+          leftNum: oldLineNum++,
+          rightNum: newLineNum++,
+        });
+        i++;
+      }
+    }
+
+    // Render paired lines
+    for (const pair of pairs) {
+      // Left line
+      const leftLine = el('div');
+      leftLine.style.cssText = `
+        display: flex;
+        align-items: stretch;
+        min-height: 22px;
+      `;
+
+      const leftLineNum = el('span');
+      leftLineNum.style.cssText = `
+        color: ${COLORS.lineNumber};
+        width: 45px;
+        text-align: right;
+        padding: 0 8px;
+        user-select: none;
+        flex-shrink: 0;
+        font-size: 11px;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        background: rgba(0,0,0,0.2);
+      `;
+      leftLineNum.textContent = pair.leftNum !== null ? String(pair.leftNum) : '';
+
+      const leftContent = el('span');
+      leftContent.style.cssText = `
+        flex: 1;
+        padding: 0 8px;
+        white-space: pre;
+        display: flex;
+        align-items: center;
+      `;
+
+      if (pair.left === null) {
+        // Empty placeholder
+        leftLine.style.backgroundColor = 'rgba(0,0,0,0.1)';
+        leftContent.textContent = '';
+      } else if (pair.left.charAt(0) === '-') {
+        leftLine.style.backgroundColor = COLORS.removedBgSolid;
+        leftContent.style.color = COLORS.removed;
+        leftContent.textContent = pair.left.slice(1) || ' ';
+      } else {
+        // Context
+        leftContent.style.color = COLORS.context;
+        leftContent.textContent = pair.left.slice(1) || ' ';
+      }
+
+      leftLine.appendChild(leftLineNum);
+      leftLine.appendChild(leftContent);
+      leftSide.appendChild(leftLine);
+
+      // Right line
+      const rightLine = el('div');
+      rightLine.style.cssText = `
+        display: flex;
+        align-items: stretch;
+        min-height: 22px;
+      `;
+
+      const rightLineNum = el('span');
+      rightLineNum.style.cssText = `
+        color: ${COLORS.lineNumber};
+        width: 45px;
+        text-align: right;
+        padding: 0 8px;
+        user-select: none;
+        flex-shrink: 0;
+        font-size: 11px;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        background: rgba(0,0,0,0.2);
+      `;
+      rightLineNum.textContent = pair.rightNum !== null ? String(pair.rightNum) : '';
+
+      const rightContent = el('span');
+      rightContent.style.cssText = `
+        flex: 1;
+        padding: 0 8px;
+        white-space: pre;
+        display: flex;
+        align-items: center;
+      `;
+
+      if (pair.right === null) {
+        // Empty placeholder
+        rightLine.style.backgroundColor = 'rgba(0,0,0,0.1)';
+        rightContent.textContent = '';
+      } else if (pair.right.charAt(0) === '+') {
+        rightLine.style.backgroundColor = COLORS.addedBgSolid;
+        rightContent.style.color = COLORS.added;
+        rightContent.textContent = pair.right.slice(1) || ' ';
+      } else {
+        // Context
+        rightContent.style.color = COLORS.context;
+        rightContent.textContent = pair.right.slice(1) || ' ';
+      }
+
+      rightLine.appendChild(rightLineNum);
+      rightLine.appendChild(rightContent);
+      rightSide.appendChild(rightLine);
+    }
+
+    linesWrapper.appendChild(leftSide);
+    linesWrapper.appendChild(rightSide);
+    splitContainer.appendChild(linesWrapper);
+    container.appendChild(splitContainer);
     return container;
   }
 
@@ -572,8 +918,10 @@ export function createDiffPreviewOverlay(): DiffPreviewOverlay {
       `;
       diffContent.appendChild(noChanges);
     } else {
+      // Render hunks based on view mode
+      const renderFn = viewMode === 'split' ? renderHunkSplit : renderHunk;
       for (const hunk of change.hunks) {
-        diffContent.appendChild(renderHunk(hunk));
+        diffContent.appendChild(renderFn(hunk));
       }
     }
 
@@ -655,10 +1003,24 @@ export function createDiffPreviewOverlay(): DiffPreviewOverlay {
     return overlay.style.display !== 'none';
   }
 
+  function setViewMode(mode: DiffViewMode) {
+    viewMode = mode;
+    updateViewToggleStyles();
+    if (currentPreview) {
+      render();
+    }
+  }
+
+  function getViewMode(): DiffViewMode {
+    return viewMode;
+  }
+
   return {
     element: overlay,
     show,
     hide,
     isVisible,
+    setViewMode,
+    getViewMode,
   };
 }

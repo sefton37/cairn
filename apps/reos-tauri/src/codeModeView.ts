@@ -25,6 +25,43 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#039;');
 }
 
+// Inject CSS animations for pulsing effects
+const styleSheet = document.createElement('style');
+styleSheet.textContent = `
+  @keyframes phase-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+    50% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); }
+  }
+  @keyframes progress-shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .phase-active {
+    animation: phase-pulse 2s ease-in-out infinite;
+  }
+  .progress-active {
+    background: linear-gradient(
+      90deg,
+      #3b82f6 0%,
+      #60a5fa 50%,
+      #3b82f6 100%
+    );
+    background-size: 200% 100%;
+    animation: progress-shimmer 1.5s ease-in-out infinite;
+  }
+  .spinner {
+    animation: spin 1s linear infinite;
+  }
+`;
+if (!document.querySelector('style[data-code-mode-animations]')) {
+  styleSheet.setAttribute('data-code-mode-animations', 'true');
+  document.head.appendChild(styleSheet);
+}
+
 // Phase icons for progress visualization
 const PHASE_ICONS: Record<string, string> = {
   'pending': '⏳',
@@ -315,32 +352,39 @@ export function createCodeModeView(
     const currentPhaseIndex = PHASES.findIndex(p => p.key === uiPhaseKey);
 
     phaseItems.forEach((item, idx) => {
-      // Reset styles first
+      // Reset styles and classes
       item.style.fontWeight = 'normal';
+      item.classList.remove('phase-active');
 
       if (isComplete) {
         if (success) {
           // All phases green on success
           item.style.background = 'rgba(34, 197, 94, 0.2)';
           item.style.color = '#22c55e';
+          item.style.borderColor = 'transparent';
         } else {
           // Show progress up to failure point in red
           item.style.background = idx <= currentPhaseIndex ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.05)';
           item.style.color = idx <= currentPhaseIndex ? '#ef4444' : 'rgba(255,255,255,0.5)';
+          item.style.borderColor = 'transparent';
         }
       } else if (idx < currentPhaseIndex) {
-        // Completed phases - green
+        // Completed phases - green with checkmark
         item.style.background = 'rgba(34, 197, 94, 0.2)';
         item.style.color = '#22c55e';
+        item.style.borderColor = 'transparent';
       } else if (idx === currentPhaseIndex) {
-        // Current phase - blue and bold
+        // Current phase - blue, bold, and pulsing
         item.style.background = 'rgba(59, 130, 246, 0.3)';
         item.style.color = '#3b82f6';
         item.style.fontWeight = '600';
+        item.style.border = '1px solid rgba(59, 130, 246, 0.5)';
+        item.classList.add('phase-active');
       } else {
         // Future phases - dim
         item.style.background = 'rgba(255,255,255,0.05)';
         item.style.color = 'rgba(255,255,255,0.5)';
+        item.style.borderColor = 'transparent';
       }
     });
   }
@@ -387,35 +431,111 @@ export function createCodeModeView(
 
     statusSection.appendChild(statusRow);
 
-    // Progress bar
+    // Progress bar with shimmer effect
     const progressBar = el('div');
     progressBar.style.cssText = `
-      height: 8px;
+      height: 10px;
       background: rgba(255,255,255,0.1);
-      border-radius: 4px;
+      border-radius: 5px;
       overflow: hidden;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
+      position: relative;
     `;
     const progressFill = el('div');
     const progressPercent = Math.min(100, ((execState.steps_completed || 0) / Math.max(1, execState.steps_total || 1)) * 100);
+    const isActive = !execState.is_complete;
     progressFill.style.cssText = `
       height: 100%;
       width: ${progressPercent}%;
       background: ${execState.is_complete ? (execState.success ? '#22c55e' : '#ef4444') : '#3b82f6'};
       transition: width 0.3s ease;
+      border-radius: 5px;
     `;
+    if (isActive) {
+      progressFill.classList.add('progress-active');
+    }
     progressBar.appendChild(progressFill);
     statusSection.appendChild(progressBar);
 
-    // Progress text
-    const progressText = el('div');
-    progressText.style.cssText = 'font-size: 12px; color: rgba(255,255,255,0.6);';
-    progressText.textContent = `Plan Step ${execState.steps_completed ?? 0}/${execState.steps_total ?? 0} • Loop ${execState.iteration ?? 0}/${execState.max_iterations ?? 0} • ${(execState.elapsed_seconds ?? 0).toFixed(1)}s`;
-    statusSection.appendChild(progressText);
+    // Progress metrics row
+    const progressMetrics = el('div');
+    progressMetrics.style.cssText = `
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    `;
+
+    // Left: Step and iteration info
+    const stepInfo = el('div');
+    stepInfo.style.cssText = 'font-size: 12px; color: rgba(255,255,255,0.6); display: flex; gap: 12px;';
+
+    const stepBadge = el('span');
+    stepBadge.style.cssText = `
+      background: rgba(59, 130, 246, 0.2);
+      color: #60a5fa;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 500;
+    `;
+    stepBadge.textContent = `Step ${execState.steps_completed ?? 0}/${execState.steps_total ?? 0}`;
+    stepInfo.appendChild(stepBadge);
+
+    if ((execState.iteration ?? 0) > 1) {
+      const iterBadge = el('span');
+      iterBadge.style.cssText = `
+        background: rgba(245, 158, 11, 0.2);
+        color: #fbbf24;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-weight: 500;
+      `;
+      iterBadge.textContent = `Loop ${execState.iteration ?? 0}/${execState.max_iterations ?? 0}`;
+      stepInfo.appendChild(iterBadge);
+    }
+    progressMetrics.appendChild(stepInfo);
+
+    // Right: Time and criteria
+    const rightMetrics = el('div');
+    rightMetrics.style.cssText = 'font-size: 12px; color: rgba(255,255,255,0.6); display: flex; gap: 12px; align-items: center;';
+
+    // Criteria fulfilled
+    const criteriaFulfilled = execState.criteria_fulfilled ?? 0;
+    const criteriaTotal = execState.criteria_total ?? 0;
+    if (criteriaTotal > 0) {
+      const criteriaBadge = el('span');
+      const criteriaPercent = Math.round((criteriaFulfilled / criteriaTotal) * 100);
+      criteriaBadge.style.cssText = `
+        background: rgba(34, 197, 94, 0.2);
+        color: #22c55e;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-weight: 500;
+      `;
+      criteriaBadge.textContent = `✓ ${criteriaFulfilled}/${criteriaTotal} criteria (${criteriaPercent}%)`;
+      rightMetrics.appendChild(criteriaBadge);
+    }
+
+    // Elapsed time with spinner for active
+    const timeDisplay = el('span');
+    timeDisplay.style.cssText = 'display: flex; align-items: center; gap: 4px;';
+    if (isActive) {
+      const spinner = el('span');
+      spinner.className = 'spinner';
+      spinner.style.cssText = 'display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #60a5fa; border-radius: 50%;';
+      timeDisplay.appendChild(spinner);
+    }
+    const timeText = el('span');
+    timeText.textContent = `${(execState.elapsed_seconds ?? 0).toFixed(1)}s`;
+    timeDisplay.appendChild(timeText);
+    rightMetrics.appendChild(timeDisplay);
+
+    progressMetrics.appendChild(rightMetrics);
+    statusSection.appendChild(progressMetrics);
 
     execContent.appendChild(statusSection);
 
-    // Current step
+    // Current step with activity indicator
     if (execState.current_step) {
       const stepSection = el('div');
       stepSection.style.cssText = `
@@ -424,26 +544,135 @@ export function createCodeModeView(
         background: rgba(59, 130, 246, 0.1);
         border: 1px solid rgba(59, 130, 246, 0.3);
         border-radius: 12px;
+        border-left: 4px solid #3b82f6;
       `;
 
       const stepHeader = el('div');
-      stepHeader.style.cssText = 'font-weight: 600; margin-bottom: 8px; font-size: 14px;';
-      stepHeader.textContent = `Current Step`;
+      stepHeader.style.cssText = 'display: flex; align-items: center; gap: 10px; margin-bottom: 10px;';
+
+      // Activity spinner
+      if (!execState.is_complete) {
+        const activitySpinner = el('span');
+        activitySpinner.className = 'spinner';
+        activitySpinner.style.cssText = `
+          display: inline-block;
+          width: 16px;
+          height: 16px;
+          border: 2px solid rgba(59, 130, 246, 0.3);
+          border-top-color: #3b82f6;
+          border-radius: 50%;
+          flex-shrink: 0;
+        `;
+        stepHeader.appendChild(activitySpinner);
+      }
+
+      const stepTitle = el('div');
+      stepTitle.style.cssText = 'font-weight: 600; font-size: 14px; color: #60a5fa;';
+      stepTitle.textContent = 'Current Step';
+      stepHeader.appendChild(stepTitle);
+
+      // Step action badge
+      if (execState.current_step.action) {
+        const actionBadge = el('span');
+        actionBadge.style.cssText = `
+          font-size: 10px;
+          padding: 2px 6px;
+          border-radius: 3px;
+          background: rgba(59, 130, 246, 0.2);
+          color: #93c5fd;
+          text-transform: uppercase;
+          font-weight: 500;
+        `;
+        actionBadge.textContent = execState.current_step.action;
+        stepHeader.appendChild(actionBadge);
+      }
+
       stepSection.appendChild(stepHeader);
 
       const stepDesc = el('div');
-      stepDesc.style.cssText = 'font-size: 13px; color: rgba(255,255,255,0.9);';
+      stepDesc.style.cssText = 'font-size: 13px; color: rgba(255,255,255,0.9); line-height: 1.5;';
       stepDesc.textContent = execState.current_step.description;
       stepSection.appendChild(stepDesc);
 
       if (execState.current_step.target_file) {
         const targetFile = el('div');
-        targetFile.style.cssText = 'font-size: 12px; color: rgba(255,255,255,0.6); margin-top: 8px; font-family: monospace;';
-        targetFile.textContent = `📁 ${execState.current_step.target_file}`;
+        targetFile.style.cssText = `
+          font-size: 12px;
+          color: rgba(255,255,255,0.6);
+          margin-top: 10px;
+          font-family: 'JetBrains Mono', monospace;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          background: rgba(0,0,0,0.2);
+          padding: 6px 10px;
+          border-radius: 6px;
+        `;
+        targetFile.innerHTML = `<span style="opacity: 0.7;">📁</span> ${escapeHtml(execState.current_step.target_file)}`;
         stepSection.appendChild(targetFile);
       }
 
       execContent.appendChild(stepSection);
+    }
+
+    // Current criterion being verified
+    if (execState.current_criterion && execState.status === 'verify') {
+      const criterionSection = el('div');
+      criterionSection.style.cssText = `
+        margin-bottom: 20px;
+        padding: 14px 16px;
+        background: rgba(34, 197, 94, 0.1);
+        border: 1px solid rgba(34, 197, 94, 0.3);
+        border-radius: 12px;
+        border-left: 4px solid #22c55e;
+      `;
+
+      const criterionHeader = el('div');
+      criterionHeader.style.cssText = 'display: flex; align-items: center; gap: 10px; margin-bottom: 8px;';
+
+      // Verification spinner
+      const verifySpinner = el('span');
+      verifySpinner.className = 'spinner';
+      verifySpinner.style.cssText = `
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(34, 197, 94, 0.3);
+        border-top-color: #22c55e;
+        border-radius: 50%;
+        flex-shrink: 0;
+      `;
+      criterionHeader.appendChild(verifySpinner);
+
+      const criterionTitle = el('div');
+      criterionTitle.style.cssText = 'font-weight: 600; font-size: 13px; color: #22c55e;';
+      criterionTitle.textContent = 'Verifying Criterion';
+      criterionHeader.appendChild(criterionTitle);
+
+      // Criterion type badge
+      if (execState.current_criterion.type) {
+        const typeBadge = el('span');
+        typeBadge.style.cssText = `
+          font-size: 10px;
+          padding: 2px 6px;
+          border-radius: 3px;
+          background: rgba(34, 197, 94, 0.2);
+          color: #86efac;
+          text-transform: uppercase;
+          font-weight: 500;
+        `;
+        typeBadge.textContent = execState.current_criterion.type;
+        criterionHeader.appendChild(typeBadge);
+      }
+
+      criterionSection.appendChild(criterionHeader);
+
+      const criterionDesc = el('div');
+      criterionDesc.style.cssText = 'font-size: 12px; color: rgba(255,255,255,0.8); line-height: 1.4;';
+      criterionDesc.textContent = execState.current_criterion.description;
+      criterionSection.appendChild(criterionDesc);
+
+      execContent.appendChild(criterionSection);
     }
 
     // Debug section

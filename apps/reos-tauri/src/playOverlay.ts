@@ -429,9 +429,10 @@ export function createPlayOverlay(onClose: () => void): {
     for (const act of state.actsCache) {
       const isExpanded = state.expandedActs.has(act.act_id);
       const isSelected = state.selectedLevel === 'act' && state.activeActId === act.act_id;
+      const isActive = act.act_id === state.activeActId;
 
       const actItem = el('div');
-      actItem.className = `tree-item act ${isSelected ? 'selected' : ''}`;
+      actItem.className = `tree-item act ${isSelected ? 'selected' : ''} ${isActive ? 'active' : ''}`;
 
       const expandIcon = el('span');
       expandIcon.className = 'tree-expand';
@@ -538,7 +539,24 @@ export function createPlayOverlay(onClose: () => void): {
 
               const beatItem = el('div');
               beatItem.className = `tree-item beat ${beatSelected ? 'selected' : ''}`;
-              beatItem.innerHTML = `<span class="tree-icon">•</span> ${beat.title}`;
+
+              const bulletIcon = el('span');
+              bulletIcon.className = 'tree-icon';
+              bulletIcon.textContent = beat.status === 'completed' ? '✓' : '•';
+              beatItem.appendChild(bulletIcon);
+
+              const beatTitle = el('span');
+              beatTitle.textContent = ` ${beat.title}`;
+              beatItem.appendChild(beatTitle);
+
+              // Add status badge
+              if (beat.status && beat.status !== 'pending') {
+                const statusBadge = el('span');
+                statusBadge.className = `beat-status beat-status-${beat.status}`;
+                statusBadge.textContent = beat.status.replace('_', ' ');
+                beatItem.appendChild(statusBadge);
+              }
+
               beatItem.addEventListener('click', () =>
                 selectLevel('beat', act.act_id, scene.scene_id, beat.beat_id)
               );
