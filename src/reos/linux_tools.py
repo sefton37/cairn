@@ -97,6 +97,7 @@ class SystemInfo:
     uptime: str
     cpu_model: str
     cpu_cores: int
+    cpu_percent: float
     memory_total_mb: int
     memory_used_mb: int
     memory_percent: float
@@ -104,6 +105,10 @@ class SystemInfo:
     disk_used_gb: float
     disk_percent: float
     load_avg: tuple[float, float, float]
+    gpu_name: str | None = None
+    gpu_percent: float | None = None
+    gpu_memory_used_mb: int | None = None
+    gpu_memory_total_mb: int | None = None
 
 
 @dataclass(frozen=True)
@@ -676,6 +681,7 @@ def get_system_info() -> SystemInfo:
     uptime = "unknown"
     cpu_model = "unknown"
     cpu_cores = 0
+    cpu_percent = 0.0
     memory_total_mb = 0
     memory_used_mb = 0
     memory_percent = 0.0
@@ -683,6 +689,10 @@ def get_system_info() -> SystemInfo:
     disk_used_gb = 0.0
     disk_percent = 0.0
     load_avg = (0.0, 0.0, 0.0)
+    gpu_name: str | None = None
+    gpu_percent: float | None = None
+    gpu_memory_used_mb: int | None = None
+    gpu_memory_total_mb: int | None = None
 
     try:
         hostname = subprocess.run(
@@ -752,6 +762,58 @@ def get_system_info() -> SystemInfo:
     except Exception as e:
         logger.debug("Failed to get load average: %s", e)
 
+    # Calculate CPU percent from /proc/stat (instant snapshot using idle percentage)
+    try:
+        with open("/proc/stat") as f:
+            line = f.readline()  # First line is aggregate CPU stats
+            if line.startswith("cpu "):
+                parts = line.split()
+                # user, nice, system, idle, iowait, irq, softirq, steal
+                user = int(parts[1])
+                nice = int(parts[2])
+                system = int(parts[3])
+                idle = int(parts[4])
+                iowait = int(parts[5]) if len(parts) > 5 else 0
+                irq = int(parts[6]) if len(parts) > 6 else 0
+                softirq = int(parts[7]) if len(parts) > 7 else 0
+                steal = int(parts[8]) if len(parts) > 8 else 0
+
+                total = user + nice + system + idle + iowait + irq + softirq + steal
+                busy = total - idle - iowait
+                if total > 0:
+                    # Use load average as a better real-time indicator
+                    # Normalize 1-minute load average by CPU cores
+                    if cpu_cores > 0 and load_avg[0] > 0:
+                        cpu_percent = min(100.0, (load_avg[0] / cpu_cores) * 100)
+                    else:
+                        cpu_percent = (busy / total) * 100
+    except Exception as e:
+        logger.debug("Failed to get CPU percent: %s", e)
+        # Fallback to load average
+        if cpu_cores > 0 and load_avg[0] > 0:
+            cpu_percent = min(100.0, (load_avg[0] / cpu_cores) * 100)
+
+    # Try to get GPU info (NVIDIA)
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total",
+             "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            parts = result.stdout.strip().split(", ")
+            if len(parts) >= 4:
+                gpu_name = parts[0].strip()
+                gpu_percent = float(parts[1].strip())
+                gpu_memory_used_mb = int(parts[2].strip())
+                gpu_memory_total_mb = int(parts[3].strip())
+    except FileNotFoundError:
+        pass  # nvidia-smi not available
+    except Exception as e:
+        logger.debug("Failed to get GPU info: %s", e)
+
     return SystemInfo(
         hostname=hostname,
         kernel=kernel,
@@ -759,6 +821,7 @@ def get_system_info() -> SystemInfo:
         uptime=uptime,
         cpu_model=cpu_model,
         cpu_cores=cpu_cores,
+        cpu_percent=round(cpu_percent, 1),
         memory_total_mb=memory_total_mb,
         memory_used_mb=memory_used_mb,
         memory_percent=round(memory_percent, 1),
@@ -766,6 +829,10 @@ def get_system_info() -> SystemInfo:
         disk_used_gb=round(disk_used_gb, 1),
         disk_percent=round(disk_percent, 1),
         load_avg=load_avg,
+        gpu_name=gpu_name,
+        gpu_percent=round(gpu_percent, 1) if gpu_percent is not None else None,
+        gpu_memory_used_mb=gpu_memory_used_mb,
+        gpu_memory_total_mb=gpu_memory_total_mb,
     )
 
 

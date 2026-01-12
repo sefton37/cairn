@@ -3213,17 +3213,23 @@ async function buildDashboardWindow() {
   header.appendChild(title);
   header.appendChild(refreshBtn);
 
-  // System metrics row (CPU, RAM, Disk)
+  // System metrics row (CPU, RAM, Disk, GPU)
   const metricsRow = el('div');
   metricsRow.style.cssText = `
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 16px;
     margin-bottom: 24px;
   `;
 
-  // Gauge helper
-  function createGauge(label: string, icon: string): { container: HTMLElement; value: HTMLElement; bar: HTMLElement } {
+  // Gauge helper with description and detail value
+  function createGauge(label: string, icon: string, description: string): {
+    container: HTMLElement;
+    value: HTMLElement;
+    bar: HTMLElement;
+    detail: HTMLElement;
+    setHidden: (hidden: boolean) => void;
+  } {
     const container = el('div');
     container.style.cssText = `
       background: rgba(255,255,255,0.05);
@@ -3233,12 +3239,20 @@ async function buildDashboardWindow() {
     `;
 
     const labelRow = el('div');
-    labelRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 12px;';
+    labelRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 4px;';
     labelRow.innerHTML = `<span style="font-size: 18px;">${icon}</span><span style="font-weight: 500; color: rgba(255,255,255,0.8);">${label}</span>`;
 
+    const desc = el('div');
+    desc.style.cssText = 'font-size: 11px; color: rgba(255,255,255,0.5); margin-bottom: 10px;';
+    desc.textContent = description;
+
     const value = el('div');
-    value.style.cssText = 'font-size: 28px; font-weight: 700; color: #22c55e; margin-bottom: 8px;';
+    value.style.cssText = 'font-size: 28px; font-weight: 700; color: #22c55e; margin-bottom: 4px;';
     value.textContent = '--%';
+
+    const detail = el('div');
+    detail.style.cssText = 'font-size: 11px; color: rgba(255,255,255,0.6); margin-bottom: 8px;';
+    detail.textContent = '';
 
     const barContainer = el('div');
     barContainer.style.cssText = `
@@ -3259,19 +3273,34 @@ async function buildDashboardWindow() {
     barContainer.appendChild(bar);
 
     container.appendChild(labelRow);
+    container.appendChild(desc);
     container.appendChild(value);
+    container.appendChild(detail);
     container.appendChild(barContainer);
 
-    return { container, value, bar };
+    return {
+      container,
+      value,
+      bar,
+      detail,
+      setHidden: (hidden: boolean) => {
+        container.style.display = hidden ? 'none' : 'block';
+      }
+    };
   }
 
-  const cpuGauge = createGauge('CPU', '⚡');
-  const ramGauge = createGauge('Memory', '💾');
-  const diskGauge = createGauge('Disk', '📁');
+  const cpuGauge = createGauge('CPU', '⚡', 'Processing power usage');
+  const ramGauge = createGauge('Memory', '💾', 'RAM consumption');
+  const diskGauge = createGauge('Disk', '📁', 'Storage space used');
+  const gpuGauge = createGauge('GPU', '🎮', 'Graphics processor load');
 
   metricsRow.appendChild(cpuGauge.container);
   metricsRow.appendChild(ramGauge.container);
   metricsRow.appendChild(diskGauge.container);
+  metricsRow.appendChild(gpuGauge.container);
+
+  // Initially hide GPU gauge until we know if one is available
+  gpuGauge.setHidden(true);
 
   // Grid layout for sections
   const grid = el('div');
@@ -3353,24 +3382,58 @@ async function buildDashboardWindow() {
       cpuGauge.value.style.color = cpuColor;
       cpuGauge.bar.style.width = `${cpuPercent}%`;
       cpuGauge.bar.style.background = cpuColor;
+      const cpuModel = result.cpu_model ?? 'Unknown';
+      const cpuCores = result.cpu_cores ?? 0;
+      cpuGauge.detail.textContent = `${cpuCores} cores • ${cpuModel.substring(0, 30)}${cpuModel.length > 30 ? '...' : ''}`;
 
       // Update RAM gauge (memory is nested object with percent field)
-      const memoryData = result.memory as { percent?: number } | undefined;
+      const memoryData = result.memory as { percent?: number; used_mb?: number; total_mb?: number } | undefined;
       const ramPercent = memoryData?.percent ?? 0;
+      const ramUsedMb = memoryData?.used_mb ?? 0;
+      const ramTotalMb = memoryData?.total_mb ?? 0;
       const ramColor = getGaugeColor(ramPercent);
       ramGauge.value.textContent = `${Math.round(ramPercent)}%`;
       ramGauge.value.style.color = ramColor;
       ramGauge.bar.style.width = `${ramPercent}%`;
       ramGauge.bar.style.background = ramColor;
+      const ramUsedGb = (ramUsedMb / 1024).toFixed(1);
+      const ramTotalGb = (ramTotalMb / 1024).toFixed(1);
+      ramGauge.detail.textContent = `${ramUsedGb} GB / ${ramTotalGb} GB used`;
 
-      // Update Disk gauge (disks is array, use first/root disk or calculate average)
-      const disksData = result.disks as Array<{ percent?: number }> | undefined;
-      const diskPercent = disksData && disksData.length > 0 ? (disksData[0]?.percent ?? 0) : 0;
+      // Update Disk gauge (disks is array, use first/root disk)
+      const disksData = result.disks as Array<{ percent?: number; used_gb?: number; total_gb?: number; mount?: string }> | undefined;
+      const firstDisk = disksData && disksData.length > 0 ? disksData[0] : null;
+      const diskPercent = firstDisk?.percent ?? 0;
+      const diskUsedGb = firstDisk?.used_gb ?? 0;
+      const diskTotalGb = firstDisk?.total_gb ?? 0;
       const diskColor = getGaugeColor(diskPercent);
       diskGauge.value.textContent = `${Math.round(diskPercent)}%`;
       diskGauge.value.style.color = diskColor;
       diskGauge.bar.style.width = `${diskPercent}%`;
       diskGauge.bar.style.background = diskColor;
+      diskGauge.detail.textContent = `${diskUsedGb.toFixed(0)} GB / ${diskTotalGb.toFixed(0)} GB used`;
+
+      // Update GPU gauge if available
+      const gpuData = result.gpu as { name?: string; percent?: number; memory_used_mb?: number; memory_total_mb?: number } | null;
+      if (gpuData) {
+        gpuGauge.setHidden(false);
+        // Update grid to show 4 columns
+        metricsRow.style.gridTemplateColumns = 'repeat(4, 1fr)';
+        const gpuPercent = gpuData.percent ?? 0;
+        const gpuColor = getGaugeColor(gpuPercent);
+        gpuGauge.value.textContent = `${Math.round(gpuPercent)}%`;
+        gpuGauge.value.style.color = gpuColor;
+        gpuGauge.bar.style.width = `${gpuPercent}%`;
+        gpuGauge.bar.style.background = gpuColor;
+        const gpuMemUsedGb = ((gpuData.memory_used_mb ?? 0) / 1024).toFixed(1);
+        const gpuMemTotalGb = ((gpuData.memory_total_mb ?? 0) / 1024).toFixed(1);
+        const gpuName = gpuData.name ?? 'Unknown';
+        gpuGauge.detail.textContent = `${gpuMemUsedGb}/${gpuMemTotalGb} GB • ${gpuName.substring(0, 20)}`;
+      } else {
+        gpuGauge.setHidden(true);
+        // Use 3 columns when no GPU
+        metricsRow.style.gridTemplateColumns = 'repeat(3, 1fr)';
+      }
 
       // Render services
       const services = result.services ?? [];

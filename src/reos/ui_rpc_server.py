@@ -2008,9 +2008,12 @@ def _handle_system_live_state(db: Database) -> dict[str, Any]:
 
     result: dict[str, Any] = {
         "cpu_percent": 0.0,
+        "cpu_model": "Unknown",
+        "cpu_cores": 0,
         "memory": {"used_mb": 0, "total_mb": 0, "percent": 0.0},
         "disks": [],
         "load_avg": [0.0, 0.0, 0.0],
+        "gpu": None,
         "services": [],
         "containers": [],
         "network": [],
@@ -2021,21 +2024,31 @@ def _handle_system_live_state(db: Database) -> dict[str, Any]:
     # Get system info
     try:
         info = linux_tools.get_system_info()
-        result["cpu_percent"] = info.get("cpu_percent", 0.0)
+        result["cpu_percent"] = info.cpu_percent
+        result["cpu_model"] = info.cpu_model
+        result["cpu_cores"] = info.cpu_cores
         result["memory"] = {
-            "used_mb": info.get("memory_used_mb", 0),
-            "total_mb": info.get("memory_total_mb", 0),
-            "percent": info.get("memory_percent", 0.0),
+            "used_mb": info.memory_used_mb,
+            "total_mb": info.memory_total_mb,
+            "percent": info.memory_percent,
         }
         result["disks"] = [
             {
                 "mount": "/",
-                "used_gb": info.get("disk_used_gb", 0),
-                "total_gb": info.get("disk_total_gb", 0),
-                "percent": info.get("disk_percent", 0.0),
+                "used_gb": info.disk_used_gb,
+                "total_gb": info.disk_total_gb,
+                "percent": info.disk_percent,
             }
         ]
-        result["load_avg"] = info.get("load_avg", [0.0, 0.0, 0.0])
+        result["load_avg"] = list(info.load_avg)
+        # Add GPU info if available
+        if info.gpu_name is not None:
+            result["gpu"] = {
+                "name": info.gpu_name,
+                "percent": info.gpu_percent,
+                "memory_used_mb": info.gpu_memory_used_mb,
+                "memory_total_mb": info.gpu_memory_total_mb,
+            }
     except Exception as e:
         logger.debug("Failed to get system info: %s", e)
         result["_errors"] = result.get("_errors", []) + ["system_info"]
