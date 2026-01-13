@@ -1337,8 +1337,16 @@ def call_tool(db: Database, *, name: str, arguments: dict[str, Any] | None) -> A
         from pathlib import Path
         from .cairn.mcp_tools import CairnToolHandler, CairnToolError
         from .cairn.store import CairnStore
-        from .rpc.handlers.cairn import get_current_play_path
+        from .play_fs import play_root
         import logging
+
+        def get_current_play_path(db):
+            """Get current play path, or None."""
+            try:
+                path = play_root()
+                return str(path) if path.exists() else None
+            except Exception:
+                return None
 
         cairn_logger = logging.getLogger("reos.cairn")
         cairn_logger.info("CAIRN tool called: %s with args: %s", name, args)

@@ -73,8 +73,23 @@ from .play_fs import assign_repo_to_act as play_assign_repo_to_act
 from .context_meter import calculate_context_stats, estimate_tokens
 from .knowledge_store import KnowledgeStore
 from .compact_extractor import extract_knowledge_from_messages, generate_archive_summary
+from .play_fs import play_root
 
 _JSON = dict[str, Any]
+
+
+def get_current_play_path(db: Database) -> str | None:
+    """Get the current play path.
+
+    Returns the path to the play root directory, or None if not available.
+    """
+    try:
+        path = play_root()
+        if path.exists():
+            return str(path)
+        return None
+    except Exception:
+        return None
 
 
 class RpcError(RuntimeError):
@@ -3910,7 +3925,6 @@ def _handle_thunderbird_check(db: Database) -> dict[str, Any]:
         ThunderbirdAccount,
     )
     from .cairn.store import CairnStore
-    from .rpc.handlers.cairn import get_current_play_path
 
     # Get integration state from Thunderbird
     integration = get_thunderbird_integration_state()
@@ -3969,7 +3983,6 @@ def _handle_thunderbird_configure(
 ) -> dict[str, Any]:
     """Configure Thunderbird integration."""
     from .cairn.store import CairnStore
-    from .rpc.handlers.cairn import get_current_play_path
 
     play_path = get_current_play_path(db)
     if not play_path:
@@ -3991,7 +4004,6 @@ def _handle_thunderbird_configure(
 def _handle_thunderbird_decline(db: Database) -> dict[str, Any]:
     """Mark Thunderbird integration as declined (never ask again)."""
     from .cairn.store import CairnStore
-    from .rpc.handlers.cairn import get_current_play_path
 
     play_path = get_current_play_path(db)
     if not play_path:
@@ -4006,7 +4018,6 @@ def _handle_thunderbird_decline(db: Database) -> dict[str, Any]:
 def _handle_thunderbird_reset(db: Database) -> dict[str, Any]:
     """Reset Thunderbird integration (re-enable prompts)."""
     from .cairn.store import CairnStore
-    from .rpc.handlers.cairn import get_current_play_path
 
     play_path = get_current_play_path(db)
     if not play_path:
@@ -4016,6 +4027,61 @@ def _handle_thunderbird_reset(db: Database) -> dict[str, Any]:
     store.clear_integration_decline("thunderbird")
 
     return {"success": True}
+
+
+def _handle_cairn_attention(
+    db: Database,
+    *,
+    hours: int = 168,  # 7 days
+    limit: int = 10,
+) -> dict[str, Any]:
+    """Get items that need attention - primarily upcoming calendar events.
+
+    Shows the next 7 days by default for the 'What Needs My Attention' section.
+    """
+    from .cairn.store import CairnStore
+    from .cairn.surfacing import CairnSurfacer
+    from .cairn.thunderbird import ThunderbirdBridge
+
+    play_path = get_current_play_path(db)
+    if not play_path:
+        return {"count": 0, "items": []}
+
+    # Set up CAIRN components
+    cairn_db_path = Path(play_path) / ".cairn" / "cairn.db"
+    store = CairnStore(cairn_db_path)
+
+    # Get Thunderbird bridge if configured
+    thunderbird = None
+    tb_state = store.get_integration_state("thunderbird")
+    if tb_state and tb_state["state"] == "active":
+        thunderbird = ThunderbirdBridge.auto_detect()
+
+    # Create surfacer and get attention items
+    surfacer = CairnSurfacer(
+        cairn_store=store,
+        thunderbird=thunderbird,
+    )
+
+    items = surfacer.surface_attention(hours=hours, limit=limit)
+
+    return {
+        "count": len(items),
+        "items": [
+            {
+                "entity_type": item.entity_type,
+                "entity_id": item.entity_id,
+                "title": item.title,
+                "reason": item.reason,
+                "urgency": item.urgency,
+                "calendar_start": item.calendar_start.isoformat() if item.calendar_start else None,
+                "calendar_end": item.calendar_end.isoformat() if item.calendar_end else None,
+                "is_recurring": item.is_recurring,
+                "recurrence_frequency": item.recurrence_frequency,
+            }
+            for item in items
+        ],
+    }
 
 
 # -------------------------------------------------------------------------
@@ -5880,6 +5946,16 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
 
         if method == "thunderbird/reset":
             return _jsonrpc_result(req_id=req_id, result=_handle_thunderbird_reset(db))
+
+        if method == "cairn/attention":
+            if not isinstance(params, dict):
+                params = {}
+            hours = params.get("hours", 168)  # 7 days default
+            limit = params.get("limit", 10)
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_cairn_attention(db, hours=hours, limit=limit),
+            )
 
         # -------------------------------------------------------------------------
         # Safety & Security Settings

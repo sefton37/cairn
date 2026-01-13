@@ -271,7 +271,9 @@ class TestRIVAWorkIntegration:
 
         # Should have attempted work (may succeed or fail based on heuristics)
         assert intention.status in [IntentionStatus.VERIFIED, IntentionStatus.FAILED]
-        assert len(intention.trace) > 0
+        # Work may be in parent trace or children (decomposition)
+        has_work = len(intention.trace) > 0 or len(intention.children) > 0
+        assert has_work, "Should have trace or children"
 
     def test_work_respects_max_depth(self, temp_sandbox: CodeSandbox) -> None:
         """work() should respect max_depth limit."""

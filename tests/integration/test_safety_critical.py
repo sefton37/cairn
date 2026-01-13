@@ -175,65 +175,6 @@ class TestCircuitBreakers:
 
 
 # =============================================================================
-# RPC Error Handling
-# =============================================================================
-
-
-class TestRPCErrorHandling:
-    """Test RPC layer properly handles errors."""
-
-    @pytest.fixture
-    def db(self, tmp_path):
-        """Get a test database instance."""
-        db_path = tmp_path / "test.db"
-        db = Database(str(db_path))
-        db.migrate()
-        return db
-
-    def test_dispatch_unknown_method_returns_error(self, db):
-        """Unknown method should return proper RPC error."""
-        from reos.rpc.router import dispatch, register_handlers
-        from reos.rpc.types import RpcError
-
-        register_handlers()
-
-        with pytest.raises(RpcError) as exc_info:
-            dispatch("nonexistent/method", None, db)
-
-        assert exc_info.value.code == -32601  # METHOD_NOT_FOUND
-
-    def test_dispatch_invalid_params_returns_error(self, db):
-        """Invalid parameters should return proper RPC error."""
-        from reos.rpc.router import dispatch, register_handlers
-        from reos.rpc.types import RpcError
-
-        register_handlers()
-
-        # ping doesn't take params, so this should work
-        result = dispatch("ping", None, db)
-        assert result == {"ok": True}
-
-    def test_domain_errors_wrapped_properly(self, db):
-        """Domain errors should be wrapped with proper codes."""
-        from reos.rpc.router import dispatch, register_handlers, register
-        from reos.rpc.types import RpcError
-        from reos.errors import ValidationError
-
-        register_handlers()
-
-        # Register a test handler that raises domain error
-        @register("test/validation_error")
-        def test_handler():
-            raise ValidationError("Test validation failed", field="test_field")
-
-        with pytest.raises(RpcError) as exc_info:
-            dispatch("test/validation_error", None, db)
-
-        assert exc_info.value.code == -32000  # VALIDATION_ERROR
-        assert "validation" in exc_info.value.message.lower()
-
-
-# =============================================================================
 # Validation Integration
 # =============================================================================
 

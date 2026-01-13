@@ -28,7 +28,7 @@ from typing import Any
 
 import pytest
 
-from tests.conftest import get_ollama_for_tests, requires_ollama
+from conftest import get_ollama_for_tests, requires_ollama
 
 
 # =============================================================================

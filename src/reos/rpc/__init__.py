@@ -1,6 +1,6 @@
 """RPC module for Talking Rock.
 
-Decomposed JSON-RPC 2.0 server with domain-specific handlers.
+JSON-RPC 2.0 types and utilities for ui_rpc_server.py.
 """
 
 from __future__ import annotations
@@ -24,14 +24,6 @@ from reos.rpc.types import (
     write,
 )
 
-from reos.rpc.router import (
-    register,
-    dispatch,
-    get_handler,
-    list_methods,
-    register_handlers,
-)
-
 __all__ = [
     # Types
     "JSON",
@@ -52,10 +44,4 @@ __all__ = [
     "jsonrpc_result",
     "readline",
     "write",
-    # Router
-    "register",
-    "dispatch",
-    "get_handler",
-    "list_methods",
-    "register_handlers",
 ]

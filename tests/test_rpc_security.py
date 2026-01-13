@@ -1,19 +1,13 @@
-"""Tests for RPC security middleware.
+"""Tests for RPC validation helpers.
 
-Tests rate limiting, audit logging, and validation in the router.
+Tests input validation and rate limiting.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from reos.rpc.router import (
-    dispatch,
-    register_handlers,
-    METHOD_SECURITY,
-    _redact_sensitive_params,
-)
-from reos.rpc.types import RpcError, RATE_LIMIT_ERROR, INVALID_PARAMS
+from reos.rpc.types import RpcError, INVALID_PARAMS
 from reos.rpc.validation import (
     validate_string,
     validate_identifier,
@@ -36,114 +30,19 @@ def reset_rate_limiter():
     yield
 
 
-@pytest.fixture
-def db(tmp_path):
-    """Get a test database instance."""
-    from reos.db import Database
-
-    db_path = tmp_path / "test.db"
-    db = Database(str(db_path))
-    db.migrate()
-    return db
-
-
-class TestMethodSecurityConfig:
-    """Tests for METHOD_SECURITY configuration."""
-
-    def test_auth_methods_have_rate_limits(self):
-        """Auth methods should have rate limiting."""
-        assert METHOD_SECURITY["auth/login"].rate_limit_category == "auth"
-        assert METHOD_SECURITY["auth/validate"].rate_limit_category == "auth"
-        assert METHOD_SECURITY["auth/refresh"].rate_limit_category == "auth"
-
-    def test_auth_login_is_audited(self):
-        """Login should be audited."""
-        assert METHOD_SECURITY["auth/login"].audit is True
-
-    def test_execution_start_has_security(self):
-        """Execution start should have rate limit and audit."""
-        config = METHOD_SECURITY["execution/start"]
-        assert config.rate_limit_category == "service"
-        assert config.audit is True
-
-    def test_safety_settings_are_audited(self):
-        """Safety setting changes should be audited."""
-        for method in [
-            "safety/set_rate_limit",
-            "safety/set_sudo_limit",
-            "safety/set_command_length",
-            "safety/set_max_iterations",
-            "safety/set_wall_clock_timeout",
-        ]:
-            assert METHOD_SECURITY[method].audit is True, f"{method} should be audited"
-
-
 class TestRateLimiting:
-    """Tests for rate limiting in the router."""
+    """Tests for rate limiting."""
 
-    def test_rate_limit_blocks_after_threshold(self, db):
+    def test_rate_limit_blocks_after_threshold(self):
         """Rate limiting should block after threshold is exceeded."""
-        register_handlers()
-
-        # Auth has limit of 5 per 60 seconds
-        # Make 5 successful calls
-        for _ in range(5):
-            # Note: auth/login requires valid params, so we test the rate limit
-            # by checking it applies before handler execution
-            pass
-
-        # The 6th call should be rate limited
-        # We'll test this by directly calling the rate limiter
         from reos.security import check_rate_limit, RateLimitExceeded
 
+        # Auth has limit of 5 per 60 seconds
         for _ in range(5):
             check_rate_limit("auth")
 
         with pytest.raises(RateLimitExceeded):
             check_rate_limit("auth")
-
-
-class TestParameterRedaction:
-    """Tests for sensitive parameter redaction in audit logs."""
-
-    def test_password_is_redacted(self):
-        """Password fields should be redacted."""
-        params = {"username": "alice", "password": "secret123"}
-        redacted = _redact_sensitive_params(params)
-        assert redacted["username"] == "alice"
-        assert redacted["password"] == "[REDACTED]"
-
-    def test_token_is_redacted(self):
-        """Token fields should be redacted."""
-        params = {"session_token": "abc123", "data": "visible"}
-        redacted = _redact_sensitive_params(params)
-        assert redacted["session_token"] == "[REDACTED]"
-        assert redacted["data"] == "visible"
-
-    def test_api_key_is_redacted(self):
-        """API key fields should be redacted."""
-        params = {"api_key": "sk-xxx", "model": "gpt-4"}
-        redacted = _redact_sensitive_params(params)
-        assert redacted["api_key"] == "[REDACTED]"
-        assert redacted["model"] == "gpt-4"
-
-    def test_long_strings_are_summarized(self):
-        """Long strings should be summarized."""
-        params = {"content": "x" * 1000}
-        redacted = _redact_sensitive_params(params)
-        assert "[STRING: 1000 chars]" in redacted["content"]
-
-    def test_nested_params_are_redacted(self):
-        """Nested parameters should also be redacted."""
-        params = {
-            "config": {
-                "api_key": "secret",
-                "url": "https://example.com",
-            }
-        }
-        redacted = _redact_sensitive_params(params)
-        assert redacted["config"]["api_key"] == "[REDACTED]"
-        assert redacted["config"]["url"] == "https://example.com"
 
 
 class TestStringValidation:
@@ -375,20 +274,3 @@ class TestUserInputValidation:
             check_injection=False,
         )
         assert "ignore" in result
-
-
-class TestDispatchSecurityIntegration:
-    """Integration tests for dispatch security middleware."""
-
-    def test_dispatch_returns_result(self, db):
-        """Dispatch should return handler results."""
-        register_handlers()
-        result = dispatch("ping", None, db)
-        assert result == {"ok": True}
-
-    def test_dispatch_method_not_found(self, db):
-        """Dispatch should raise for unknown methods."""
-        register_handlers()
-        with pytest.raises(RpcError) as exc:
-            dispatch("nonexistent/method", None, db)
-        assert exc.value.code == -32601  # METHOD_NOT_FOUND

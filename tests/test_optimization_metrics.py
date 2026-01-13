@@ -156,12 +156,14 @@ class TestMetricsStore:
         return MockDatabase()
 
     def test_ensure_table(self, mock_db: "MockDatabase") -> None:
-        """Test that table is created on init."""
+        """Test that table and index are created on init."""
         store = MetricsStore(mock_db)
 
-        assert len(mock_db.executed) == 1
+        # Now creates table + index
+        assert len(mock_db.executed) == 2
         assert "CREATE TABLE" in mock_db.executed[0]
         assert "riva_metrics" in mock_db.executed[0]
+        assert "CREATE INDEX" in mock_db.executed[1]
 
     def test_save_metrics(self, mock_db: "MockDatabase") -> None:
         """Test saving metrics to database."""
@@ -173,9 +175,9 @@ class TestMetricsStore:
 
         store.save(metrics)
 
-        # Should have table creation + insert
-        assert len(mock_db.executed) == 2
-        assert "INSERT OR REPLACE" in mock_db.executed[1]
+        # Should have table creation + index + insert
+        assert len(mock_db.executed) == 3
+        assert "INSERT OR REPLACE" in mock_db.executed[2]
 
     def test_get_baseline_stats_empty(self, mock_db: "MockDatabase") -> None:
         """Test getting baseline stats with no data."""

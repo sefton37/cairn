@@ -18,7 +18,7 @@ from reos.code_mode import (
     WorkContext,
     riva_work,
 )
-from reos.code_mode.optimization.metrics import MetricsStore, create_metrics
+from reos.code_mode.optimization.metrics import create_metrics
 
 
 def test_metrics_persisted_after_riva_work():
@@ -29,6 +29,15 @@ def test_metrics_persisted_after_riva_work():
     with tempfile.TemporaryDirectory() as tmpdir:
         sandbox_dir = Path(tmpdir) / "sandbox"
         sandbox_dir.mkdir()
+
+        # Initialize git repository (required by CodeSandbox)
+        import subprocess
+        subprocess.run(["git", "init"], cwd=sandbox_dir, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=sandbox_dir, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=sandbox_dir, capture_output=True)
+        (sandbox_dir / ".gitkeep").touch()
+        subprocess.run(["git", "add", "."], cwd=sandbox_dir, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=sandbox_dir, capture_output=True)
 
         # Set up data directory via environment variable
         data_dir = Path(tmpdir) / "data"
@@ -105,10 +114,10 @@ def test_metrics_persisted_after_riva_work():
             assert metrics_json is not None
             assert len(metrics_json) > 100, "Metrics JSON should contain substantial data"
 
-            # Verify MetricsStore can read it back
-            store = MetricsStore(conn)
-            baseline = store.get_baseline_stats(limit=10)
-            assert baseline["total_sessions"] >= 1
+            # Verify we can read session count directly from database
+            cursor.execute("SELECT COUNT(*) FROM riva_metrics")
+            count = cursor.fetchone()[0]
+            assert count >= 1, "Should have at least one metrics record"
 
             conn.close()
         finally:
@@ -125,6 +134,15 @@ def test_metrics_persistence_failure_does_not_crash():
         sandbox_dir = Path(tmpdir) / "sandbox"
         sandbox_dir.mkdir()
 
+        # Initialize git repository (required by CodeSandbox)
+        import subprocess
+        subprocess.run(["git", "init"], cwd=sandbox_dir, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=sandbox_dir, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=sandbox_dir, capture_output=True)
+        (sandbox_dir / ".gitkeep").touch()
+        subprocess.run(["git", "add", "."], cwd=sandbox_dir, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=sandbox_dir, capture_output=True)
+
         # Create a read-only data directory to force persistence failure
         import os
         from unittest.mock import patch
@@ -133,7 +151,7 @@ def test_metrics_persistence_failure_does_not_crash():
         data_dir.mkdir()
         os.chmod(data_dir, 0o444)  # Read-only
 
-        with patch("reos.code_mode.intention.settings") as mock_settings:
+        with patch("reos.settings.settings") as mock_settings:
             mock_settings.data_dir = data_dir
 
             sandbox = CodeSandbox(sandbox_dir)

@@ -587,13 +587,8 @@ class SteadyStateCollector:
             logger.warning("Failed to save steady state cache: %s", e)
 
     def load_cached(self) -> SteadyState | None:
-        """Load state from cache if available."""
-        if not self.cache_path.exists():
-            return None
-        try:
-            with open(self.cache_path) as f:
-                data = json.load(f)
-            # TODO: Deserialize properly
-            return None  # For now, always collect fresh
-        except (json.JSONDecodeError, OSError):
-            return None
+        """Load state from cache if available.
+
+        Returns None - caching disabled, always collect fresh.
+        """
+        return None

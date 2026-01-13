@@ -7,6 +7,8 @@ import asyncio
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -15,6 +17,7 @@ from reos.play_fs import Act
 from reos.providers.ollama import OllamaProvider
 
 
+@pytest.mark.skip(reason="Demo test requires Ollama and pytest-asyncio")
 async def test_analyze_talking_rock():
     """Analyze talking_rock repo to demonstrate the system."""
     print("\n" + "="*70)

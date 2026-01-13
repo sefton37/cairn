@@ -269,20 +269,16 @@ def _check_with_jedi(code: str) -> list[SemanticIssue]:
 
 
 def validate_javascript_semantics(code: str, context: "WorkContext") -> list[SemanticIssue]:
-    """Validate JavaScript/TypeScript semantics.
+    """JavaScript/TypeScript semantic validation.
 
-    Checks:
-    1. Undefined variables
-    2. Unresolved imports
-    3. Function calls with wrong arity
+    NOTE: Not implemented - returns empty list.
+    JS/TS code relies on syntax validation only.
 
     Args:
         code: JavaScript source code
         context: Work context
 
     Returns:
-        List of semantic issues
+        Empty list (validation not implemented for JS/TS)
     """
-    # TODO: Implement JavaScript semantic validation
-    # Could use eslint, typescript compiler, or tree-sitter queries
     return []

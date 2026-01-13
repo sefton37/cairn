@@ -164,9 +164,11 @@ class TestPatternAvailability:
 
     def test_is_pattern_available(self) -> None:
         """is_pattern_available should check implementation status."""
-        # Currently none are available
-        assert is_pattern_available(FastPathPattern.CREATE_FUNCTION) is False
-        assert is_pattern_available(FastPathPattern.ADD_TEST) is False
+        # These patterns are implemented
+        assert is_pattern_available(FastPathPattern.CREATE_FUNCTION) is True
+        assert is_pattern_available(FastPathPattern.ADD_TEST) is True
+        assert is_pattern_available(FastPathPattern.ADD_IMPORT) is True
+        assert is_pattern_available(FastPathPattern.FIX_IMPORT) is True
 
 
 class TestPatternDetectionEdgeCases:

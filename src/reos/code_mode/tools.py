@@ -1221,14 +1221,12 @@ class NullToolProvider:
 def create_tool_provider(
     sandbox: "CodeSandbox | None" = None,
     enable_web: bool = False,
-    enable_mcp: bool = False,
 ) -> ToolProvider:
     """Create a tool provider with the specified capabilities.
 
     Args:
         sandbox: CodeSandbox for repository operations
         enable_web: Enable web search/fetch tools
-        enable_mcp: Enable MCP bridge tools (Phase 5 - not yet implemented)
 
     Returns:
         A configured ToolProvider
@@ -1238,14 +1236,9 @@ def create_tool_provider(
     if sandbox is not None:
         providers.append(SandboxToolProvider(sandbox))
 
-    # Phase 3: Web tools for search and documentation
     if enable_web:
         from .web_tools import WebToolProvider
         providers.append(WebToolProvider())
-
-    # Phase 5: MCP bridge (future)
-    # if enable_mcp:
-    #     providers.append(MCPBridgeProvider(db))
 
     if not providers:
         return NullToolProvider()

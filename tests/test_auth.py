@@ -375,7 +375,7 @@ class TestLoginFunction:
         """Login with valid credentials should return session."""
         from reos.auth import login
 
-        with patch("reos.auth._polkit_authenticate") as mock_polkit:
+        with patch("reos.auth.authenticate_polkit") as mock_polkit:
             mock_polkit.return_value = True
 
             result = login("testuser", "password123")
@@ -388,7 +388,7 @@ class TestLoginFunction:
         """Login with invalid credentials should fail gracefully."""
         from reos.auth import login
 
-        with patch("reos.auth._polkit_authenticate") as mock_polkit:
+        with patch("reos.auth.authenticate_polkit") as mock_polkit:
             mock_polkit.return_value = False
 
             result = login("testuser", "wrongpassword")
