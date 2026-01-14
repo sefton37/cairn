@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -12,6 +13,12 @@ from uuid import uuid4
 
 from .session import get_current_crypto_storage
 from .settings import settings
+
+logger = logging.getLogger(__name__)
+
+# Feature flag: Use SQLite backend (True) or JSON files (False)
+# SQLite provides atomic updates and efficient queries
+USE_SQLITE_BACKEND = True
 
 
 _JSON = dict[str, Any]
@@ -232,6 +239,14 @@ def ensure_your_story_act() -> tuple[list["Act"], str]:
     Returns:
         Tuple of (all acts, your_story_act_id).
     """
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        acts_data, your_story_id = play_db.ensure_your_story_act()
+        # Ensure directory exists for KB files
+        _act_dir(YOUR_STORY_ACT_ID).mkdir(parents=True, exist_ok=True)
+        return [_dict_to_act(d) for d in acts_data], your_story_id
+
+    # JSON fallback
     ensure_play_skeleton()
     data = _load_json(_acts_path())
     acts_raw = data.get("acts", [])
@@ -261,7 +276,6 @@ def ensure_your_story_act() -> tuple[list["Act"], str]:
         _ensure_stage_direction_scene(YOUR_STORY_ACT_ID)
 
     # Return the acts list (use list_acts to get proper Act objects)
-    from . import play_fs  # Avoid circular import
     acts, _ = list_acts()
     return acts, YOUR_STORY_ACT_ID
 
@@ -291,7 +305,53 @@ def _write_json(path: Path, obj: _JSON) -> None:
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _dict_to_act(d: dict[str, Any]) -> Act:
+    """Convert a dict to an Act dataclass."""
+    return Act(
+        act_id=d.get("act_id", ""),
+        title=d.get("title", ""),
+        active=bool(d.get("active", False)),
+        notes=d.get("notes", ""),
+        repo_path=d.get("repo_path"),
+        artifact_type=d.get("artifact_type"),
+        code_config=d.get("code_config"),
+    )
+
+
+def _dict_to_scene(d: dict[str, Any]) -> Scene:
+    """Convert a dict to a Scene dataclass."""
+    return Scene(
+        scene_id=d.get("scene_id", ""),
+        title=d.get("title", ""),
+        intent=d.get("intent", ""),
+        status=d.get("status", ""),
+        time_horizon=d.get("time_horizon", ""),
+        notes=d.get("notes", ""),
+    )
+
+
+def _dict_to_beat(d: dict[str, Any]) -> Beat:
+    """Convert a dict to a Beat dataclass."""
+    return Beat(
+        beat_id=d.get("beat_id", ""),
+        title=d.get("title", ""),
+        stage=d.get("stage", BeatStage.PLANNING.value),
+        notes=d.get("notes", ""),
+        link=d.get("link"),
+        calendar_event_id=d.get("calendar_event_id"),
+        recurrence_rule=d.get("recurrence_rule"),
+    )
+
+
 def list_acts() -> tuple[list[Act], str | None]:
+    """List all Acts and return the active Act ID."""
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        acts_data, active_id = play_db.list_acts()
+        acts = [_dict_to_act(d) for d in acts_data]
+        return acts, active_id
+
+    # JSON fallback
     ensure_play_skeleton()
     data = _load_json(_acts_path())
 
@@ -381,6 +441,13 @@ def _write_acts(acts: list[Act]) -> None:
 
 def set_active_act_id(*, act_id: str | None) -> tuple[list[Act], str | None]:
     """Set the active act, or clear it if act_id is None."""
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        acts_data, active_id = play_db.set_active_act(act_id)
+        acts = [_dict_to_act(d) for d in acts_data]
+        return acts, active_id
+
+    # JSON fallback
     acts, _active = list_acts()
 
     if act_id is not None and not any(a.act_id == act_id for a in acts):
@@ -403,6 +470,13 @@ def set_active_act_id(*, act_id: str | None) -> tuple[list[Act], str | None]:
 
 
 def list_scenes(*, act_id: str) -> list[Scene]:
+    """List all Scenes for an Act."""
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        scenes_data = play_db.list_scenes(act_id)
+        return [_dict_to_scene(d) for d in scenes_data]
+
+    # JSON fallback
     ensure_play_skeleton()
     scenes_path = _scenes_path(act_id)
     if not scenes_path.exists():
@@ -445,6 +519,13 @@ def list_scenes(*, act_id: str) -> list[Scene]:
 
 
 def list_beats(*, act_id: str, scene_id: str) -> list[Beat]:
+    """List all Beats for a Scene."""
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        beats_data = play_db.list_beats(act_id, scene_id)
+        return [_dict_to_beat(d) for d in beats_data]
+
+    # JSON fallback
     ensure_play_skeleton()
     scenes_path = _scenes_path(act_id)
     if not scenes_path.exists():
@@ -510,6 +591,38 @@ def list_beats(*, act_id: str, scene_id: str) -> list[Beat]:
     return []
 
 
+def find_beat_location(beat_id: str) -> dict[str, str | None] | None:
+    """Find the Act and Scene containing a Beat.
+
+    This is the CANONICAL source for beat location - never cache this elsewhere.
+
+    Args:
+        beat_id: The Beat ID to find.
+
+    Returns:
+        Dict with act_id, act_title, scene_id, scene_title, or None if not found.
+    """
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        return play_db.find_beat_location(beat_id)
+
+    # JSON fallback
+    acts, _ = list_acts()
+    for act in acts:
+        scenes = list_scenes(act_id=act.act_id)
+        for scene in scenes:
+            beats = list_beats(act_id=act.act_id, scene_id=scene.scene_id)
+            for beat in beats:
+                if beat.beat_id == beat_id:
+                    return {
+                        "act_id": act.act_id,
+                        "act_title": act.title,
+                        "scene_id": scene.scene_id,
+                        "scene_title": scene.title,
+                    }
+    return None
+
+
 def _validate_id(*, name: str, value: str) -> None:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be a non-empty string")
@@ -533,6 +646,15 @@ def create_act(*, title: str, notes: str = "") -> tuple[list[Act], str]:
     if not isinstance(notes, str):
         raise ValueError("notes must be a string")
 
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        acts_data, act_id = play_db.create_act(title=title.strip(), notes=notes)
+        acts = [_dict_to_act(d) for d in acts_data]
+        # Still create directory for KB files
+        _act_dir(act_id).mkdir(parents=True, exist_ok=True)
+        return acts, act_id
+
+    # JSON fallback
     acts, active_id = list_acts()
     act_id = _new_id("act")
 
@@ -551,7 +673,6 @@ def create_act(*, title: str, notes: str = "") -> tuple[list[Act], str]:
 
 def update_act(*, act_id: str, title: str | None = None, notes: str | None = None) -> tuple[list[Act], str | None]:
     """Update an Act's user-editable fields."""
-
     _validate_id(name="act_id", value=act_id)
 
     if title is not None and (not isinstance(title, str) or not title.strip()):
@@ -559,6 +680,13 @@ def update_act(*, act_id: str, title: str | None = None, notes: str | None = Non
     if notes is not None and not isinstance(notes, str):
         raise ValueError("notes must be a string")
 
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        acts_data, active_id = play_db.update_act(act_id=act_id, title=title, notes=notes)
+        acts = [_dict_to_act(d) for d in acts_data]
+        return acts, active_id
+
+    # JSON fallback
     acts, active_id = list_acts()
     found = False
     updated: list[Act] = []
@@ -584,6 +712,64 @@ def update_act(*, act_id: str, title: str | None = None, notes: str | None = Non
 
     _write_acts(updated)
     return updated, active_id
+
+
+def delete_act(*, act_id: str) -> tuple[list[Act], str | None]:
+    """Delete an Act and all its Scenes and Beats.
+
+    IMPORTANT: The "Your Story" act (act_id="your-story") cannot be deleted.
+
+    Args:
+        act_id: The Act ID to delete.
+
+    Returns:
+        Tuple of (remaining acts list, active_act_id or None).
+
+    Raises:
+        ValueError: If act_id is "your-story" or not found.
+    """
+    _validate_id(name="act_id", value=act_id)
+
+    # Protect "Your Story" act from deletion
+    if act_id == YOUR_STORY_ACT_ID:
+        raise ValueError("Cannot delete 'Your Story' act - it is a protected system act")
+
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        # Delete from SQLite (cascades to scenes/beats)
+        acts_data, active_id = play_db.delete_act(act_id)
+        # Also delete the act's directory (KB files)
+        act_dir = _act_dir(act_id)
+        if act_dir.exists():
+            import shutil
+            shutil.rmtree(act_dir)
+        return [_dict_to_act(d) for d in acts_data], active_id
+
+    # JSON fallback
+    acts, active_id = list_acts()
+    remaining: list[Act] = []
+    found = False
+
+    for act in acts:
+        if act.act_id == act_id:
+            found = True
+            # If deleting the active act, clear active status
+            if act.active:
+                active_id = None
+        else:
+            remaining.append(act)
+
+    if not found:
+        raise ValueError(f"Act '{act_id}' not found")
+
+    # Delete the act's directory (scenes.json, beats, kb files)
+    act_dir = _act_dir(act_id)
+    if act_dir.exists():
+        import shutil
+        shutil.rmtree(act_dir)
+
+    _write_acts(remaining)
+    return remaining, active_id
 
 
 def assign_repo_to_act(
@@ -715,7 +901,6 @@ def create_scene(
     notes: str = "",
 ) -> list[Scene]:
     """Create a Scene under an Act."""
-
     _validate_id(name="act_id", value=act_id)
     if not isinstance(title, str) or not title.strip():
         raise ValueError("title is required")
@@ -728,6 +913,15 @@ def create_scene(
     if not isinstance(notes, str):
         raise ValueError("notes must be a string")
 
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        scenes_data, _ = play_db.create_scene(
+            act_id=act_id, title=title.strip(), intent=intent,
+            status=status, time_horizon=time_horizon, notes=notes
+        )
+        return [_dict_to_scene(d) for d in scenes_data]
+
+    # JSON fallback
     scenes_path = _ensure_scenes_file(act_id=act_id)
     data = _load_json(scenes_path)
     scenes_raw = data.get("scenes")
@@ -761,10 +955,18 @@ def update_scene(
     notes: str | None = None,
 ) -> list[Scene]:
     """Update a Scene's fields (beats preserved)."""
-
     _validate_id(name="act_id", value=act_id)
     _validate_id(name="scene_id", value=scene_id)
 
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        scenes_data = play_db.update_scene(
+            act_id=act_id, scene_id=scene_id, title=title, intent=intent,
+            status=status, time_horizon=time_horizon, notes=notes
+        )
+        return [_dict_to_scene(d) for d in scenes_data]
+
+    # JSON fallback
     scenes_path = _ensure_scenes_file(act_id=act_id)
     data = _load_json(scenes_path)
     scenes_raw = data.get("scenes")
@@ -805,6 +1007,62 @@ def update_scene(
         raise ValueError("unknown scene_id")
 
     _write_json(scenes_path, {"scenes": out})
+    return list_scenes(act_id=act_id)
+
+
+def delete_scene(*, act_id: str, scene_id: str) -> list[Scene]:
+    """Delete a Scene and all its Beats.
+
+    IMPORTANT: Stage Direction scenes cannot be deleted.
+
+    Args:
+        act_id: The parent Act ID.
+        scene_id: The Scene ID to delete.
+
+    Returns:
+        List of remaining Scene objects in the act.
+
+    Raises:
+        ValueError: If scene is Stage Direction or not found.
+    """
+    _validate_id(name="act_id", value=act_id)
+    _validate_id(name="scene_id", value=scene_id)
+
+    # Protect Stage Direction scenes from deletion
+    stage_direction_id = _get_stage_direction_scene_id(act_id)
+    if scene_id == stage_direction_id:
+        raise ValueError("Cannot delete 'Stage Direction' scene - it is a protected system scene")
+
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        scenes_data = play_db.delete_scene(act_id, scene_id)
+        return [_dict_to_scene(d) for d in scenes_data]
+
+    # JSON fallback
+    scenes_path = _scenes_path(act_id)
+    if not scenes_path.exists():
+        raise ValueError(f"Act '{act_id}' not found")
+
+    data = _load_json(scenes_path)
+    scenes_raw = data.get("scenes")
+    if not isinstance(scenes_raw, list):
+        raise ValueError(f"Scene '{scene_id}' not found")
+
+    remaining: list[dict[str, Any]] = []
+    found = False
+
+    for item in scenes_raw:
+        if not isinstance(item, dict):
+            continue
+        if item.get("scene_id") == scene_id:
+            found = True
+        else:
+            remaining.append(item)
+
+    if not found:
+        raise ValueError(f"Scene '{scene_id}' not found")
+
+    _write_json(scenes_path, {"scenes": remaining})
     return list_scenes(act_id=act_id)
 
 
@@ -850,6 +1108,16 @@ def create_beat(
     if not stage:
         stage = BeatStage.PLANNING.value
 
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        beats_data, _ = play_db.create_beat(
+            act_id=act_id, scene_id=scene_id, title=title.strip(),
+            stage=stage, notes=notes, link=link,
+            calendar_event_id=calendar_event_id, recurrence_rule=recurrence_rule
+        )
+        return [_dict_to_beat(d) for d in beats_data]
+
+    # JSON fallback
     scenes_path = _ensure_scenes_file(act_id=act_id)
     data = _load_json(scenes_path)
     scenes_raw = data.get("scenes")
@@ -929,6 +1197,16 @@ def update_beat(
     if link is not None and not isinstance(link, str):
         raise ValueError("link must be a string or null")
 
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        beats_data = play_db.update_beat(
+            act_id=act_id, scene_id=scene_id, beat_id=beat_id,
+            title=title.strip() if title else None,
+            stage=stage, notes=notes, link=link
+        )
+        return [_dict_to_beat(d) for d in beats_data]
+
+    # JSON fallback
     scenes_path = _ensure_scenes_file(act_id=act_id)
     data = _load_json(scenes_path)
     scenes_raw = data.get("scenes")
@@ -994,6 +1272,78 @@ def update_beat(
     return list_beats(act_id=act_id, scene_id=scene_id)
 
 
+def delete_beat(*, act_id: str, scene_id: str, beat_id: str) -> list[Beat]:
+    """Delete a Beat from a Scene.
+
+    Args:
+        act_id: The parent Act ID.
+        scene_id: The parent Scene ID.
+        beat_id: The Beat ID to delete.
+
+    Returns:
+        List of remaining Beat objects in the scene.
+
+    Raises:
+        ValueError: If beat not found.
+    """
+    _validate_id(name="act_id", value=act_id)
+    _validate_id(name="scene_id", value=scene_id)
+    _validate_id(name="beat_id", value=beat_id)
+
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        beats_data = play_db.delete_beat(act_id, scene_id, beat_id)
+        return [_dict_to_beat(d) for d in beats_data]
+
+    # JSON fallback
+    scenes_path = _scenes_path(act_id)
+    if not scenes_path.exists():
+        raise ValueError(f"Act '{act_id}' not found")
+
+    data = _load_json(scenes_path)
+    scenes_raw = data.get("scenes")
+    if not isinstance(scenes_raw, list):
+        raise ValueError(f"Scene '{scene_id}' not found")
+
+    out_scenes: list[dict[str, Any]] = []
+    found_scene = False
+    found_beat = False
+
+    for item in scenes_raw:
+        if not isinstance(item, dict):
+            continue
+
+        if item.get("scene_id") != scene_id:
+            out_scenes.append(item)
+            continue
+
+        found_scene = True
+        beats_raw = item.get("beats", [])
+        if not isinstance(beats_raw, list):
+            beats_raw = []
+
+        remaining_beats: list[dict[str, Any]] = []
+        for beat in beats_raw:
+            if not isinstance(beat, dict):
+                continue
+            if beat.get("beat_id") == beat_id:
+                found_beat = True
+            else:
+                remaining_beats.append(beat)
+
+        item = dict(item)
+        item["beats"] = remaining_beats
+        out_scenes.append(item)
+
+    if not found_scene:
+        raise ValueError(f"Scene '{scene_id}' not found")
+    if not found_beat:
+        raise ValueError(f"Beat '{beat_id}' not found")
+
+    _write_json(scenes_path, {"scenes": out_scenes})
+    return list_beats(act_id=act_id, scene_id=scene_id)
+
+
 def move_beat(
     *,
     beat_id: str,
@@ -1023,6 +1373,17 @@ def move_beat(
     _validate_id(name="target_act_id", value=target_act_id)
     _validate_id(name="target_scene_id", value=target_scene_id)
 
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        return play_db.move_beat(
+            beat_id=beat_id,
+            source_act_id=source_act_id,
+            source_scene_id=source_scene_id,
+            target_act_id=target_act_id,
+            target_scene_id=target_scene_id,
+        )
+
+    # JSON fallback
     # 1. Find and remove the beat from the source scene
     source_scenes_path = _scenes_path(source_act_id)
     if not source_scenes_path.exists():
@@ -1284,6 +1645,23 @@ def list_attachments(
     beat_id: str | None = None,
 ) -> list[FileAttachment]:
     """List file attachments at the specified level (Play, Act, Scene, or Beat)."""
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        attachments_data = play_db.list_attachments(
+            act_id=act_id, scene_id=scene_id, beat_id=beat_id
+        )
+        return [
+            FileAttachment(
+                attachment_id=d["attachment_id"],
+                file_path=d["file_path"],
+                file_name=d["file_name"],
+                file_type=d["file_type"],
+                added_at=d["added_at"],
+            )
+            for d in attachments_data
+        ]
+
+    # JSON fallback
     ensure_play_skeleton()
     att_path = _attachments_path(act_id=act_id, scene_id=scene_id, beat_id=beat_id)
     raw = _load_attachments(att_path)
@@ -1334,7 +1712,6 @@ def add_attachment(
 
     If act_id is None, adds to Play-level attachments.
     """
-    ensure_play_skeleton()
     if act_id is not None:
         _validate_id(name="act_id", value=act_id)
     if scene_id is not None:
@@ -1355,6 +1732,17 @@ def add_attachment(
     # Derive file_name and file_type if not provided
     if not file_name:
         file_name = p.name
+
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        play_db.add_attachment(
+            act_id=act_id, scene_id=scene_id, beat_id=beat_id,
+            file_path=file_path, file_name=file_name
+        )
+        return list_attachments(act_id=act_id, scene_id=scene_id, beat_id=beat_id)
+
+    # JSON fallback
+    ensure_play_skeleton()
     file_type = p.suffix.lstrip(".").lower()
 
     att_path = _attachments_path(act_id=act_id, scene_id=scene_id, beat_id=beat_id)
@@ -1392,7 +1780,6 @@ def remove_attachment(
 
     If act_id is None, removes from Play-level attachments.
     """
-    ensure_play_skeleton()
     if act_id is not None:
         _validate_id(name="act_id", value=act_id)
     if scene_id is not None:
@@ -1401,6 +1788,15 @@ def remove_attachment(
         _validate_id(name="beat_id", value=beat_id)
     _validate_id(name="attachment_id", value=attachment_id)
 
+    if USE_SQLITE_BACKEND:
+        from . import play_db
+        removed = play_db.remove_attachment(attachment_id)
+        if not removed:
+            raise ValueError("unknown attachment_id")
+        return list_attachments(act_id=act_id, scene_id=scene_id, beat_id=beat_id)
+
+    # JSON fallback
+    ensure_play_skeleton()
     att_path = _attachments_path(act_id=act_id, scene_id=scene_id, beat_id=beat_id)
     raw = _load_attachments(att_path)
 

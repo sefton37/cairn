@@ -133,67 +133,12 @@ def _write(obj: Any) -> None:
 # -------------------------------------------------------------------------
 
 
-def _handle_auth_login(
-    *,
-    username: str,
-    password: str | None = None,
-) -> dict[str, Any]:
-    """Authenticate user via Polkit and create session.
-
-    Security:
-    - Uses Polkit for authentication (native system dialog)
-    - Integrates with PAM, fingerprint, smartcard, etc.
-    - Session token returned to Rust for storage
-    """
-    # Rate limit login attempts
-    try:
-        check_rate_limit("auth")
-    except RateLimitExceeded as e:
-        audit_log(AuditEventType.RATE_LIMIT_EXCEEDED, {"category": "auth", "username": username})
-        return {"success": False, "error": str(e)}
-
-    result = auth.login(username, password)
-
-    # Audit the attempt
-    if result.get("success"):
-        audit_log(AuditEventType.AUTH_LOGIN_SUCCESS, {"username": username})
-    else:
-        audit_log(AuditEventType.AUTH_LOGIN_FAILED, {
-            "username": username,
-            "error": result.get("error", "unknown"),
-        })
-
-    return result
 
 
-def _handle_auth_logout(
-    *,
-    session_token: str,
-) -> dict[str, Any]:
-    """Destroy a session (zeroizes key material)."""
-    result = auth.logout(session_token)
-
-    if result.get("success"):
-        audit_log(AuditEventType.AUTH_LOGOUT, {"session_id": session_token[:16]})
-
-    return result
 
 
-def _handle_auth_validate(
-    *,
-    session_token: str,
-) -> dict[str, Any]:
-    """Validate a session token."""
-    return auth.validate_session(session_token)
 
 
-def _handle_auth_refresh(
-    *,
-    session_token: str,
-) -> dict[str, Any]:
-    """Refresh session activity timestamp."""
-    refreshed = auth.refresh_session(session_token)
-    return {"success": refreshed}
 
 
 def _tools_list() -> dict[str, Any]:
@@ -312,38 +257,6 @@ def _handle_chat_respond(
     }
 
 
-def _handle_intent_detect(
-    db: Database,
-    *,
-    text: str,
-    conversation_id: str | None = None,
-) -> dict[str, Any]:
-    """Detect the intent of a user message."""
-    agent = ChatAgent(db=db)
-    intent = agent.detect_intent(text)
-
-    if not intent:
-        return {"detected": False}
-
-    result: dict[str, Any] = {
-        "detected": True,
-        "intent_type": intent.intent_type,
-        "confidence": intent.confidence,
-    }
-
-    if intent.choice_number is not None:
-        result["choice_number"] = intent.choice_number
-
-    if intent.reference_term:
-        result["reference_term"] = intent.reference_term
-
-        # Try to resolve the reference if we have a conversation
-        if conversation_id:
-            resolved = agent.resolve_reference(intent.reference_term, conversation_id)
-            if resolved:
-                result["resolved_entity"] = resolved
-
-    return result
 
 
 # -------------------------------------------------------------------------
@@ -351,49 +264,10 @@ def _handle_intent_detect(
 # -------------------------------------------------------------------------
 
 
-def _handle_conversation_start(db: Database, *, title: str | None = None) -> dict[str, Any]:
-    import uuid
-
-    conversation_id = uuid.uuid4().hex[:12]
-    db.create_conversation(conversation_id=conversation_id, title=title)
-    return {"conversation_id": conversation_id}
 
 
-def _handle_conversation_list(db: Database, *, limit: int = 50) -> dict[str, Any]:
-    conversations = db.iter_conversations(limit=limit)
-    return {
-        "conversations": [
-            {
-                "id": str(c.get("id")),
-                "title": c.get("title"),
-                "started_at": c.get("started_at"),
-                "last_active_at": c.get("last_active_at"),
-            }
-            for c in conversations
-        ]
-    }
 
 
-def _handle_conversation_get_messages(
-    db: Database,
-    *,
-    conversation_id: str,
-    limit: int = 50,
-) -> dict[str, Any]:
-    messages = db.get_messages(conversation_id=conversation_id, limit=limit)
-    return {
-        "messages": [
-            {
-                "id": str(m.get("id")),
-                "role": m.get("role"),
-                "content": m.get("content"),
-                "message_type": m.get("message_type"),
-                "metadata": m.get("metadata"),
-                "created_at": m.get("created_at"),
-            }
-            for m in messages
-        ]
-    }
 
 
 # -------------------------------------------------------------------------
@@ -640,41 +514,8 @@ def _handle_plan_preview(
     }
 
 
-def _handle_plan_approve(
-    db: Database,
-    *,
-    conversation_id: str,
-) -> dict[str, Any]:
-    """Approve and execute the pending plan."""
-    engine = _get_reasoning_engine(conversation_id, db)
-
-    if not engine.get_pending_plan():
-        raise RpcError(code=-32602, message="No pending plan to approve")
-
-    # Approve by sending "yes"
-    result = engine.process("yes")
-
-    # Track the execution context
-    if result.execution_context:
-        execution_id = result.plan.id if result.plan else conversation_id
-        _active_executions[execution_id] = result.execution_context
-
-    return {
-        "status": "executed" if result.execution_context else "no_execution",
-        "response": result.response,
-        "execution_id": result.plan.id if result.plan else None,
-    }
 
 
-def _handle_plan_cancel(
-    db: Database,
-    *,
-    conversation_id: str,
-) -> dict[str, Any]:
-    """Cancel the pending plan."""
-    engine = _get_reasoning_engine(conversation_id, db)
-    engine.cancel_pending()
-    return {"ok": True, "message": "Plan cancelled"}
 
 
 def _handle_execution_status(
@@ -750,44 +591,10 @@ def _handle_execution_status(
     raise RpcError(code=-32602, message=f"Execution not found: {execution_id}")
 
 
-def _handle_execution_pause(
-    db: Database,
-    *,
-    execution_id: str,
-) -> dict[str, Any]:
-    """Pause an execution (for future implementation with async execution)."""
-    # Note: Current executor is synchronous, so pause is limited
-    return {"ok": True, "message": "Pause requested (takes effect at next step boundary)"}
 
 
-def _handle_execution_abort(
-    db: Database,
-    *,
-    execution_id: str,
-    rollback: bool = True,
-) -> dict[str, Any]:
-    """Abort an execution and optionally rollback."""
-    context = _active_executions.get(execution_id)
-
-    if not context:
-        raise RpcError(code=-32602, message=f"Execution not found: {execution_id}")
-
-    # Clean up
-    if execution_id in _active_executions:
-        del _active_executions[execution_id]
-
-    return {"ok": True, "message": "Execution aborted"}
 
 
-def _handle_execution_rollback(
-    db: Database,
-    *,
-    conversation_id: str,
-) -> dict[str, Any]:
-    """Rollback the last operation."""
-    engine = _get_reasoning_engine(conversation_id, db)
-    result = engine.process("undo")
-    return {"response": result.response}
 
 
 # -------------------------------------------------------------------------
@@ -812,61 +619,8 @@ def _get_diff_preview_manager(session_id: str, repo_path: str | None = None) -> 
     return _diff_preview_managers[session_id]
 
 
-def _handle_code_diff_preview(
-    db: Database,
-    *,
-    session_id: str,
-) -> dict[str, Any]:
-    """Get the current diff preview for a session."""
-    if session_id not in _diff_preview_managers:
-        return {"preview": None, "message": "No pending changes"}
-
-    manager = _diff_preview_managers[session_id]
-    preview = manager.get_preview()
-    return {
-        "preview": preview.to_dict(),
-        "message": f"{preview.total_files} file(s) with {preview.total_additions} additions, {preview.total_deletions} deletions",
-    }
 
 
-def _handle_code_diff_add_change(
-    db: Database,
-    *,
-    session_id: str,
-    repo_path: str,
-    change_type: str,
-    path: str,
-    content: str | None = None,
-    old_str: str | None = None,
-    new_str: str | None = None,
-) -> dict[str, Any]:
-    """Add a file change to the diff preview.
-
-    change_type: "create", "write", "edit", "delete"
-    """
-    manager = _get_diff_preview_manager(session_id, repo_path)
-
-    if change_type == "create":
-        if content is None:
-            raise RpcError(code=-32602, message="content required for create")
-        change = manager.add_create(path, content)
-    elif change_type == "write":
-        if content is None:
-            raise RpcError(code=-32602, message="content required for write")
-        change = manager.add_write(path, content)
-    elif change_type == "edit":
-        if old_str is None or new_str is None:
-            raise RpcError(code=-32602, message="old_str and new_str required for edit")
-        change = manager.add_edit(path, old_str, new_str)
-    elif change_type == "delete":
-        change = manager.add_delete(path)
-    else:
-        raise RpcError(code=-32602, message=f"Unknown change_type: {change_type}")
-
-    return {
-        "ok": True,
-        "change": change.to_dict(),
-    }
 
 
 def _handle_code_diff_apply(
@@ -923,16 +677,6 @@ def _handle_code_diff_reject(
         return {"ok": True, "rejected": "all"}
 
 
-def _handle_code_diff_clear(
-    db: Database,
-    *,
-    session_id: str,
-) -> dict[str, Any]:
-    """Clear all pending changes for a session."""
-    if session_id in _diff_preview_managers:
-        _diff_preview_managers[session_id].clear()
-        del _diff_preview_managers[session_id]
-    return {"ok": True}
 
 
 # -------------------------------------------------------------------------
@@ -962,139 +706,20 @@ def _get_repo_map(db: Database, session_id: str) -> "RepoMap":
     return repo_map
 
 
-def _handle_code_map_index(
-    db: Database,
-    *,
-    session_id: str,
-    force: bool = False,
-) -> dict[str, Any]:
-    """Index or re-index the repository for semantic search."""
-    try:
-        repo_map = _get_repo_map(db, session_id)
-        result = repo_map.index_repo(force=force)
-        return result.to_dict()
-    except ValueError as e:
-        return {"error": str(e), "indexed": 0, "total_files": 0}
 
 
-def _handle_code_map_search(
-    db: Database,
-    *,
-    session_id: str,
-    query: str,
-    kind: str | None = None,
-    limit: int = 20,
-) -> dict[str, Any]:
-    """Search for symbols by name."""
-    try:
-        repo_map = _get_repo_map(db, session_id)
-        symbols = repo_map.find_symbol(query, kind=kind)[:limit]
-        return {
-            "symbols": [s.to_dict() for s in symbols],
-            "count": len(symbols),
-        }
-    except ValueError as e:
-        return {"error": str(e), "symbols": [], "count": 0}
 
 
-def _handle_code_map_find_symbol(
-    db: Database,
-    *,
-    session_id: str,
-    name: str,
-) -> dict[str, Any]:
-    """Find symbol by exact name."""
-    try:
-        repo_map = _get_repo_map(db, session_id)
-        symbols = repo_map.find_symbol_exact(name)
-        return {
-            "symbols": [s.to_dict() for s in symbols],
-            "count": len(symbols),
-        }
-    except ValueError as e:
-        return {"error": str(e), "symbols": [], "count": 0}
 
 
-def _handle_code_map_find_callers(
-    db: Database,
-    *,
-    session_id: str,
-    symbol_name: str,
-    file_path: str,
-) -> dict[str, Any]:
-    """Find all callers of a symbol."""
-    try:
-        repo_map = _get_repo_map(db, session_id)
-        callers = repo_map.find_callers(symbol_name, file_path)
-        return {
-            "callers": [loc.to_dict() for loc in callers],
-            "count": len(callers),
-        }
-    except ValueError as e:
-        return {"error": str(e), "callers": [], "count": 0}
 
 
-def _handle_code_map_file_context(
-    db: Database,
-    *,
-    session_id: str,
-    file_path: str,
-) -> dict[str, Any]:
-    """Get context for a file (symbols, dependencies)."""
-    try:
-        repo_map = _get_repo_map(db, session_id)
-        context = repo_map.get_file_context(file_path)
-        if context is None:
-            return {"error": "File not indexed", "context": None}
-        return {"context": context.to_dict()}
-    except ValueError as e:
-        return {"error": str(e), "context": None}
 
 
-def _handle_code_map_relevant_context(
-    db: Database,
-    *,
-    session_id: str,
-    query: str,
-    token_budget: int = 800,
-) -> dict[str, Any]:
-    """Get relevant code context for a query."""
-    try:
-        repo_map = _get_repo_map(db, session_id)
-        context = repo_map.get_relevant_context(query, token_budget=token_budget)
-        return {"context": context}
-    except ValueError as e:
-        return {"error": str(e), "context": ""}
 
 
-def _handle_code_map_stats(
-    db: Database,
-    *,
-    session_id: str,
-) -> dict[str, Any]:
-    """Get statistics about the repository index."""
-    try:
-        repo_map = _get_repo_map(db, session_id)
-        stats = repo_map.get_stats()
-        return {"stats": stats}
-    except ValueError as e:
-        return {"error": str(e), "stats": {}}
 
 
-def _handle_code_map_clear(
-    db: Database,
-    *,
-    session_id: str,
-) -> dict[str, Any]:
-    """Clear the repository index."""
-    try:
-        repo_map = _get_repo_map(db, session_id)
-        repo_map.clear_index()
-        if session_id in _repo_map_instances:
-            del _repo_map_instances[session_id]
-        return {"ok": True}
-    except ValueError as e:
-        return {"error": str(e), "ok": False}
 
 
 # -------------------------------------------------------------------------
@@ -1102,123 +727,8 @@ def _handle_code_map_clear(
 # -------------------------------------------------------------------------
 
 
-def _handle_execution_start(
-    db: Database,
-    *,
-    command: str,
-    execution_id: str,
-    cwd: str | None = None,
-    timeout: int = 300,
-) -> dict[str, Any]:
-    """Start a streaming command execution.
-
-    Security: All commands are validated before execution:
-    - Dangerous commands (rm -rf /, fork bombs, etc.) are blocked
-    - Rate limiting prevents command flooding
-    - All executions are audit logged
-    """
-    from .streaming_executor import get_streaming_executor
-
-    # Security check 1: Validate command is safe
-    is_safe, warning = is_command_safe(command)
-    if not is_safe:
-        audit_log(
-            AuditEventType.COMMAND_BLOCKED,
-            {
-                "command": command[:500],
-                "reason": warning,
-                "execution_id": execution_id,
-            },
-            success=False,
-        )
-        logger.warning(
-            "Blocked dangerous command in execution/start: %s - %s",
-            warning,
-            command[:100],
-        )
-        return {
-            "execution_id": execution_id,
-            "status": "blocked",
-            "error": f"Command blocked: {warning}",
-        }
-
-    # Security check 2: Rate limiting
-    try:
-        # Use 'sudo' rate limit if command contains sudo, otherwise general limit
-        if "sudo " in command:
-            check_rate_limit("sudo")
-        check_rate_limit("service")  # General command rate limit
-    except RateLimitExceeded as e:
-        audit_log(
-            AuditEventType.RATE_LIMIT_EXCEEDED,
-            {
-                "command": command[:500],
-                "execution_id": execution_id,
-                "retry_after": e.retry_after_seconds,
-            },
-            success=False,
-        )
-        return {
-            "execution_id": execution_id,
-            "status": "rate_limited",
-            "error": str(e),
-            "retry_after_seconds": e.retry_after_seconds,
-        }
-
-    # Security check 3: Audit log the execution
-    audit_log(
-        AuditEventType.COMMAND_EXECUTED,
-        {
-            "command": command[:500],
-            "execution_id": execution_id,
-            "cwd": cwd,
-            "timeout": timeout,
-            "has_sudo": "sudo " in command,
-        },
-        success=True,
-    )
-
-    executor = get_streaming_executor()
-    executor.start(
-        command,
-        execution_id=execution_id,
-        cwd=cwd,
-        timeout=timeout,
-    )
-
-    return {
-        "execution_id": execution_id,
-        "status": "started",
-    }
 
 
-def _handle_execution_output(
-    db: Database,
-    *,
-    execution_id: str,
-    since_line: int = 0,
-) -> dict[str, Any]:
-    """Get streaming output from an execution."""
-    from .streaming_executor import get_streaming_executor
-
-    executor = get_streaming_executor()
-    lines, is_complete = executor.get_output(execution_id, since_line=since_line)
-
-    result: dict[str, Any] = {
-        "lines": lines,
-        "is_complete": is_complete,
-        "next_line": since_line + len(lines),
-    }
-
-    if is_complete:
-        final_result = executor.get_result(execution_id)
-        if final_result:
-            result["return_code"] = final_result["return_code"]
-            result["success"] = final_result["success"]
-            result["error"] = final_result["error"]
-            result["duration_seconds"] = final_result["duration_seconds"]
-
-    return result
 
 
 def _handle_execution_kill(
@@ -1257,102 +767,6 @@ def _handle_execution_kill(
 # -------------------------------------------------------------------------
 
 
-def _handle_code_exec_start(
-    db: Database,
-    *,
-    session_id: str,
-    prompt: str,
-    repo_path: str,
-    max_iterations: int = 10,
-    auto_approve: bool = True,
-) -> dict[str, Any]:
-    """Start a Code Mode execution in a background thread.
-
-    Returns immediately with an execution_id that can be polled for state.
-    """
-    from pathlib import Path
-    from .code_mode import (
-        CodeSandbox,
-        CodeExecutor,
-        ExecutionObserver,
-        create_execution_context,
-    )
-    from .play_fs import list_acts
-
-    # Create execution context
-    context = create_execution_context(
-        session_id=session_id,
-        prompt=prompt,
-        max_iterations=max_iterations,
-    )
-
-    # Create observer that updates the context
-    observer = ExecutionObserver(context)
-
-    # Create sandbox and executor
-    sandbox = CodeSandbox(Path(repo_path))
-
-    # Get LLM provider if configured
-    llm = None
-    try:
-        from .ollama import OllamaClient
-        stored_url = db.get_state(key="ollama_url")
-        stored_model = db.get_state(key="ollama_model")
-        if stored_url and stored_model:
-            llm = OllamaClient(url=stored_url, model=stored_model)
-    except Exception as e:
-        logger.warning("Failed to initialize LLM provider for code execution: %s", e)
-
-    # Get project memory if available
-    project_memory = None
-    try:
-        from .code_mode.project_memory import ProjectMemoryStore
-        project_memory = ProjectMemoryStore(db=db)
-    except Exception as e:
-        logger.warning("Failed to initialize project memory: %s", e)
-
-    executor = CodeExecutor(
-        sandbox=sandbox,
-        llm=llm,
-        project_memory=project_memory,
-        observer=observer,
-    )
-
-    # Load the Act for context
-    acts, active_id = list_acts()
-    act = next((a for a in acts if a.act_id == active_id), None) if active_id else None
-
-    def run_execution() -> None:
-        """Run the execution in background thread."""
-        try:
-            result = executor.execute(
-                prompt=prompt,
-                act=act,
-                max_iterations=max_iterations,
-                auto_approve=auto_approve,
-            )
-            context.result = result
-            context.is_complete = True
-        except Exception as e:
-            context.error = str(e)
-            context.is_complete = True
-            observer.on_error(str(e))
-
-    # Start background thread
-    thread = threading.Thread(target=run_execution, daemon=True)
-    context.thread = thread
-
-    # Track the execution
-    with _code_exec_lock:
-        _active_code_executions[context.execution_id] = context
-
-    thread.start()
-
-    return {
-        "execution_id": context.execution_id,
-        "session_id": session_id,
-        "status": "started",
-    }
 
 
 def _handle_code_plan_approve(
@@ -1567,73 +981,10 @@ def _handle_code_exec_state(
     }
 
 
-def _handle_code_exec_cancel(
-    db: Database,
-    *,
-    execution_id: str,
-) -> dict[str, Any]:
-    """Cancel a running Code Mode execution."""
-    with _code_exec_lock:
-        context = _active_code_executions.get(execution_id)
-
-    if not context:
-        raise RpcError(code=-32602, message=f"Code execution not found: {execution_id}")
-
-    if context.is_complete:
-        return {"ok": False, "message": "Execution already complete"}
-
-    # Request cancellation
-    context.request_cancel()
-
-    return {"ok": True, "message": "Cancellation requested"}
 
 
-def _handle_code_exec_list(
-    db: Database,
-) -> dict[str, Any]:
-    """List all active Code Mode executions."""
-    with _code_exec_lock:
-        executions = []
-        for exec_id, context in _active_code_executions.items():
-            executions.append({
-                "execution_id": exec_id,
-                "session_id": context.state.session_id if context.state else "",
-                "prompt": context.state.prompt[:100] if context.state else "",
-                "status": context.state.status if context.state else "unknown",
-                "is_complete": context.is_complete,
-            })
-
-    return {"executions": executions}
 
 
-def _handle_code_exec_cleanup(
-    db: Database,
-    *,
-    execution_id: str | None = None,
-) -> dict[str, Any]:
-    """Clean up completed Code Mode executions."""
-    with _code_exec_lock:
-        if execution_id:
-            # Clean up specific execution
-            if execution_id in _active_code_executions:
-                context = _active_code_executions[execution_id]
-                if context.is_complete:
-                    del _active_code_executions[execution_id]
-                    return {"ok": True, "cleaned": 1}
-                else:
-                    return {"ok": False, "message": "Execution still running"}
-            return {"ok": False, "message": "Execution not found"}
-
-        # Clean up all completed executions
-        to_remove = [
-            exec_id
-            for exec_id, context in _active_code_executions.items()
-            if context.is_complete
-        ]
-        for exec_id in to_remove:
-            del _active_code_executions[exec_id]
-
-        return {"ok": True, "cleaned": len(to_remove)}
 
 
 # -------------------------------------------------------------------------
@@ -1641,70 +992,10 @@ def _handle_code_exec_cleanup(
 # -------------------------------------------------------------------------
 
 
-def _handle_code_sessions_list(
-    db: Database,
-    *,
-    limit: int = 20,
-) -> dict[str, Any]:
-    """List recent Code Mode sessions with their log files.
-
-    Returns:
-        Dict with list of session summaries.
-    """
-    from .code_mode.session_logger import list_sessions
-
-    sessions = list_sessions(limit=limit)
-    return {
-        "sessions": sessions,
-        "count": len(sessions),
-    }
 
 
-def _handle_code_sessions_get(
-    db: Database,
-    *,
-    session_id: str,
-) -> dict[str, Any]:
-    """Get full session log for a specific session.
-
-    Args:
-        session_id: The session ID to retrieve (can be partial).
-
-    Returns:
-        Dict with full session data including all log entries.
-    """
-    from .code_mode.session_logger import get_session_log
-
-    session = get_session_log(session_id)
-    if not session:
-        raise RpcError(code=-32602, message=f"Session not found: {session_id}")
-
-    return session
 
 
-def _handle_code_sessions_raw(
-    db: Database,
-    *,
-    session_id: str,
-) -> dict[str, Any]:
-    """Get raw log file content for a session.
-
-    Args:
-        session_id: The session ID to retrieve.
-
-    Returns:
-        Dict with raw_log text content.
-    """
-    from .code_mode.session_logger import get_session_log
-
-    session = get_session_log(session_id)
-    if not session:
-        raise RpcError(code=-32602, message=f"Session not found: {session_id}")
-
-    return {
-        "session_id": session.get("session_id"),
-        "raw_log": session.get("raw_log", ""),
-    }
 
 
 # -------------------------------------------------------------------------
@@ -1895,25 +1186,6 @@ def _handle_code_plan_state(
     }
 
 
-def _handle_code_plan_cancel(
-    db: Database,
-    *,
-    planning_id: str,
-) -> dict[str, Any]:
-    """Cancel a running Code Mode planning session."""
-    with _code_plan_lock:
-        context = _active_code_plans.get(planning_id)
-
-    if not context:
-        raise RpcError(code=-32602, message=f"Planning session not found: {planning_id}")
-
-    if context.is_complete:
-        return {"ok": False, "message": "Planning already complete"}
-
-    # Request cancellation
-    context.request_cancel()
-
-    return {"ok": True, "message": "Cancellation requested"}
 
 
 def _handle_code_plan_result(
@@ -2159,162 +1431,12 @@ def _handle_system_live_state(db: Database) -> dict[str, Any]:
     return result
 
 
-def _handle_service_action(
-    db: Database,
-    *,
-    name: str,
-    action: str,
-) -> dict[str, Any]:
-    """Perform an action on a systemd service."""
-    from . import linux_tools
-
-    # SECURITY: Validate service name to prevent command injection
-    try:
-        name = validate_service_name(name)
-    except ValidationError as e:
-        audit_log(AuditEventType.VALIDATION_FAILED, {"field": "name", "value": name[:50], "error": e.message})
-        raise RpcError(code=-32602, message=e.message)
-
-    valid_actions = {"start", "stop", "restart", "status", "logs"}
-    if action not in valid_actions:
-        raise RpcError(code=-32602, message=f"Invalid action: {action}. Must be one of: {', '.join(valid_actions)}")
-
-    # SECURITY: Rate limit service operations
-    try:
-        check_rate_limit("service")
-    except RateLimitExceeded as e:
-        audit_log(AuditEventType.RATE_LIMIT_EXCEEDED, {"category": "service", "action": action})
-        raise RpcError(code=-32429, message=str(e))
-
-    # SECURITY: Escape service name for shell (defense in depth)
-    safe_name = escape_shell_arg(name)
-
-    # For logs, return recent journal entries
-    if action == "logs":
-        try:
-            result = linux_tools.execute_command(f"journalctl -u {safe_name} -n 50 --no-pager")
-            audit_log(AuditEventType.COMMAND_EXECUTED, {
-                "command": f"journalctl -u {name}",
-                "action": action,
-                "return_code": result.returncode,
-            }, success=result.returncode == 0)
-            return {
-                "ok": result.returncode == 0,
-                "logs": result.stdout if result.stdout else result.stderr,
-            }
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-    # For status, just check the service
-    if action == "status":
-        try:
-            result = linux_tools.execute_command(f"systemctl status {safe_name} --no-pager")
-            return {
-                "ok": True,
-                "status": result.stdout if result.stdout else result.stderr,
-                "active": result.returncode == 0,
-            }
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-    # For start/stop/restart, create an approval request
-    import uuid
-    approval_id = uuid.uuid4().hex[:12]
-    command = f"sudo systemctl {action} {safe_name}"
-
-    db.create_approval(
-        approval_id=approval_id,
-        conversation_id="system",
-        command=command,
-        explanation=f"{action.capitalize()} the {name} service",
-        risk_level="medium",
-    )
-
-    audit_log(AuditEventType.APPROVAL_REQUESTED, {
-        "approval_id": approval_id,
-        "command": command,
-        "service": name,
-        "action": action,
-    })
-
-    return {
-        "requires_approval": True,
-        "approval_id": approval_id,
-        "command": command,
-        "message": f"Service {action} requires approval",
-    }
 
 
-def _handle_container_action(
-    db: Database,
-    *,
-    container_id: str,
-    action: str,
-) -> dict[str, Any]:
-    """Perform an action on a Docker container."""
-    from . import linux_tools
-
-    # SECURITY: Validate container ID to prevent command injection
-    try:
-        container_id = validate_container_id(container_id)
-    except ValidationError as e:
-        audit_log(AuditEventType.VALIDATION_FAILED, {"field": "container_id", "value": container_id[:50], "error": e.message})
-        raise RpcError(code=-32602, message=e.message)
-
-    valid_actions = {"start", "stop", "restart", "logs"}
-    if action not in valid_actions:
-        raise RpcError(code=-32602, message=f"Invalid action: {action}. Must be one of: {', '.join(valid_actions)}")
-
-    # SECURITY: Rate limit container operations
-    try:
-        check_rate_limit("container")
-    except RateLimitExceeded as e:
-        audit_log(AuditEventType.RATE_LIMIT_EXCEEDED, {"category": "container", "action": action})
-        raise RpcError(code=-32429, message=str(e))
-
-    # SECURITY: Escape container ID for shell (defense in depth)
-    safe_id = escape_shell_arg(container_id)
-
-    # For logs, return recent container logs
-    if action == "logs":
-        try:
-            result = linux_tools.execute_command(f"docker logs --tail 50 {safe_id}")
-            audit_log(AuditEventType.COMMAND_EXECUTED, {
-                "command": f"docker logs {container_id}",
-                "action": action,
-                "return_code": result.returncode,
-            }, success=result.returncode == 0)
-            return {
-                "ok": result.returncode == 0,
-                "logs": result.stdout if result.stdout else result.stderr,
-            }
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-    # For start/stop/restart
-    try:
-        result = linux_tools.execute_command(f"docker {action} {safe_id}")
-        audit_log(AuditEventType.COMMAND_EXECUTED, {
-            "command": f"docker {action} {container_id}",
-            "action": action,
-            "return_code": result.returncode,
-        }, success=result.returncode == 0)
-        return {
-            "ok": result.returncode == 0,
-            "message": result.stdout if result.stdout else f"Container {action} completed",
-            "error": result.stderr if result.returncode != 0 else None,
-        }
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
 
 
-def _handle_state_get(db: Database, *, key: str) -> dict[str, Any]:
-    return {"key": key, "value": db.get_state(key=key)}
 
 
-def _handle_state_set(db: Database, *, key: str, value: str | None) -> dict[str, Any]:
-    db.set_state(key=key, value=value)
-    return {"ok": True}
 
 
 def _handle_personas_list(db: Database) -> dict[str, Any]:
@@ -2463,9 +1585,6 @@ def _detect_system_hardware() -> dict[str, Any]:
     return result
 
 
-def _handle_system_hardware(db: Database) -> dict[str, Any]:
-    """Get system hardware info for model recommendations."""
-    return _detect_system_hardware()
 
 
 def _handle_system_open_terminal(_db: Database) -> dict[str, Any]:
@@ -2828,11 +1947,6 @@ def _handle_ollama_pull_status(*, pull_id: str) -> dict[str, Any]:
         return state
 
 
-def _handle_ollama_pull_model(db: Database, *, model: str) -> dict[str, Any]:
-    """Legacy: Start pulling a new Ollama model. Use pull_start for progress tracking."""
-    # For backwards compatibility, just call pull_start
-    result = _handle_ollama_pull_start(db, model=model)
-    return {"ok": True, "message": f"Model '{model}' pull started", "pull_id": result["pull_id"]}
 
 
 def _handle_ollama_test_connection(db: Database, *, url: str | None = None) -> dict[str, Any]:
@@ -2911,42 +2025,6 @@ def _handle_providers_set(db: Database, *, provider: str) -> dict[str, Any]:
     return {"ok": True, "provider": provider}
 
 
-def _handle_providers_status(db: Database) -> dict[str, Any]:
-    """Get current provider status and health."""
-    from .providers import (
-        get_current_provider_type,
-        check_provider_health,
-        get_provider_or_none,
-    )
-    from dataclasses import asdict
-
-    provider_type = get_current_provider_type(db)
-    health = check_provider_health(db)
-    provider = get_provider_or_none(db)
-
-    result = {
-        "provider": provider_type,
-        "health": asdict(health),
-    }
-
-    # Add models if provider is available
-    if provider:
-        try:
-            models = provider.list_models()
-            result["models"] = [
-                {
-                    "name": m.name,
-                    "size_gb": m.size_gb,
-                    "context_length": m.context_length,
-                    "capabilities": m.capabilities,
-                    "description": m.description,
-                }
-                for m in models
-            ]
-        except Exception:
-            result["models"] = []
-
-    return result
 
 
 def _handle_anthropic_set_key(db: Database, *, api_key: str) -> dict[str, Any]:
@@ -3712,86 +2790,12 @@ def _handle_archive_save(
     }
 
 
-def _handle_archive_list(
-    _db: Database,
-    *,
-    act_id: str | None = None,
-    limit: int = 50,
-) -> dict[str, Any]:
-    """List archives for an act (or play level)."""
-    store = KnowledgeStore()
-    archives = store.list_archives(act_id)[:limit]
-
-    return {
-        "archives": [
-            {
-                "archive_id": a.archive_id,
-                "act_id": a.act_id,
-                "title": a.title,
-                "created_at": a.created_at,
-                "archived_at": a.archived_at,
-                "message_count": a.message_count,
-                "summary": a.summary,
-            }
-            for a in archives
-        ]
-    }
 
 
-def _handle_archive_get(
-    _db: Database,
-    *,
-    archive_id: str,
-    act_id: str | None = None,
-) -> dict[str, Any]:
-    """Get a specific archive with full messages."""
-    store = KnowledgeStore()
-    archive = store.get_archive(archive_id, act_id)
-
-    if not archive:
-        raise RpcError(code=-32602, message="Archive not found")
-
-    return archive.to_dict()
 
 
-def _handle_archive_delete(
-    _db: Database,
-    *,
-    archive_id: str,
-    act_id: str | None = None,
-) -> dict[str, Any]:
-    """Delete an archive."""
-    store = KnowledgeStore()
-    deleted = store.delete_archive(archive_id, act_id)
-
-    return {"ok": deleted}
 
 
-def _handle_archive_search(
-    _db: Database,
-    *,
-    query: str,
-    act_id: str | None = None,
-    limit: int = 20,
-) -> dict[str, Any]:
-    """Search archives by content."""
-    store = KnowledgeStore()
-    archives = store.search_archives(query, act_id, limit)
-
-    return {
-        "archives": [
-            {
-                "archive_id": a.archive_id,
-                "act_id": a.act_id,
-                "title": a.title,
-                "created_at": a.created_at,
-                "archived_at": a.archived_at,
-                "message_count": a.message_count,
-                "summary": a.summary,
-            }
-            for a in archives
-        ]
-    }
 
 
 def _handle_compact_preview(
@@ -3874,33 +2878,8 @@ def _handle_compact_apply(
     }
 
 
-def _handle_learned_get(
-    _db: Database,
-    *,
-    act_id: str | None = None,
-) -> dict[str, Any]:
-    """Get learned knowledge for an act."""
-    store = KnowledgeStore()
-    kb = store.load_learned(act_id)
-
-    return {
-        "act_id": kb.act_id,
-        "entry_count": len(kb.entries),
-        "last_updated": kb.last_updated,
-        "markdown": kb.to_markdown(),
-        "entries": [e.to_dict() for e in kb.entries],
-    }
 
 
-def _handle_learned_clear(
-    _db: Database,
-    *,
-    act_id: str | None = None,
-) -> dict[str, Any]:
-    """Clear all learned knowledge for an act."""
-    store = KnowledgeStore()
-    store.clear_learned(act_id)
-    return {"ok": True}
 
 
 def _handle_chat_clear(
@@ -4308,170 +3287,18 @@ def _get_handoff_handler():
     return _handoff_state["handler"]
 
 
-def _handle_handoff_status(_db: Database) -> dict[str, Any]:
-    """Get current handoff/agent status."""
-    from reos.handoff import get_agent_manifest, AgentType, AGENT_DESCRIPTIONS
-
-    with _handoff_lock:
-        current = _handoff_state["current_agent"]
-        pending_handoff = _handoff_state["pending_handoff"]
-
-    manifest = get_agent_manifest(AgentType(current))
-    agent_info = AGENT_DESCRIPTIONS[AgentType(current)]
-
-    pending = None
-    if pending_handoff:
-        pending = pending_handoff.to_dict()
-
-    return {
-        "current_agent": current,
-        "agent_name": agent_info["name"],
-        "agent_role": agent_info["role"],
-        "agent_domain": agent_info["domain"],
-        "tool_count": manifest["tool_count"],
-        "pending_handoff": pending,
-        "available_agents": ["cairn", "reos", "riva"],
-    }
 
 
-def _handle_handoff_propose(
-    _db: Database,
-    *,
-    target_agent: str,
-    user_goal: str,
-    handoff_reason: str,
-    relevant_details: list[str] | None = None,
-    relevant_paths: list[str] | None = None,
-    open_ui: bool = True,
-) -> dict[str, Any]:
-    """Propose a handoff to another agent (requires user confirmation)."""
-    with _handoff_lock:
-        handler = _get_handoff_handler()
-
-        result = handler.call_tool("handoff_to_agent", {
-            "target_agent": target_agent,
-            "user_goal": user_goal,
-            "handoff_reason": handoff_reason,
-            "relevant_details": relevant_details or [],
-            "relevant_paths": relevant_paths or [],
-            "open_ui": open_ui,
-        })
-
-        # Store pending handoff in global state
-        if handler.pending_handoff:
-            _handoff_state["pending_handoff"] = handler.pending_handoff
-
-    return result
 
 
-def _handle_handoff_confirm(_db: Database, *, handoff_id: str) -> dict[str, Any]:
-    """Confirm a pending handoff."""
-    from reos.handoff import AgentType, SharedToolHandler
-
-    with _handoff_lock:
-        handler = _get_handoff_handler()
-        result = handler.confirm_handoff(handoff_id)
-
-        if result.get("status") == "confirmed":
-            # Update current agent
-            new_agent = result["target_agent"]
-            _handoff_state["current_agent"] = new_agent
-            _handoff_state["pending_handoff"] = None
-
-            # Create new handler for new agent
-            _handoff_state["handler"] = SharedToolHandler(
-                current_agent=AgentType(new_agent)
-            )
-
-            result["message"] = f"Switched to {new_agent}. How can I help?"
-
-    return result
 
 
-def _handle_handoff_reject(
-    _db: Database,
-    *,
-    handoff_id: str,
-    reason: str | None = None,
-) -> dict[str, Any]:
-    """Reject a pending handoff."""
-    with _handoff_lock:
-        handler = _get_handoff_handler()
-        result = handler.reject_handoff(
-            handoff_id,
-            reason=reason or "User chose to stay with current agent",
-        )
-
-        _handoff_state["pending_handoff"] = None
-
-    return result
 
 
-def _handle_handoff_detect(
-    _db: Database,
-    *,
-    message: str,
-) -> dict[str, Any]:
-    """Detect if a message should trigger a handoff suggestion."""
-    from reos.handoff import detect_handoff_need, AgentType
-
-    with _handoff_lock:
-        current_agent = _handoff_state["current_agent"]
-
-    current = AgentType(current_agent)
-    decision = detect_handoff_need(current, message)
-
-    return decision.to_dict()
 
 
-def _handle_handoff_switch(
-    _db: Database,
-    *,
-    target_agent: str,
-) -> dict[str, Any]:
-    """Directly switch to another agent (user-initiated, no confirmation)."""
-    from reos.handoff import AgentType, SharedToolHandler, AGENT_DESCRIPTIONS
-
-    if target_agent not in ["cairn", "reos", "riva"]:
-        return {"status": "error", "reason": f"Unknown agent: {target_agent}"}
-
-    with _handoff_lock:
-        old_agent = _handoff_state["current_agent"]
-        _handoff_state["current_agent"] = target_agent
-        _handoff_state["pending_handoff"] = None
-        _handoff_state["handler"] = SharedToolHandler(
-            current_agent=AgentType(target_agent)
-        )
-
-    agent_info = AGENT_DESCRIPTIONS[AgentType(target_agent)]
-
-    return {
-        "status": "switched",
-        "from_agent": old_agent,
-        "to_agent": target_agent,
-        "agent_name": agent_info["name"],
-        "agent_role": agent_info["role"],
-        "message": f"Switched to {agent_info['name']}. {agent_info['personality'].capitalize()}.",
-    }
 
 
-def _handle_handoff_manifest(
-    _db: Database,
-    *,
-    agent: str | None = None,
-) -> dict[str, Any]:
-    """Get tool manifest for an agent."""
-    from reos.handoff import get_agent_manifest, AgentType
-
-    if agent:
-        target = agent
-    else:
-        with _handoff_lock:
-            target = _handoff_state["current_agent"]
-
-    manifest = get_agent_manifest(AgentType(target))
-
-    return manifest
 
 
 def _handle_handoff_validate_all(_db: Database) -> dict[str, Any]:
@@ -4480,6 +3307,56 @@ def _handle_handoff_validate_all(_db: Database) -> dict[str, Any]:
 
     return validate_all_manifests()
 
+
+
+# -------------------------------------------------------------------------
+# RPC Handler Registry - Simple handlers dispatched via lookup
+# -------------------------------------------------------------------------
+
+from typing import Callable
+
+# Handlers with no params - just call handler(db)
+_SIMPLE_HANDLERS: dict[str, Callable[[Database], Any]] = {
+    "system/live_state": _handle_system_live_state,
+    "personas/list": _handle_personas_list,
+    "ollama/status": _handle_ollama_status,
+    "system/open-terminal": _handle_system_open_terminal,
+    "ollama/check_installed": _handle_ollama_check_installed,
+    "providers/list": _handle_providers_list,
+    "anthropic/status": _handle_anthropic_status,
+    "anthropic/delete_key": _handle_anthropic_delete_key,
+    "play/acts/list": _handle_play_acts_list,
+    "safety/settings": _handle_safety_settings,
+    "cairn/thunderbird/status": _handle_cairn_thunderbird_status,
+    "thunderbird/check": _handle_thunderbird_check,
+    "thunderbird/reset": _handle_thunderbird_reset,
+}
+
+# Handlers with single required string param: (handler, param_name)
+_STRING_PARAM_HANDLERS: dict[str, tuple[Callable, str]] = {
+    "ollama/set_url": (_handle_ollama_set_url, "url"),
+    "ollama/set_model": (_handle_ollama_set_model, "model"),
+    "ollama/model_info": (_handle_ollama_model_info, "model"),
+    "ollama/pull_start": (_handle_ollama_pull_start, "model"),
+    "anthropic/set_key": (_handle_anthropic_set_key, "key"),
+    "anthropic/set_model": (_handle_anthropic_set_model, "model"),
+    "thunderbird/configure": (_handle_thunderbird_configure, "db_path"),
+    "code/diff/apply": (_handle_code_diff_apply, "preview_id"),
+    "code/diff/reject": (_handle_code_diff_reject, "preview_id"),
+}
+
+# Handlers with NO db param, single string param: (handler, param_name)
+_NO_DB_STRING_HANDLERS: dict[str, tuple[Callable, str]] = {
+    "ollama/pull_status": (_handle_ollama_pull_status, "pull_id"),
+}
+
+# Handlers with single required int param: (handler, param_name)
+_INT_PARAM_HANDLERS: dict[str, tuple[Callable, str]] = {
+    "safety/set_sudo_limit": (_handle_safety_set_sudo_limit, "max_escalations"),
+    "safety/set_command_length": (_handle_safety_set_command_length, "max_length"),
+    "safety/set_max_iterations": (_handle_safety_set_max_iterations, "max_iterations"),
+    "safety/set_wall_clock_timeout": (_handle_safety_set_wall_clock_timeout, "timeout_seconds"),
+}
 
 def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any] | None:
     method = req.get("method")
@@ -4499,69 +3376,42 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
         )
 
     try:
-        if method == "initialize":
-            result = {
-                "protocolVersion": "jsonrpc-2.0",
-                "serverInfo": {"name": "reos-ui-kernel", "version": "0.1.0"},
-            }
-            return _jsonrpc_result(req_id=req_id, result=result)
-
         # Notifications can omit id; ignore.
         if req_id is None:
             return None
 
-        if method == "ping":
-            return _jsonrpc_result(req_id=req_id, result={"ok": True})
-
         # Authentication methods (Polkit - native system dialog)
-        if method == "auth/login":
+
+        # Fast path: Check simple handler registries first
+        if method in _SIMPLE_HANDLERS:
+            return _jsonrpc_result(req_id=req_id, result=_SIMPLE_HANDLERS[method](db))
+
+        if method in _STRING_PARAM_HANDLERS:
+            handler, param_name = _STRING_PARAM_HANDLERS[method]
             if not isinstance(params, dict):
                 raise RpcError(code=-32602, message="params must be an object")
-            username = params.get("username")
-            if not isinstance(username, str) or not username:
-                raise RpcError(code=-32602, message="username is required")
-            # Password is optional - Polkit handles authentication via system dialog
-            password = params.get("password")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_auth_login(username=username, password=password),
-            )
+            value = params.get(param_name)
+            if not isinstance(value, str) or not value:
+                raise RpcError(code=-32602, message=f"{param_name} is required")
+            return _jsonrpc_result(req_id=req_id, result=handler(db, **{param_name: value}))
 
-        if method == "auth/logout":
+        if method in _NO_DB_STRING_HANDLERS:
+            handler, param_name = _NO_DB_STRING_HANDLERS[method]
             if not isinstance(params, dict):
                 raise RpcError(code=-32602, message="params must be an object")
-            session_token = params.get("session_token")
-            if not isinstance(session_token, str) or not session_token:
-                raise RpcError(code=-32602, message="session_token is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_auth_logout(session_token=session_token),
-            )
+            value = params.get(param_name)
+            if not isinstance(value, str) or not value:
+                raise RpcError(code=-32602, message=f"{param_name} is required")
+            return _jsonrpc_result(req_id=req_id, result=handler(**{param_name: value}))
 
-        if method == "auth/validate":
+        if method in _INT_PARAM_HANDLERS:
+            handler, param_name = _INT_PARAM_HANDLERS[method]
             if not isinstance(params, dict):
                 raise RpcError(code=-32602, message="params must be an object")
-            session_token = params.get("session_token")
-            if not isinstance(session_token, str) or not session_token:
-                raise RpcError(code=-32602, message="session_token is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_auth_validate(session_token=session_token),
-            )
-
-        if method == "auth/refresh":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            session_token = params.get("session_token")
-            if not isinstance(session_token, str) or not session_token:
-                raise RpcError(code=-32602, message="session_token is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_auth_refresh(session_token=session_token),
-            )
-
-        if method == "tools/list":
-            return _jsonrpc_result(req_id=req_id, result=_tools_list())
+            value = params.get(param_name)
+            if not isinstance(value, int):
+                raise RpcError(code=-32602, message=f"{param_name} must be an integer")
+            return _jsonrpc_result(req_id=req_id, result=handler(db, **{param_name: value}))
 
         if method == "tools/call":
             if not isinstance(params, dict):
@@ -4600,50 +3450,6 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 extended_thinking=extended_thinking,
             )
             return _jsonrpc_result(req_id=req_id, result=result)
-
-        if method == "intent/detect":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            text = params.get("text")
-            conversation_id = params.get("conversation_id")
-            if not isinstance(text, str) or not text.strip():
-                raise RpcError(code=-32602, message="text is required")
-            if conversation_id is not None and not isinstance(conversation_id, str):
-                raise RpcError(code=-32602, message="conversation_id must be a string or null")
-            result = _handle_intent_detect(db, text=text, conversation_id=conversation_id)
-            return _jsonrpc_result(req_id=req_id, result=result)
-
-        if method == "conversation/start":
-            title = None
-            if isinstance(params, dict):
-                title = params.get("title")
-                if title is not None and not isinstance(title, str):
-                    raise RpcError(code=-32602, message="title must be a string or null")
-            return _jsonrpc_result(req_id=req_id, result=_handle_conversation_start(db, title=title))
-
-        if method == "conversation/list":
-            limit = 50
-            if isinstance(params, dict):
-                limit_param = params.get("limit")
-                if limit_param is not None:
-                    if not isinstance(limit_param, int) or limit_param < 1:
-                        raise RpcError(code=-32602, message="limit must be a positive integer")
-                    limit = limit_param
-            return _jsonrpc_result(req_id=req_id, result=_handle_conversation_list(db, limit=limit))
-
-        if method == "conversation/get_messages":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            conversation_id = params.get("conversation_id")
-            if not isinstance(conversation_id, str) or not conversation_id:
-                raise RpcError(code=-32602, message="conversation_id is required")
-            limit = params.get("limit", 50)
-            if not isinstance(limit, int) or limit < 1:
-                raise RpcError(code=-32602, message="limit must be a positive integer")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_conversation_get_messages(db, conversation_id=conversation_id, limit=limit),
-            )
 
         if method == "approval/pending":
             conversation_id = None
@@ -4701,28 +3507,6 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 result=_handle_plan_preview(db, request=request, conversation_id=conversation_id),
             )
 
-        if method == "plan/approve":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            conversation_id = params.get("conversation_id")
-            if not isinstance(conversation_id, str) or not conversation_id:
-                raise RpcError(code=-32602, message="conversation_id is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_plan_approve(db, conversation_id=conversation_id),
-            )
-
-        if method == "plan/cancel":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            conversation_id = params.get("conversation_id")
-            if not isinstance(conversation_id, str) or not conversation_id:
-                raise RpcError(code=-32602, message="conversation_id is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_plan_cancel(db, conversation_id=conversation_id),
-            )
-
         if method == "execution/status":
             if not isinstance(params, dict):
                 raise RpcError(code=-32602, message="params must be an object")
@@ -4734,77 +3518,7 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 result=_handle_execution_status(db, execution_id=execution_id),
             )
 
-        if method == "execution/pause":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            execution_id = params.get("execution_id")
-            if not isinstance(execution_id, str) or not execution_id:
-                raise RpcError(code=-32602, message="execution_id is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_execution_pause(db, execution_id=execution_id),
-            )
-
-        if method == "execution/abort":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            execution_id = params.get("execution_id")
-            rollback = params.get("rollback", True)
-            if not isinstance(execution_id, str) or not execution_id:
-                raise RpcError(code=-32602, message="execution_id is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_execution_abort(db, execution_id=execution_id, rollback=bool(rollback)),
-            )
-
-        if method == "execution/rollback":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            conversation_id = params.get("conversation_id")
-            if not isinstance(conversation_id, str) or not conversation_id:
-                raise RpcError(code=-32602, message="conversation_id is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_execution_rollback(db, conversation_id=conversation_id),
-            )
-
         # Streaming execution methods (Phase 4)
-        if method == "execution/start":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            command = params.get("command")
-            execution_id = params.get("execution_id")
-            cwd = params.get("cwd")
-            timeout = params.get("timeout", 300)
-            if not isinstance(command, str) or not command.strip():
-                raise RpcError(code=-32602, message="command is required")
-            if not isinstance(execution_id, str) or not execution_id:
-                raise RpcError(code=-32602, message="execution_id is required")
-            if cwd is not None and not isinstance(cwd, str):
-                raise RpcError(code=-32602, message="cwd must be a string or null")
-            if not isinstance(timeout, int) or timeout < 1:
-                timeout = 300
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_execution_start(
-                    db, command=command, execution_id=execution_id, cwd=cwd, timeout=timeout
-                ),
-            )
-
-        if method == "execution/output":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            execution_id = params.get("execution_id")
-            since_line = params.get("since_line", 0)
-            if not isinstance(execution_id, str) or not execution_id:
-                raise RpcError(code=-32602, message="execution_id is required")
-            if not isinstance(since_line, int) or since_line < 0:
-                since_line = 0
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_execution_output(db, execution_id=execution_id, since_line=since_line),
-            )
-
         if method == "execution/kill":
             if not isinstance(params, dict):
                 raise RpcError(code=-32602, message="params must be an object")
@@ -4817,66 +3531,6 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
             )
 
         # System Dashboard methods (Phase 5)
-        if method == "system/live_state":
-            return _jsonrpc_result(req_id=req_id, result=_handle_system_live_state(db))
-
-        if method == "service/action":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            name = params.get("name")
-            action = params.get("action")
-            if not isinstance(name, str) or not name:
-                raise RpcError(code=-32602, message="name is required")
-            if not isinstance(action, str) or not action:
-                raise RpcError(code=-32602, message="action is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_service_action(db, name=name, action=action),
-            )
-
-        if method == "container/action":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            container_id = params.get("container_id")
-            action = params.get("action")
-            if not isinstance(container_id, str) or not container_id:
-                raise RpcError(code=-32602, message="container_id is required")
-            if not isinstance(action, str) or not action:
-                raise RpcError(code=-32602, message="action is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_container_action(db, container_id=container_id, action=action),
-            )
-
-        if method == "state/get":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            key = params.get("key")
-            if not isinstance(key, str) or not key:
-                raise RpcError(code=-32602, message="key is required")
-            return _jsonrpc_result(req_id=req_id, result=_handle_state_get(db, key=key))
-
-        if method == "state/set":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            key = params.get("key")
-            value = params.get("value")
-            if not isinstance(key, str) or not key:
-                raise RpcError(code=-32602, message="key is required")
-            if value is not None and not isinstance(value, str):
-                raise RpcError(code=-32602, message="value must be a string or null")
-            return _jsonrpc_result(req_id=req_id, result=_handle_state_set(db, key=key, value=value))
-
-        if method == "personas/list":
-            return _jsonrpc_result(req_id=req_id, result=_handle_personas_list(db))
-
-        if method == "personas/get":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            persona_id = params.get("persona_id")
-            if not isinstance(persona_id, str) or not persona_id:
-                raise RpcError(code=-32602, message="persona_id is required")
-            return _jsonrpc_result(req_id=req_id, result=_handle_persona_get(db, persona_id=persona_id))
 
         if method == "personas/upsert":
             if not isinstance(params, dict):
@@ -4886,58 +3540,9 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 raise RpcError(code=-32602, message="persona must be an object")
             return _jsonrpc_result(req_id=req_id, result=_handle_persona_upsert(db, persona=persona))
 
-        if method == "personas/set_active":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            persona_id = params.get("persona_id")
-            if persona_id is not None and not isinstance(persona_id, str):
-                raise RpcError(code=-32602, message="persona_id must be a string or null")
-            return _jsonrpc_result(req_id=req_id, result=_handle_persona_set_active(db, persona_id=persona_id))
-
         # --- Ollama Settings ---
 
-        if method == "ollama/status":
-            return _jsonrpc_result(req_id=req_id, result=_handle_ollama_status(db))
 
-        if method == "ollama/set_url":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            url = params.get("url")
-            if not isinstance(url, str) or not url:
-                raise RpcError(code=-32602, message="url is required")
-            return _jsonrpc_result(req_id=req_id, result=_handle_ollama_set_url(db, url=url))
-
-        if method == "ollama/set_model":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            model = params.get("model")
-            if not isinstance(model, str) or not model:
-                raise RpcError(code=-32602, message="model is required")
-            return _jsonrpc_result(req_id=req_id, result=_handle_ollama_set_model(db, model=model))
-
-        if method == "ollama/pull_model":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            model = params.get("model")
-            if not isinstance(model, str) or not model:
-                raise RpcError(code=-32602, message="model is required")
-            return _jsonrpc_result(req_id=req_id, result=_handle_ollama_pull_model(db, model=model))
-
-        if method == "ollama/pull_start":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            model = params.get("model")
-            if not isinstance(model, str) or not model:
-                raise RpcError(code=-32602, message="model is required")
-            return _jsonrpc_result(req_id=req_id, result=_handle_ollama_pull_start(db, model=model))
-
-        if method == "ollama/pull_status":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            pull_id = params.get("pull_id")
-            if not isinstance(pull_id, str) or not pull_id:
-                raise RpcError(code=-32602, message="pull_id is required")
-            return _jsonrpc_result(req_id=req_id, result=_handle_ollama_pull_status(pull_id=pull_id))
 
         if method == "ollama/test_connection":
             if not isinstance(params, dict):
@@ -4945,13 +3550,6 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
             url = params.get("url")
             return _jsonrpc_result(req_id=req_id, result=_handle_ollama_test_connection(db, url=url))
 
-        if method == "ollama/model_info":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            model = params.get("model")
-            if not isinstance(model, str) or not model:
-                raise RpcError(code=-32602, message="model is required")
-            return _jsonrpc_result(req_id=req_id, result=_handle_ollama_model_info(db, model=model))
 
         if method == "ollama/set_gpu":
             if not isinstance(params, dict):
@@ -4969,19 +3567,7 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 raise RpcError(code=-32602, message="num_ctx must be an integer")
             return _jsonrpc_result(req_id=req_id, result=_handle_ollama_set_context(db, num_ctx=num_ctx))
 
-        if method == "system/hardware":
-            return _jsonrpc_result(req_id=req_id, result=_handle_system_hardware(db))
 
-        if method == "system/open-terminal":
-            return _jsonrpc_result(req_id=req_id, result=_handle_system_open_terminal(db))
-
-        if method == "ollama/check_installed":
-            return _jsonrpc_result(req_id=req_id, result=_handle_ollama_check_installed(db))
-
-        # --- Provider Settings Methods ---
-
-        if method == "providers/list":
-            return _jsonrpc_result(req_id=req_id, result=_handle_providers_list(db))
 
         if method == "providers/set":
             if not isinstance(params, dict):
@@ -4991,30 +3577,7 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 raise RpcError(code=-32602, message="provider is required")
             return _jsonrpc_result(req_id=req_id, result=_handle_providers_set(db, provider=provider))
 
-        if method == "providers/status":
-            return _jsonrpc_result(req_id=req_id, result=_handle_providers_status(db))
 
-        if method == "anthropic/set_key":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            api_key = params.get("api_key")
-            if not isinstance(api_key, str) or not api_key:
-                raise RpcError(code=-32602, message="api_key is required")
-            return _jsonrpc_result(req_id=req_id, result=_handle_anthropic_set_key(db, api_key=api_key))
-
-        if method == "anthropic/delete_key":
-            return _jsonrpc_result(req_id=req_id, result=_handle_anthropic_delete_key(db))
-
-        if method == "anthropic/set_model":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            model = params.get("model")
-            if not isinstance(model, str) or not model:
-                raise RpcError(code=-32602, message="model is required")
-            return _jsonrpc_result(req_id=req_id, result=_handle_anthropic_set_model(db, model=model))
-
-        if method == "anthropic/status":
-            return _jsonrpc_result(req_id=req_id, result=_handle_anthropic_status(db))
 
         if method == "play/me/read":
             return _jsonrpc_result(req_id=req_id, result=_handle_play_me_read(db))
@@ -5027,8 +3590,6 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 raise RpcError(code=-32602, message="text is required")
             return _jsonrpc_result(req_id=req_id, result=_handle_play_me_write(db, text=text))
 
-        if method == "play/acts/list":
-            return _jsonrpc_result(req_id=req_id, result=_handle_play_acts_list(db))
 
         if method == "play/acts/create":
             if not isinstance(params, dict):
@@ -5486,53 +4047,6 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 ),
             )
 
-        if method == "archive/list":
-            if not isinstance(params, dict):
-                params = {}
-            act_id = params.get("act_id")
-            limit = params.get("limit", 50)
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_archive_list(db, act_id=act_id, limit=int(limit)),
-            )
-
-        if method == "archive/get":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            archive_id = params.get("archive_id")
-            if not isinstance(archive_id, str) or not archive_id:
-                raise RpcError(code=-32602, message="archive_id is required")
-            act_id = params.get("act_id")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_archive_get(db, archive_id=archive_id, act_id=act_id),
-            )
-
-        if method == "archive/delete":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            archive_id = params.get("archive_id")
-            if not isinstance(archive_id, str) or not archive_id:
-                raise RpcError(code=-32602, message="archive_id is required")
-            act_id = params.get("act_id")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_archive_delete(db, archive_id=archive_id, act_id=act_id),
-            )
-
-        if method == "archive/search":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            query = params.get("query")
-            if not isinstance(query, str) or not query:
-                raise RpcError(code=-32602, message="query is required")
-            act_id = params.get("act_id")
-            limit = params.get("limit", 20)
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_archive_search(db, query=query, act_id=act_id, limit=int(limit)),
-            )
-
         if method == "compact/preview":
             if not isinstance(params, dict):
                 raise RpcError(code=-32602, message="params must be an object")
@@ -5567,24 +4081,6 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 ),
             )
 
-        if method == "learned/get":
-            if not isinstance(params, dict):
-                params = {}
-            act_id = params.get("act_id")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_learned_get(db, act_id=act_id),
-            )
-
-        if method == "learned/clear":
-            if not isinstance(params, dict):
-                params = {}
-            act_id = params.get("act_id")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_learned_clear(db, act_id=act_id),
-            )
-
         if method == "chat/clear":
             if not isinstance(params, dict):
                 raise RpcError(code=-32602, message="params must be an object")
@@ -5598,237 +4094,6 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
 
         # --- Code Mode Diff Preview ---
 
-        if method == "code/diff/preview":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            session_id = params.get("session_id")
-            if not isinstance(session_id, str) or not session_id:
-                raise RpcError(code=-32602, message="session_id is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_diff_preview(db, session_id=session_id),
-            )
-
-        if method == "code/diff/add_change":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            session_id = params.get("session_id")
-            repo_path = params.get("repo_path")
-            change_type = params.get("change_type")
-            path = params.get("path")
-            if not isinstance(session_id, str) or not session_id:
-                raise RpcError(code=-32602, message="session_id is required")
-            if not isinstance(repo_path, str) or not repo_path:
-                raise RpcError(code=-32602, message="repo_path is required")
-            if not isinstance(change_type, str) or not change_type:
-                raise RpcError(code=-32602, message="change_type is required")
-            if not isinstance(path, str) or not path:
-                raise RpcError(code=-32602, message="path is required")
-            content = params.get("content")
-            old_str = params.get("old_str")
-            new_str = params.get("new_str")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_diff_add_change(
-                    db,
-                    session_id=session_id,
-                    repo_path=repo_path,
-                    change_type=change_type,
-                    path=path,
-                    content=content,
-                    old_str=old_str,
-                    new_str=new_str,
-                ),
-            )
-
-        if method == "code/diff/apply":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            session_id = params.get("session_id")
-            if not isinstance(session_id, str) or not session_id:
-                raise RpcError(code=-32602, message="session_id is required")
-            path = params.get("path")  # Optional - apply specific file
-            if path is not None and not isinstance(path, str):
-                raise RpcError(code=-32602, message="path must be a string or null")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_diff_apply(db, session_id=session_id, path=path),
-            )
-
-        if method == "code/diff/reject":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            session_id = params.get("session_id")
-            if not isinstance(session_id, str) or not session_id:
-                raise RpcError(code=-32602, message="session_id is required")
-            path = params.get("path")  # Optional - reject specific file
-            if path is not None and not isinstance(path, str):
-                raise RpcError(code=-32602, message="path must be a string or null")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_diff_reject(db, session_id=session_id, path=path),
-            )
-
-        if method == "code/diff/clear":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            session_id = params.get("session_id")
-            if not isinstance(session_id, str) or not session_id:
-                raise RpcError(code=-32602, message="session_id is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_diff_clear(db, session_id=session_id),
-            )
-
-        # -------------------------------------------------------------------------
-        # Repository Map methods (Code Mode - semantic code understanding)
-        # -------------------------------------------------------------------------
-
-        if method == "code/map/index":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            session_id = params.get("session_id")
-            if not isinstance(session_id, str) or not session_id:
-                raise RpcError(code=-32602, message="session_id is required")
-            force = params.get("force", False)
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_map_index(db, session_id=session_id, force=bool(force)),
-            )
-
-        if method == "code/map/search":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            session_id = params.get("session_id")
-            if not isinstance(session_id, str) or not session_id:
-                raise RpcError(code=-32602, message="session_id is required")
-            query = params.get("query")
-            if not isinstance(query, str) or not query:
-                raise RpcError(code=-32602, message="query is required")
-            kind = params.get("kind")
-            limit = params.get("limit", 20)
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_map_search(
-                    db, session_id=session_id, query=query, kind=kind, limit=int(limit)
-                ),
-            )
-
-        if method == "code/map/find_symbol":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            session_id = params.get("session_id")
-            if not isinstance(session_id, str) or not session_id:
-                raise RpcError(code=-32602, message="session_id is required")
-            name = params.get("name")
-            if not isinstance(name, str) or not name:
-                raise RpcError(code=-32602, message="name is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_map_find_symbol(db, session_id=session_id, name=name),
-            )
-
-        if method == "code/map/find_callers":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            session_id = params.get("session_id")
-            if not isinstance(session_id, str) or not session_id:
-                raise RpcError(code=-32602, message="session_id is required")
-            symbol_name = params.get("symbol_name")
-            if not isinstance(symbol_name, str) or not symbol_name:
-                raise RpcError(code=-32602, message="symbol_name is required")
-            file_path = params.get("file_path")
-            if not isinstance(file_path, str) or not file_path:
-                raise RpcError(code=-32602, message="file_path is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_map_find_callers(
-                    db, session_id=session_id, symbol_name=symbol_name, file_path=file_path
-                ),
-            )
-
-        if method == "code/map/file_context":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            session_id = params.get("session_id")
-            if not isinstance(session_id, str) or not session_id:
-                raise RpcError(code=-32602, message="session_id is required")
-            file_path = params.get("file_path")
-            if not isinstance(file_path, str) or not file_path:
-                raise RpcError(code=-32602, message="file_path is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_map_file_context(db, session_id=session_id, file_path=file_path),
-            )
-
-        if method == "code/map/relevant_context":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            session_id = params.get("session_id")
-            if not isinstance(session_id, str) or not session_id:
-                raise RpcError(code=-32602, message="session_id is required")
-            query = params.get("query")
-            if not isinstance(query, str) or not query:
-                raise RpcError(code=-32602, message="query is required")
-            token_budget = params.get("token_budget", 800)
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_map_relevant_context(
-                    db, session_id=session_id, query=query, token_budget=int(token_budget)
-                ),
-            )
-
-        if method == "code/map/stats":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            session_id = params.get("session_id")
-            if not isinstance(session_id, str) or not session_id:
-                raise RpcError(code=-32602, message="session_id is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_map_stats(db, session_id=session_id),
-            )
-
-        if method == "code/map/clear":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            session_id = params.get("session_id")
-            if not isinstance(session_id, str) or not session_id:
-                raise RpcError(code=-32602, message="session_id is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_map_clear(db, session_id=session_id),
-            )
-
-        # -------------------------------------------------------------------------
-        # Code Mode Streaming Execution
-        # -------------------------------------------------------------------------
-
-        if method == "code/exec/start":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            session_id = params.get("session_id")
-            prompt = params.get("prompt")
-            repo_path = params.get("repo_path")
-            if not isinstance(session_id, str) or not session_id:
-                raise RpcError(code=-32602, message="session_id is required")
-            if not isinstance(prompt, str) or not prompt:
-                raise RpcError(code=-32602, message="prompt is required")
-            if not isinstance(repo_path, str) or not repo_path:
-                raise RpcError(code=-32602, message="repo_path is required")
-            max_iterations = params.get("max_iterations", 10)
-            auto_approve = params.get("auto_approve", True)
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_exec_start(
-                    db,
-                    session_id=session_id,
-                    prompt=prompt,
-                    repo_path=repo_path,
-                    max_iterations=max_iterations,
-                    auto_approve=auto_approve,
-                ),
-            )
 
         if method == "code/plan/approve":
             if not isinstance(params, dict):
@@ -5857,66 +4122,9 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 result=_handle_code_exec_state(db, execution_id=execution_id),
             )
 
-        if method == "code/exec/cancel":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            execution_id = params.get("execution_id")
-            if not isinstance(execution_id, str) or not execution_id:
-                raise RpcError(code=-32602, message="execution_id is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_exec_cancel(db, execution_id=execution_id),
-            )
-
-        if method == "code/exec/list":
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_exec_list(db),
-            )
-
-        if method == "code/exec/cleanup":
-            if not isinstance(params, dict):
-                params = {}
-            execution_id = params.get("execution_id")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_exec_cleanup(db, execution_id=execution_id),
-            )
-
         # -------------------------------------------------------------------------
         # Code Mode Session Logs (for debugging)
         # -------------------------------------------------------------------------
-
-        if method == "code/sessions/list":
-            if not isinstance(params, dict):
-                params = {}
-            limit = params.get("limit", 20)
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_sessions_list(db, limit=limit),
-            )
-
-        if method == "code/sessions/get":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            session_id = params.get("session_id")
-            if not isinstance(session_id, str) or not session_id:
-                raise RpcError(code=-32602, message="session_id is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_sessions_get(db, session_id=session_id),
-            )
-
-        if method == "code/sessions/raw":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            session_id = params.get("session_id")
-            if not isinstance(session_id, str) or not session_id:
-                raise RpcError(code=-32602, message="session_id is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_sessions_raw(db, session_id=session_id),
-            )
 
         # -------------------------------------------------------------------------
         # Code Mode Planning (Pre-approval streaming)
@@ -5953,17 +4161,6 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 result=_handle_code_plan_state(db, planning_id=planning_id),
             )
 
-        if method == "code/plan/cancel":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            planning_id = params.get("planning_id")
-            if not isinstance(planning_id, str) or not planning_id:
-                raise RpcError(code=-32602, message="planning_id is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_code_plan_cancel(db, planning_id=planning_id),
-            )
-
         if method == "code/plan/result":
             if not isinstance(params, dict):
                 raise RpcError(code=-32602, message="params must be an object")
@@ -5986,35 +4183,10 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
         # CAIRN (Attention Minder)
         # -------------------------------------------------------------------------
 
-        if method == "cairn/thunderbird/status":
-            return _jsonrpc_result(req_id=req_id, result=_handle_cairn_thunderbird_status(db))
-
-        if method == "thunderbird/check":
-            return _jsonrpc_result(req_id=req_id, result=_handle_thunderbird_check(db))
-
-        if method == "thunderbird/configure":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            active_profiles = params.get("active_profiles", [])
-            if not isinstance(active_profiles, list):
-                raise RpcError(code=-32602, message="active_profiles must be a list")
-            active_accounts = params.get("active_accounts")
-            all_active = params.get("all_active", False)
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_thunderbird_configure(
-                    db,
-                    active_profiles=active_profiles,
-                    active_accounts=active_accounts,
-                    all_active=all_active,
-                ),
-            )
 
         if method == "thunderbird/decline":
             return _jsonrpc_result(req_id=req_id, result=_handle_thunderbird_decline(db))
 
-        if method == "thunderbird/reset":
-            return _jsonrpc_result(req_id=req_id, result=_handle_thunderbird_reset(db))
 
         if method == "cairn/attention":
             if not isinstance(params, dict):
@@ -6030,8 +4202,6 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
         # Safety & Security Settings
         # -------------------------------------------------------------------------
 
-        if method == "safety/settings":
-            return _jsonrpc_result(req_id=req_id, result=_handle_safety_settings(db))
 
         if method == "safety/set_rate_limit":
             if not isinstance(params, dict):
@@ -6055,141 +4225,8 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 ),
             )
 
-        if method == "safety/set_sudo_limit":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            max_escalations = params.get("max_escalations")
-            if not isinstance(max_escalations, int):
-                raise RpcError(code=-32602, message="max_escalations must be an integer")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_safety_set_sudo_limit(db, max_escalations=max_escalations),
-            )
 
-        if method == "safety/set_command_length":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            max_length = params.get("max_length")
-            if not isinstance(max_length, int):
-                raise RpcError(code=-32602, message="max_length must be an integer")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_safety_set_command_length(db, max_length=max_length),
-            )
 
-        if method == "safety/set_max_iterations":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            max_iterations = params.get("max_iterations")
-            if not isinstance(max_iterations, int):
-                raise RpcError(code=-32602, message="max_iterations must be an integer")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_safety_set_max_iterations(db, max_iterations=max_iterations),
-            )
-
-        if method == "safety/set_wall_clock_timeout":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            timeout_seconds = params.get("timeout_seconds")
-            if not isinstance(timeout_seconds, int):
-                raise RpcError(code=-32602, message="timeout_seconds must be an integer")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_safety_set_wall_clock_timeout(db, timeout_seconds=timeout_seconds),
-            )
-
-        # -------------------------------------------------------------------------
-        # Handoff System (Talking Rock Multi-Agent)
-        # -------------------------------------------------------------------------
-
-        if method == "handoff/status":
-            return _jsonrpc_result(req_id=req_id, result=_handle_handoff_status(db))
-
-        if method == "handoff/propose":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            target_agent = params.get("target_agent")
-            user_goal = params.get("user_goal")
-            handoff_reason = params.get("handoff_reason")
-            if not isinstance(target_agent, str) or not target_agent:
-                raise RpcError(code=-32602, message="target_agent is required")
-            if not isinstance(user_goal, str) or not user_goal:
-                raise RpcError(code=-32602, message="user_goal is required")
-            if not isinstance(handoff_reason, str) or not handoff_reason:
-                raise RpcError(code=-32602, message="handoff_reason is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_handoff_propose(
-                    db,
-                    target_agent=target_agent,
-                    user_goal=user_goal,
-                    handoff_reason=handoff_reason,
-                    relevant_details=params.get("relevant_details"),
-                    relevant_paths=params.get("relevant_paths"),
-                    open_ui=params.get("open_ui", True),
-                ),
-            )
-
-        if method == "handoff/confirm":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            handoff_id = params.get("handoff_id")
-            if not isinstance(handoff_id, str) or not handoff_id:
-                raise RpcError(code=-32602, message="handoff_id is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_handoff_confirm(db, handoff_id=handoff_id),
-            )
-
-        if method == "handoff/reject":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            handoff_id = params.get("handoff_id")
-            if not isinstance(handoff_id, str) or not handoff_id:
-                raise RpcError(code=-32602, message="handoff_id is required")
-            reason = params.get("reason")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_handoff_reject(db, handoff_id=handoff_id, reason=reason),
-            )
-
-        if method == "handoff/detect":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            message = params.get("message")
-            if not isinstance(message, str) or not message:
-                raise RpcError(code=-32602, message="message is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_handoff_detect(db, message=message),
-            )
-
-        if method == "handoff/switch":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            target_agent = params.get("target_agent")
-            if not isinstance(target_agent, str) or not target_agent:
-                raise RpcError(code=-32602, message="target_agent is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_handoff_switch(db, target_agent=target_agent),
-            )
-
-        if method == "handoff/manifest":
-            if not isinstance(params, dict):
-                params = {}
-            agent = params.get("agent")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_handoff_manifest(db, agent=agent),
-            )
-
-        if method == "handoff/validate":
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_handoff_validate_all(db),
-            )
 
         raise RpcError(code=-32601, message=f"Method not found: {method}")
 
