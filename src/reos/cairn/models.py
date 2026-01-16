@@ -33,6 +33,7 @@ class ActivityType(Enum):
     STATE_CHANGED = "state_changed"  # Kanban state changed
     DEFERRED = "deferred"       # Item deferred to later
     LINKED = "linked"           # Contact linked to item
+    TOOL_EXECUTED = "tool_executed"  # CAIRN tool was executed (for undo tracking)
 
 
 class ContactRelationship(Enum):
@@ -238,6 +239,50 @@ class SurfaceContext:
 
     # Context (optional)
     current_act_id: str | None = None  # Focus on specific Act
+
+
+@dataclass
+class UndoContext:
+    """Context for undoing a tool execution.
+
+    Stores the information needed to reverse a tool's action.
+    """
+
+    tool_name: str                          # Name of the tool that was executed
+    reverse_tool: str | None                # Tool to call for reversal (None = not reversible)
+    reverse_args: dict[str, Any]            # Arguments to pass to reverse tool
+    before_state: dict[str, Any]            # State before the action
+    after_state: dict[str, Any]             # State after the action
+    description: str                        # Human-readable description of the action
+    reversible: bool                        # Whether this action can be undone
+    not_reversible_reason: str | None = None  # Why it can't be undone (if not reversible)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            "tool_name": self.tool_name,
+            "reverse_tool": self.reverse_tool,
+            "reverse_args": self.reverse_args,
+            "before_state": self.before_state,
+            "after_state": self.after_state,
+            "description": self.description,
+            "reversible": self.reversible,
+            "not_reversible_reason": self.not_reversible_reason,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> UndoContext:
+        """Create from dictionary."""
+        return cls(
+            tool_name=data["tool_name"],
+            reverse_tool=data.get("reverse_tool"),
+            reverse_args=data.get("reverse_args", {}),
+            before_state=data.get("before_state", {}),
+            after_state=data.get("after_state", {}),
+            description=data.get("description", ""),
+            reversible=data.get("reversible", False),
+            not_reversible_reason=data.get("not_reversible_reason"),
+        )
 
 
 @dataclass

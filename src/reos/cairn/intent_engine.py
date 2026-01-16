@@ -41,6 +41,7 @@ class IntentCategory(Enum):
     TASKS = auto()         # Task/todo questions
     KNOWLEDGE = auto()     # Knowledge base questions
     PLAY = auto()          # The Play hierarchy (Acts, Scenes, Beats)
+    UNDO = auto()          # User wants to undo/revert last action
     UNKNOWN = auto()       # Cannot determine
 
 
@@ -127,6 +128,19 @@ INTENT_PATTERNS: dict[IntentCategory, list[str]] = {
         # The Play
         "the play", "my play",
     ],
+    IntentCategory.UNDO: [
+        # Direct undo requests
+        "undo", "undo that", "undo it", "undo this",
+        # Revert/reverse
+        "revert", "revert that", "reverse", "reverse that",
+        # Put back / go back
+        "put it back", "put that back", "move it back", "go back",
+        # Cancel / nevermind
+        "nevermind", "never mind", "cancel that", "cancel it",
+        # Regret
+        "i didn't mean", "didn't mean that", "that was wrong", "wrong one",
+        "take it back", "take that back",
+    ],
 }
 
 # Tool mappings for each category (default tool - may be refined in _verify_intent)
@@ -137,6 +151,7 @@ CATEGORY_TOOLS: dict[IntentCategory, str] = {
     IntentCategory.TASKS: "cairn_get_todos",
     IntentCategory.KNOWLEDGE: "cairn_list_items",
     IntentCategory.PLAY: "cairn_list_acts",  # Default, refined based on action/target
+    IntentCategory.UNDO: "cairn_undo_last",  # Undo the last reversible action
 }
 
 
@@ -319,7 +334,7 @@ class CairnIntentEngine:
 
 Return ONLY a JSON object with these fields:
 {
-    "category": "CALENDAR|CONTACTS|SYSTEM|CODE|TASKS|PERSONAL|KNOWLEDGE|UNKNOWN",
+    "category": "CALENDAR|CONTACTS|SYSTEM|CODE|TASKS|PERSONAL|KNOWLEDGE|UNDO|UNKNOWN",
     "action": "VIEW|SEARCH|CREATE|UPDATE|DELETE|STATUS|UNKNOWN",
     "target": "what they're asking about (string)",
     "confidence": 0.0-1.0,
@@ -334,6 +349,9 @@ Categories:
 - TASKS: Questions about todos, tasks, reminders, deadlines
 - PERSONAL: Questions about the user themselves (identity, goals, values)
 - KNOWLEDGE: Questions about stored knowledge, notes, projects
+- UNDO: User wants to undo, revert, or reverse their last action
+        (e.g., "undo that", "put it back", "go back", "revert", "nevermind",
+         "I didn't mean that", "cancel that", "take it back")
 - UNKNOWN: Cannot determine
 
 Actions:

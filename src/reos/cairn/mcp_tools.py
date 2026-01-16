@@ -20,6 +20,7 @@ from reos.cairn.models import (
     ActivityType,
     ContactRelationship,
     KanbanState,
+    UndoContext,
 )
 from reos.cairn.store import CairnStore
 from reos.cairn.surfacing import CairnSurfacer, create_surface_context
@@ -917,6 +918,26 @@ def list_tools() -> list[Tool]:
                 },
             },
         ),
+        # =====================================================================
+        # Undo
+        # =====================================================================
+        Tool(
+            name="cairn_undo_last",
+            description=(
+                "Undo the last reversible action. Use this when the user wants to "
+                "revert their previous action, e.g., 'undo that', 'put it back', "
+                "'nevermind'. Some actions like delete cannot be undone."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "conversation_id": {
+                        "type": "string",
+                        "description": "Optional: Scope undo to a specific conversation",
+                    },
+                },
+            },
+        ),
     ]
 
 
@@ -1140,6 +1161,12 @@ class CairnToolHandler:
         if name == "cairn_get_identity_summary":
             return self._get_identity_summary(args)
 
+        # =====================================================================
+        # Undo
+        # =====================================================================
+        if name == "cairn_undo_last":
+            return self._undo_last(args)
+
         raise CairnToolError(
             code="unknown_tool",
             message=f"Unknown CAIRN tool: {name}",
@@ -1216,9 +1243,32 @@ class CairnToolHandler:
         priority = int(args["priority"])
         reason = args.get("reason")
 
+        # Get old value for undo context
+        old_metadata = self.store.get_metadata(entity_type, entity_id)
+        old_priority = old_metadata.priority if old_metadata else None
+        old_reason = old_metadata.priority_reason if old_metadata else None
+
         metadata = self.store.set_priority(entity_type, entity_id, priority, reason)
 
+        # Log undo context
+        undo_context = UndoContext(
+            tool_name="cairn_set_priority",
+            reverse_tool="cairn_set_priority",
+            reverse_args={
+                "entity_type": entity_type,
+                "entity_id": entity_id,
+                "priority": old_priority if old_priority is not None else 3,  # Default mid priority
+                "reason": old_reason,
+            },
+            before_state={"priority": old_priority, "reason": old_reason},
+            after_state={"priority": priority, "reason": reason},
+            description=f"Set priority from {old_priority} to {priority}",
+            reversible=True,
+        )
+        self.store.log_tool_execution("cairn_set_priority", undo_context)
+
         return {
+            "success": True,
             "set": True,
             "priority": metadata.priority,
             "priority_reason": metadata.priority_reason,
@@ -1231,9 +1281,32 @@ class CairnToolHandler:
         state = KanbanState(args["state"])
         waiting_on = args.get("waiting_on")
 
+        # Get old value for undo context
+        old_metadata = self.store.get_metadata(entity_type, entity_id)
+        old_state = old_metadata.kanban_state.value if old_metadata else "backlog"
+        old_waiting_on = old_metadata.waiting_on if old_metadata else None
+
         metadata = self.store.set_kanban_state(entity_type, entity_id, state, waiting_on)
 
+        # Log undo context
+        undo_context = UndoContext(
+            tool_name="cairn_set_kanban_state",
+            reverse_tool="cairn_set_kanban_state",
+            reverse_args={
+                "entity_type": entity_type,
+                "entity_id": entity_id,
+                "state": old_state,
+                "waiting_on": old_waiting_on,
+            },
+            before_state={"state": old_state, "waiting_on": old_waiting_on},
+            after_state={"state": state.value, "waiting_on": waiting_on},
+            description=f"Changed kanban state from '{old_state}' to '{state.value}'",
+            reversible=True,
+        )
+        self.store.log_tool_execution("cairn_set_kanban_state", undo_context)
+
         return {
+            "success": True,
             "set": True,
             "kanban_state": metadata.kanban_state.value,
             "waiting_on": metadata.waiting_on,
@@ -2096,6 +2169,32 @@ class CairnToolHandler:
             # NOTE: We no longer update beat_calendar_links.act_id/scene_id
             # Surfacing now queries play_fs directly for canonical beat location
 
+            # Log undo context for this move operation
+            undo_context = UndoContext(
+                tool_name="cairn_move_beat_to_act",
+                reverse_tool="cairn_move_beat_to_act",
+                reverse_args={
+                    "beat_name": beat_title,
+                    "target_act_name": source_act_title,
+                    "target_scene_name": source_scene_title,
+                },
+                before_state={
+                    "act_id": source_act_id,
+                    "act_title": source_act_title,
+                    "scene_id": source_scene_id,
+                    "scene_title": source_scene_title,
+                },
+                after_state={
+                    "act_id": target_act_id,
+                    "act_title": target_act_title,
+                    "scene_id": target_scene_id,
+                    "scene_title": target_scene_title,
+                },
+                description=f"Moved '{beat_title}' from '{source_act_title}' to '{target_act_title}'",
+                reversible=True,
+            )
+            self.store.log_tool_execution("cairn_move_beat_to_act", undo_context)
+
             return {
                 "success": True,
                 "message": f"Moved '{beat_title}' from '{source_act_title}' to '{target_act_title}'",
@@ -2675,6 +2774,23 @@ class CairnToolHandler:
             # Also remove from beat_calendar_links if present
             self.store.delete_beat_calendar_link(beat_id=beat_id)
 
+            # Log non-reversible undo context (delete cannot be undone)
+            undo_context = UndoContext(
+                tool_name="cairn_delete_beat",
+                reverse_tool=None,
+                reverse_args={},
+                before_state={
+                    "beat_id": beat_id,
+                    "beat_title": beat_title,
+                    "act_title": act_title,
+                },
+                after_state={"deleted": True},
+                description=f"Deleted Beat '{beat_title}' from Act '{act_title}'",
+                reversible=False,
+                not_reversible_reason="Delete operations cannot be undone - the data is gone",
+            )
+            self.store.log_tool_execution("cairn_delete_beat", undo_context)
+
             return {
                 "success": True,
                 "message": f"Deleted Beat '{beat_title}' from Act '{act_title}'",
@@ -2683,3 +2799,108 @@ class CairnToolHandler:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    # =========================================================================
+    # Undo Implementation
+    # =========================================================================
+
+    def _undo_last(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Undo the last reversible action.
+
+        Retrieves the most recent reversible action from activity_log and
+        executes the reverse operation.
+        """
+        conversation_id = args.get("conversation_id")
+
+        # Get the last undoable action
+        result = self.store.get_last_undoable_action(conversation_id)
+
+        if result is None:
+            return {
+                "success": False,
+                "message": "Nothing to undo - no recent reversible actions found.",
+                "no_action": True,
+            }
+
+        log_id, undo_context = result
+
+        # Check if reversible
+        if not undo_context.reversible:
+            reason = undo_context.not_reversible_reason or "This action cannot be undone"
+            return {
+                "success": False,
+                "message": f"Cannot undo: {reason}",
+                "action_description": undo_context.description,
+            }
+
+        # Execute the reverse operation
+        reverse_tool = undo_context.reverse_tool
+        reverse_args = undo_context.reverse_args
+
+        if not reverse_tool:
+            return {
+                "success": False,
+                "message": "Cannot undo: no reverse operation defined",
+                "action_description": undo_context.description,
+            }
+
+        try:
+            # Call the reverse tool
+            reverse_result = self._execute_reverse_tool(reverse_tool, reverse_args)
+
+            if reverse_result.get("success", False):
+                # Mark the original action as undone (prevents double-undo)
+                self.store.mark_undo_executed(log_id)
+
+                return {
+                    "success": True,
+                    "message": f"Undone: {undo_context.description}",
+                    "original_action": undo_context.description,
+                    "reverse_action": reverse_result.get("message", "Action reversed"),
+                    "before_state": undo_context.before_state,
+                    "restored_state": undo_context.after_state,
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"Failed to undo: {reverse_result.get('error', 'Unknown error')}",
+                    "action_description": undo_context.description,
+                    "details": reverse_result,
+                }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Error during undo: {str(e)}",
+                "action_description": undo_context.description,
+            }
+
+    def _execute_reverse_tool(
+        self, tool_name: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Execute a reverse tool operation.
+
+        This is a dispatcher that calls the appropriate internal method
+        for the reverse operation.
+        """
+        # Map tool names to methods
+        tool_methods = {
+            "cairn_move_beat_to_act": self._move_beat_to_act,
+            "cairn_update_act": self._update_act,
+            "cairn_update_scene": self._update_scene,
+            "cairn_update_beat": self._update_beat,
+            "cairn_set_priority": self._set_priority,
+            "cairn_set_kanban_state": self._set_kanban_state,
+            "cairn_delete_act": self._delete_act,  # For undoing create
+            "cairn_delete_scene": self._delete_scene,  # For undoing create
+            "cairn_delete_beat": self._delete_beat,  # For undoing create
+        }
+
+        method = tool_methods.get(tool_name)
+        if method:
+            return method(args)
+
+        raise CairnToolError(
+            code="unknown_reverse_tool",
+            message=f"No handler for reverse tool: {tool_name}",
+        )

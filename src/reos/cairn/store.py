@@ -23,6 +23,7 @@ from reos.cairn.models import (
     ContactRelationship,
     KanbanState,
     PriorityQueueItem,
+    UndoContext,
 )
 
 
@@ -538,6 +539,148 @@ class CairnStore:
                     )
                 )
             return results
+
+    # =========================================================================
+    # Undo Tracking (Tool Execution Logging)
+    # =========================================================================
+
+    def log_tool_execution(
+        self,
+        tool_name: str,
+        undo_context: UndoContext,
+        conversation_id: str | None = None,
+    ) -> str:
+        """Log a tool execution with undo context to activity_log.
+
+        This records reversible actions so they can be undone later.
+
+        Args:
+            tool_name: Name of the tool that was executed.
+            undo_context: Context for reversing the action.
+            conversation_id: Optional conversation ID to scope the undo.
+
+        Returns:
+            The log entry ID.
+        """
+        log_id = str(uuid.uuid4())
+        now = datetime.now()
+
+        # Store undo context in details
+        details = {
+            "undo_context": undo_context.to_dict(),
+            "conversation_id": conversation_id,
+        }
+
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO activity_log (
+                    log_id, entity_type, entity_id, activity_type, timestamp, details
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    log_id,
+                    "tool_execution",  # Special entity type for tool executions
+                    tool_name,  # Use tool name as entity ID
+                    ActivityType.TOOL_EXECUTED.value,
+                    now.isoformat(),
+                    json.dumps(details),
+                ),
+            )
+
+        return log_id
+
+    def get_last_undoable_action(
+        self,
+        conversation_id: str | None = None,
+    ) -> tuple[str, UndoContext] | None:
+        """Get the most recent reversible action.
+
+        Args:
+            conversation_id: Optional conversation ID to scope the search.
+                If None, returns the most recent undoable action globally.
+
+        Returns:
+            Tuple of (log_id, UndoContext) if found, None otherwise.
+        """
+        with self._get_connection() as conn:
+            # Get the most recent TOOL_EXECUTED entry
+            rows = conn.execute(
+                """
+                SELECT log_id, details FROM activity_log
+                WHERE activity_type = ?
+                ORDER BY timestamp DESC
+                LIMIT 20
+                """,
+                (ActivityType.TOOL_EXECUTED.value,),
+            ).fetchall()
+
+            for row in rows:
+                if not row["details"]:
+                    continue
+
+                try:
+                    details = json.loads(row["details"])
+                    undo_data = details.get("undo_context")
+                    if not undo_data:
+                        continue
+
+                    # Check conversation_id if specified
+                    entry_conv_id = details.get("conversation_id")
+                    if conversation_id and entry_conv_id != conversation_id:
+                        continue
+
+                    undo_context = UndoContext.from_dict(undo_data)
+
+                    # Only return if it's reversible
+                    if undo_context.reversible:
+                        return (row["log_id"], undo_context)
+
+                except (json.JSONDecodeError, KeyError):
+                    continue
+
+            return None
+
+    def mark_undo_executed(self, log_id: str) -> bool:
+        """Mark an undo action as executed (prevents double-undo).
+
+        After an action is undone, we update its undo_context to mark it
+        as no longer reversible.
+
+        Args:
+            log_id: The log entry ID of the action that was undone.
+
+        Returns:
+            True if updated, False if not found.
+        """
+        with self._get_connection() as conn:
+            # Get current details
+            row = conn.execute(
+                "SELECT details FROM activity_log WHERE log_id = ?",
+                (log_id,),
+            ).fetchone()
+
+            if row is None:
+                return False
+
+            try:
+                details = json.loads(row["details"]) if row["details"] else {}
+                undo_context = details.get("undo_context", {})
+
+                # Mark as no longer reversible
+                undo_context["reversible"] = False
+                undo_context["not_reversible_reason"] = "Already undone"
+                details["undo_context"] = undo_context
+                details["undone_at"] = datetime.now().isoformat()
+
+                conn.execute(
+                    "UPDATE activity_log SET details = ? WHERE log_id = ?",
+                    (json.dumps(details), log_id),
+                )
+                return True
+
+            except json.JSONDecodeError:
+                return False
 
     # =========================================================================
     # Beat-Calendar Event Links
