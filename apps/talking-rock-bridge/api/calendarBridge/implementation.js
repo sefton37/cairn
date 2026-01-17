@@ -8,11 +8,14 @@
 
 "use strict";
 
-var { ExtensionCommon } = ChromeUtils.import(
-  "resource://gre/modules/ExtensionCommon.jsm"
-);
+// Use ChromeUtils.importESModule for TB 115+ or fall back to ChromeUtils.import
+var { ExtensionCommon } = ChromeUtils.importESModule
+  ? ChromeUtils.importESModule("resource://gre/modules/ExtensionCommon.sys.mjs")
+  : ChromeUtils.import("resource://gre/modules/ExtensionCommon.jsm");
 
-var { cal } = ChromeUtils.import("resource:///modules/calendar/calUtils.jsm");
+var { cal } = ChromeUtils.importESModule
+  ? ChromeUtils.importESModule("resource:///modules/calendar/calUtils.sys.mjs")
+  : ChromeUtils.import("resource:///modules/calendar/calUtils.jsm");
 
 const PORT = 19192;
 const HOST = "127.0.0.1";
