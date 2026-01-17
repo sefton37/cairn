@@ -395,6 +395,28 @@ export type PlayScenesMutationResult = {
 // Backward compatibility alias
 export type PlayBeatsMutationResult = PlayScenesMutationResult;
 
+// Play Page types (nested pages in Act knowledgebase)
+export type PlayPage = {
+  page_id: string;
+  act_id: string;
+  parent_page_id: string | null;
+  title: string;
+  icon: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PlayPageTreeNode = PlayPage & {
+  children: PlayPageTreeNode[];
+};
+
+// Scene with Act info (for Kanban board)
+export type SceneWithAct = PlayScene & {
+  act_title: string;
+  act_color: string | null;
+};
+
 export type PlayKbListResult = {
   files: string[];
 };

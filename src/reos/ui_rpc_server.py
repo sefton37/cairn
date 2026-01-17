@@ -2193,6 +2193,13 @@ def _handle_play_scenes_list(_db: Database, *, act_id: str) -> dict[str, Any]:
     }
 
 
+def _handle_play_scenes_list_all(_db: Database) -> dict[str, Any]:
+    """List all scenes across all acts with act information for Kanban display."""
+    from . import play_db
+    scenes = play_db.list_all_scenes()
+    return {"scenes": scenes}
+
+
 def _handle_play_beats_list(_db: Database, *, act_id: str, scene_id: str) -> dict[str, Any]:
     """Backward compatibility: beats are now scenes. The scene_id param is ignored."""
     scenes = play_list_scenes(act_id=act_id)
@@ -2659,6 +2666,78 @@ def _handle_play_attachments_remove(
             for a in attachments
         ]
     }
+
+
+# --- Page Handlers (Nested Knowledgebase) ---
+
+def _handle_play_pages_list(_db: Database, *, act_id: str, parent_page_id: str | None = None) -> dict[str, Any]:
+    """List pages for an act, optionally filtered by parent."""
+    from . import play_db
+    pages = play_db.list_pages(act_id, parent_page_id)
+    return {"pages": pages}
+
+
+def _handle_play_pages_tree(_db: Database, *, act_id: str) -> dict[str, Any]:
+    """Get the full page tree for an act."""
+    from . import play_db
+    pages = play_db.get_page_tree(act_id)
+    return {"pages": pages}
+
+
+def _handle_play_pages_create(_db: Database, *, act_id: str, title: str,
+                              parent_page_id: str | None = None,
+                              icon: str | None = None) -> dict[str, Any]:
+    """Create a new page."""
+    from . import play_db
+    pages, page_id = play_db.create_page(
+        act_id=act_id, title=title, parent_page_id=parent_page_id, icon=icon
+    )
+    return {"pages": pages, "created_page_id": page_id}
+
+
+def _handle_play_pages_update(_db: Database, *, page_id: str,
+                              title: str | None = None,
+                              icon: str | None = None) -> dict[str, Any]:
+    """Update a page's metadata."""
+    from . import play_db
+    page = play_db.update_page(page_id=page_id, title=title, icon=icon)
+    if not page:
+        raise RpcError(code=-32602, message="Page not found")
+    return {"page": page}
+
+
+def _handle_play_pages_delete(_db: Database, *, page_id: str) -> dict[str, Any]:
+    """Delete a page and its descendants."""
+    from . import play_db
+    deleted = play_db.delete_page(page_id)
+    if not deleted:
+        raise RpcError(code=-32602, message="Page not found")
+    return {"deleted": True}
+
+
+def _handle_play_pages_move(_db: Database, *, page_id: str,
+                            new_parent_id: str | None = None,
+                            new_position: int | None = None) -> dict[str, Any]:
+    """Move a page to a new parent or position."""
+    from . import play_db
+    page = play_db.move_page(page_id=page_id, new_parent_id=new_parent_id, new_position=new_position)
+    if not page:
+        raise RpcError(code=-32602, message="Page not found")
+    return {"page": page}
+
+
+def _handle_play_pages_content_read(_db: Database, *, act_id: str, page_id: str) -> dict[str, Any]:
+    """Read page content."""
+    from . import play_db
+    text = play_db.read_page_content(act_id, page_id)
+    return {"text": text}
+
+
+def _handle_play_pages_content_write(_db: Database, *, act_id: str, page_id: str, text: str) -> dict[str, Any]:
+    """Write page content."""
+    from . import play_db
+    play_db.write_page_content(act_id, page_id, text)
+    return {"ok": True}
 
 
 # --- Context Meter & Knowledge Management Handlers ---
@@ -3790,6 +3869,9 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 raise RpcError(code=-32602, message="act_id is required")
             return _jsonrpc_result(req_id=req_id, result=_handle_play_scenes_list(db, act_id=act_id))
 
+        if method == "play/scenes/list_all":
+            return _jsonrpc_result(req_id=req_id, result=_handle_play_scenes_list_all(db))
+
         if method == "play/scenes/create":
             if not isinstance(params, dict):
                 raise RpcError(code=-32602, message="params must be an object")
@@ -4141,6 +4223,132 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                     beat_id=beat_id,
                     attachment_id=attachment_id,
                 ),
+            )
+
+        # --- Page Endpoints (Nested Knowledgebase) ---
+
+        if method == "play/pages/list":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            act_id = params.get("act_id")
+            if not isinstance(act_id, str) or not act_id:
+                raise RpcError(code=-32602, message="act_id is required")
+            parent_page_id = params.get("parent_page_id")
+            if parent_page_id is not None and not isinstance(parent_page_id, str):
+                raise RpcError(code=-32602, message="parent_page_id must be a string or null")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_play_pages_list(db, act_id=act_id, parent_page_id=parent_page_id),
+            )
+
+        if method == "play/pages/tree":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            act_id = params.get("act_id")
+            if not isinstance(act_id, str) or not act_id:
+                raise RpcError(code=-32602, message="act_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_play_pages_tree(db, act_id=act_id),
+            )
+
+        if method == "play/pages/create":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            act_id = params.get("act_id")
+            title = params.get("title")
+            if not isinstance(act_id, str) or not act_id:
+                raise RpcError(code=-32602, message="act_id is required")
+            if not isinstance(title, str) or not title.strip():
+                raise RpcError(code=-32602, message="title is required")
+            parent_page_id = params.get("parent_page_id")
+            icon = params.get("icon")
+            for k, v in {"parent_page_id": parent_page_id, "icon": icon}.items():
+                if v is not None and not isinstance(v, str):
+                    raise RpcError(code=-32602, message=f"{k} must be a string or null")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_play_pages_create(
+                    db, act_id=act_id, title=title.strip(),
+                    parent_page_id=parent_page_id, icon=icon
+                ),
+            )
+
+        if method == "play/pages/update":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            page_id = params.get("page_id")
+            if not isinstance(page_id, str) or not page_id:
+                raise RpcError(code=-32602, message="page_id is required")
+            title = params.get("title")
+            icon = params.get("icon")
+            for k, v in {"title": title, "icon": icon}.items():
+                if v is not None and not isinstance(v, str):
+                    raise RpcError(code=-32602, message=f"{k} must be a string or null")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_play_pages_update(db, page_id=page_id, title=title, icon=icon),
+            )
+
+        if method == "play/pages/delete":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            page_id = params.get("page_id")
+            if not isinstance(page_id, str) or not page_id:
+                raise RpcError(code=-32602, message="page_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_play_pages_delete(db, page_id=page_id),
+            )
+
+        if method == "play/pages/move":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            page_id = params.get("page_id")
+            if not isinstance(page_id, str) or not page_id:
+                raise RpcError(code=-32602, message="page_id is required")
+            new_parent_id = params.get("new_parent_id")
+            new_position = params.get("new_position")
+            if new_parent_id is not None and not isinstance(new_parent_id, str):
+                raise RpcError(code=-32602, message="new_parent_id must be a string or null")
+            if new_position is not None and not isinstance(new_position, int):
+                raise RpcError(code=-32602, message="new_position must be an integer or null")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_play_pages_move(
+                    db, page_id=page_id, new_parent_id=new_parent_id, new_position=new_position
+                ),
+            )
+
+        if method == "play/pages/content/read":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            act_id = params.get("act_id")
+            page_id = params.get("page_id")
+            if not isinstance(act_id, str) or not act_id:
+                raise RpcError(code=-32602, message="act_id is required")
+            if not isinstance(page_id, str) or not page_id:
+                raise RpcError(code=-32602, message="page_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_play_pages_content_read(db, act_id=act_id, page_id=page_id),
+            )
+
+        if method == "play/pages/content/write":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            act_id = params.get("act_id")
+            page_id = params.get("page_id")
+            text = params.get("text")
+            if not isinstance(act_id, str) or not act_id:
+                raise RpcError(code=-32602, message="act_id is required")
+            if not isinstance(page_id, str) or not page_id:
+                raise RpcError(code=-32602, message="page_id is required")
+            if not isinstance(text, str):
+                raise RpcError(code=-32602, message="text is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_play_pages_content_write(db, act_id=act_id, page_id=page_id, text=text),
             )
 
         # --- Context Meter & Knowledge Management ---

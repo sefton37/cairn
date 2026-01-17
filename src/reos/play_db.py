@@ -38,7 +38,8 @@ _local = threading.local()
 # v2: Added color column to acts table
 # v3: Added thunderbird_event_id column to beats table
 # v4: Flatten hierarchy - remove old scenes tier, beats become scenes
-SCHEMA_VERSION = 4
+# v5: Add pages table for nested knowledgebase pages
+SCHEMA_VERSION = 5
 
 
 def _play_db_path() -> Path:
@@ -162,6 +163,21 @@ def _init_schema(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_attachments_act ON attachments(act_id);
         CREATE INDEX IF NOT EXISTS idx_attachments_scene ON attachments(scene_id);
+
+        -- Pages table (v5: nested knowledgebase pages under Acts)
+        CREATE TABLE IF NOT EXISTS pages (
+            page_id TEXT PRIMARY KEY,
+            act_id TEXT NOT NULL REFERENCES acts(act_id) ON DELETE CASCADE,
+            parent_page_id TEXT REFERENCES pages(page_id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            icon TEXT,
+            position INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_pages_act_id ON pages(act_id);
+        CREATE INDEX IF NOT EXISTS idx_pages_parent ON pages(parent_page_id);
     """)
 
     conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
@@ -194,6 +210,11 @@ def _run_schema_migrations(conn: sqlite3.Connection, current_version: int) -> No
     if current_version < 4:
         logger.info("Running v4 migration: Flatten hierarchy (beats → scenes)")
         _migrate_v3_to_v4(conn)
+
+    # Migration v4 -> v5: Add pages table for nested knowledgebase pages
+    if current_version < 5:
+        logger.info("Running v5 migration: Add pages table")
+        _migrate_v4_to_v5(conn)
 
     # Update schema version
     conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
@@ -305,6 +326,39 @@ def _migrate_v3_to_v4(conn: sqlite3.Connection) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_attachments_scene ON attachments(scene_id)")
 
     logger.info("v4 migration complete")
+
+
+def _migrate_v4_to_v5(conn: sqlite3.Connection) -> None:
+    """Migrate from v4 to v5 schema.
+
+    Adds the pages table for nested knowledgebase pages.
+    """
+    # Check if pages table already exists
+    cursor = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='pages'"
+    )
+    if cursor.fetchone():
+        logger.info("Pages table already exists, skipping creation")
+        return
+
+    # Create pages table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS pages (
+            page_id TEXT PRIMARY KEY,
+            act_id TEXT NOT NULL REFERENCES acts(act_id) ON DELETE CASCADE,
+            parent_page_id TEXT REFERENCES pages(page_id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            icon TEXT,
+            position INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_act_id ON pages(act_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_parent ON pages(parent_page_id)")
+
+    logger.info("v5 migration complete")
 
 
 def _now_iso() -> str:
@@ -673,6 +727,40 @@ def list_scenes(act_id: str) -> list[dict[str, Any]]:
             "calendar_event_id": row["calendar_event_id"],
             "recurrence_rule": row["recurrence_rule"],
             "thunderbird_event_id": row["thunderbird_event_id"],
+        }
+        for row in cursor
+    ]
+
+
+def list_all_scenes() -> list[dict[str, Any]]:
+    """List all scenes across all acts with act information.
+
+    Returns scenes with act_title and act_color for Kanban board display.
+    """
+    conn = _get_connection()
+
+    cursor = conn.execute("""
+        SELECT s.scene_id, s.act_id, s.title, s.stage, s.notes, s.link,
+               s.calendar_event_id, s.recurrence_rule, s.thunderbird_event_id,
+               a.title as act_title, a.color as act_color
+        FROM scenes s
+        JOIN acts a ON s.act_id = a.act_id
+        ORDER BY a.position ASC, s.position ASC
+    """)
+
+    return [
+        {
+            "scene_id": row["scene_id"],
+            "act_id": row["act_id"],
+            "title": row["title"],
+            "stage": row["stage"],
+            "notes": row["notes"],
+            "link": row["link"],
+            "calendar_event_id": row["calendar_event_id"],
+            "recurrence_rule": row["recurrence_rule"],
+            "thunderbird_event_id": row["thunderbird_event_id"],
+            "act_title": row["act_title"],
+            "act_color": row["act_color"],
         }
         for row in cursor
     ]
@@ -1194,3 +1282,248 @@ def ensure_your_story_act() -> tuple[list[dict[str, Any]], str]:
 
     acts, _ = list_acts()
     return acts, YOUR_STORY_ACT_ID
+
+
+# =============================================================================
+# Page Operations (Nested Knowledgebase Pages)
+# =============================================================================
+
+def list_pages(act_id: str, parent_page_id: str | None = None) -> list[dict[str, Any]]:
+    """List pages for an act, optionally filtered by parent.
+
+    Args:
+        act_id: The act ID to list pages for.
+        parent_page_id: If provided, only list children of this page.
+                       If None, lists root pages (pages with no parent).
+    """
+    init_db()
+    conn = _get_connection()
+
+    if parent_page_id is None:
+        cursor = conn.execute("""
+            SELECT page_id, act_id, parent_page_id, title, icon, position, created_at, updated_at
+            FROM pages WHERE act_id = ? AND parent_page_id IS NULL
+            ORDER BY position ASC, created_at ASC
+        """, (act_id,))
+    else:
+        cursor = conn.execute("""
+            SELECT page_id, act_id, parent_page_id, title, icon, position, created_at, updated_at
+            FROM pages WHERE act_id = ? AND parent_page_id = ?
+            ORDER BY position ASC, created_at ASC
+        """, (act_id, parent_page_id))
+
+    return [
+        {
+            "page_id": row["page_id"],
+            "act_id": row["act_id"],
+            "parent_page_id": row["parent_page_id"],
+            "title": row["title"],
+            "icon": row["icon"],
+            "position": row["position"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+        for row in cursor
+    ]
+
+
+def get_page_tree(act_id: str) -> list[dict[str, Any]]:
+    """Get the full page tree for an act.
+
+    Returns a nested structure with children arrays.
+    """
+    init_db()
+    conn = _get_connection()
+
+    # Get all pages for this act
+    cursor = conn.execute("""
+        SELECT page_id, act_id, parent_page_id, title, icon, position, created_at, updated_at
+        FROM pages WHERE act_id = ?
+        ORDER BY position ASC, created_at ASC
+    """, (act_id,))
+
+    all_pages = [
+        {
+            "page_id": row["page_id"],
+            "act_id": row["act_id"],
+            "parent_page_id": row["parent_page_id"],
+            "title": row["title"],
+            "icon": row["icon"],
+            "position": row["position"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "children": [],
+        }
+        for row in cursor
+    ]
+
+    # Build tree structure
+    pages_by_id: dict[str, dict[str, Any]] = {p["page_id"]: p for p in all_pages}
+    root_pages: list[dict[str, Any]] = []
+
+    for page in all_pages:
+        parent_id = page["parent_page_id"]
+        if parent_id is None:
+            root_pages.append(page)
+        elif parent_id in pages_by_id:
+            pages_by_id[parent_id]["children"].append(page)
+
+    return root_pages
+
+
+def get_page(page_id: str) -> dict[str, Any] | None:
+    """Get a page by ID."""
+    conn = _get_connection()
+    cursor = conn.execute("""
+        SELECT page_id, act_id, parent_page_id, title, icon, position, created_at, updated_at
+        FROM pages WHERE page_id = ?
+    """, (page_id,))
+
+    row = cursor.fetchone()
+    if not row:
+        return None
+
+    return {
+        "page_id": row["page_id"],
+        "act_id": row["act_id"],
+        "parent_page_id": row["parent_page_id"],
+        "title": row["title"],
+        "icon": row["icon"],
+        "position": row["position"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def create_page(*, act_id: str, title: str, parent_page_id: str | None = None,
+                icon: str | None = None) -> tuple[list[dict[str, Any]], str]:
+    """Create a new page."""
+    page_id = _new_id("page")
+    now = _now_iso()
+
+    with _transaction() as conn:
+        # Get max position for this parent
+        if parent_page_id is None:
+            cursor = conn.execute(
+                "SELECT COALESCE(MAX(position), -1) + 1 FROM pages WHERE act_id = ? AND parent_page_id IS NULL",
+                (act_id,)
+            )
+        else:
+            cursor = conn.execute(
+                "SELECT COALESCE(MAX(position), -1) + 1 FROM pages WHERE act_id = ? AND parent_page_id = ?",
+                (act_id, parent_page_id)
+            )
+        position = cursor.fetchone()[0]
+
+        conn.execute("""
+            INSERT INTO pages
+            (page_id, act_id, parent_page_id, title, icon, position, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (page_id, act_id, parent_page_id, title, icon, position, now, now))
+
+    return list_pages(act_id, parent_page_id), page_id
+
+
+def update_page(*, page_id: str, title: str | None = None,
+                icon: str | None = None) -> dict[str, Any] | None:
+    """Update a page's metadata."""
+    now = _now_iso()
+
+    with _transaction() as conn:
+        updates = ["updated_at = ?"]
+        params: list[Any] = [now]
+
+        if title is not None:
+            updates.append("title = ?")
+            params.append(title)
+        if icon is not None:
+            updates.append("icon = ?")
+            params.append(icon if icon else None)
+
+        params.append(page_id)
+
+        conn.execute(f"""
+            UPDATE pages SET {', '.join(updates)} WHERE page_id = ?
+        """, params)
+
+    return get_page(page_id)
+
+
+def delete_page(page_id: str) -> bool:
+    """Delete a page and all its descendants.
+
+    Due to CASCADE, child pages are automatically deleted.
+    """
+    with _transaction() as conn:
+        cursor = conn.execute("DELETE FROM pages WHERE page_id = ?", (page_id,))
+        return cursor.rowcount > 0
+
+
+def move_page(*, page_id: str, new_parent_id: str | None = None,
+              new_position: int | None = None) -> dict[str, Any] | None:
+    """Move a page to a new parent or position.
+
+    Args:
+        page_id: The page to move.
+        new_parent_id: New parent page ID, or None for root level.
+        new_position: New position within the parent, or None to append at end.
+    """
+    now = _now_iso()
+
+    page = get_page(page_id)
+    if not page:
+        return None
+
+    act_id = page["act_id"]
+
+    with _transaction() as conn:
+        if new_position is None:
+            # Get max position for the new parent
+            if new_parent_id is None:
+                cursor = conn.execute(
+                    "SELECT COALESCE(MAX(position), -1) + 1 FROM pages WHERE act_id = ? AND parent_page_id IS NULL",
+                    (act_id,)
+                )
+            else:
+                cursor = conn.execute(
+                    "SELECT COALESCE(MAX(position), -1) + 1 FROM pages WHERE act_id = ? AND parent_page_id = ?",
+                    (act_id, new_parent_id)
+                )
+            new_position = cursor.fetchone()[0]
+
+        conn.execute("""
+            UPDATE pages SET parent_page_id = ?, position = ?, updated_at = ?
+            WHERE page_id = ?
+        """, (new_parent_id, new_position, now, page_id))
+
+    return get_page(page_id)
+
+
+def read_page_content(act_id: str, page_id: str) -> str:
+    """Read page content from the filesystem.
+
+    Page content is stored at kb/acts/{act_id}/pages/{page_id}.md
+    """
+    from .play_fs import play_root
+
+    content_path = play_root() / "kb" / "acts" / act_id / "pages" / f"{page_id}.md"
+
+    if content_path.exists():
+        return content_path.read_text(encoding="utf-8", errors="replace")
+
+    # Return empty string if file doesn't exist
+    return ""
+
+
+def write_page_content(act_id: str, page_id: str, text: str) -> None:
+    """Write page content to the filesystem.
+
+    Page content is stored at kb/acts/{act_id}/pages/{page_id}.md
+    """
+    from .play_fs import play_root
+
+    pages_dir = play_root() / "kb" / "acts" / act_id / "pages"
+    pages_dir.mkdir(parents=True, exist_ok=True)
+
+    content_path = pages_dir / f"{page_id}.md"
+    content_path.write_text(text, encoding="utf-8")

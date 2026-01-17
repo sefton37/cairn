@@ -28,6 +28,7 @@ import { renderCollapsedDiffPreview } from './diffPreview';
 import { createDiffPreviewOverlay } from './diffPreviewOverlay';
 import { createCodeModeView } from './codeModeView';
 import { createCairnView } from './cairnView';
+import { buildPlayWindow } from './playWindow';
 import type {
   ChatRespondResult,
   SystemInfoResult,
@@ -68,6 +69,10 @@ function buildUi() {
   }
   if (query.get('view') === 'dashboard') {
     void buildDashboardWindow();
+    return;
+  }
+  if (query.get('view') === 'play') {
+    void buildPlayWindow();
     return;
   }
 
@@ -893,10 +898,43 @@ function buildUi() {
     }
   }
 
-  // Play button opens The Play overlay at Play level (your story)
-  playBtn.addEventListener('click', () => {
-    playOverlay.open(); // Opens at Play level
-  });
+  async function openPlayWindow() {
+    console.log('openPlayWindow called');
+    try {
+      const existing = await WebviewWindow.getByLabel('play');
+      console.log('existing play window:', existing);
+      if (existing) {
+        await existing.setFocus();
+        return;
+      }
+    } catch (e) {
+      console.log('getByLabel error (expected if window does not exist):', e);
+      // Best effort: if getByLabel fails, fall through and create a new window.
+    }
+
+    try {
+      console.log('Creating new play window...');
+      const w = new WebviewWindow('play', {
+        title: 'The Play — Talking Rock',
+        url: '/?view=play',
+        width: 1920,
+        height: 1080,
+      });
+      console.log('WebviewWindow created:', w);
+
+      w.once('tauri://created', () => {
+        console.log('Play window created successfully');
+      });
+      w.once('tauri://error', (e) => {
+        console.error('Play window creation error:', e);
+      });
+    } catch (e) {
+      console.error('Failed to create play window:', e);
+    }
+  }
+
+  // Play button opens The Play window (standalone 1080p window)
+  playBtn.addEventListener('click', () => void openPlayWindow());
   dashboardBtn.addEventListener('click', () => void openDashboardWindow());
 
   // Helper functions (rowHeader, label, textInput, textArea, smallButton)
