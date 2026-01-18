@@ -95,6 +95,50 @@ function getEffectiveStage(scene: SceneWithAct): SceneStage {
   return (scene.stage as SceneStage) || 'in_progress';
 }
 
+// Sort options
+type SortOption = 'date' | 'alpha' | 'act';
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: 'date', label: 'Date' },
+  { value: 'alpha', label: 'A-Z' },
+  { value: 'act', label: 'Act' },
+];
+
+/**
+ * Sort scenes by the given criteria.
+ */
+function sortScenes(scenes: SceneWithAct[], sortBy: SortOption): SceneWithAct[] {
+  const sorted = [...scenes];
+
+  switch (sortBy) {
+    case 'date':
+      sorted.sort((a, b) => {
+        const dateA = a.next_occurrence || a.calendar_event_start || '';
+        const dateB = b.next_occurrence || b.calendar_event_start || '';
+        if (!dateA && !dateB) return 0;
+        if (!dateA) return 1;
+        if (!dateB) return -1;
+        return new Date(dateA).getTime() - new Date(dateB).getTime();
+      });
+      break;
+
+    case 'alpha':
+      sorted.sort((a, b) => a.title.localeCompare(b.title));
+      break;
+
+    case 'act':
+      sorted.sort((a, b) => {
+        const actCompare = a.act_title.localeCompare(b.act_title);
+        if (actCompare !== 0) return actCompare;
+        // Secondary sort by title within same act
+        return a.title.localeCompare(b.title);
+      });
+      break;
+  }
+
+  return sorted;
+}
+
 interface PlayKanbanBoardOptions {
   scenes: SceneWithAct[];
   onStageChange: (sceneId: string, newStage: SceneStage, actId: string) => Promise<void>;
@@ -106,57 +150,150 @@ export function createPlayKanbanBoard(options: PlayKanbanBoardOptions): {
 } {
   const { scenes, onStageChange, onSceneClick } = options;
 
-  // Main container
+  // Current sort state
+  let currentSort: SortOption = 'date';
+
+  // Wrapper container (includes sort controls + board)
+  const wrapper = el('div');
+  wrapper.className = 'kanban-wrapper';
+  wrapper.style.cssText = `
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  `;
+
+  // Sort controls bar
+  const sortBar = el('div');
+  sortBar.className = 'kanban-sort-bar';
+  sortBar.style.cssText = `
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+  `;
+
+  const sortLabel = el('span');
+  sortLabel.textContent = 'Sort by:';
+  sortLabel.style.cssText = `
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+  `;
+  sortBar.appendChild(sortLabel);
+
+  // Sort buttons
+  const buttonContainer = el('div');
+  buttonContainer.style.cssText = `
+    display: flex;
+    gap: 4px;
+  `;
+
+  const sortButtons: HTMLButtonElement[] = [];
+
+  for (const opt of SORT_OPTIONS) {
+    const btn = el('button') as HTMLButtonElement;
+    btn.textContent = opt.label;
+    btn.dataset.sort = opt.value;
+    btn.style.cssText = `
+      padding: 4px 12px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: ${opt.value === currentSort ? 'rgba(59, 130, 246, 0.3)' : 'rgba(0, 0, 0, 0.2)'};
+      color: ${opt.value === currentSort ? '#60a5fa' : 'rgba(255, 255, 255, 0.7)'};
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    `;
+
+    btn.addEventListener('click', () => {
+      currentSort = opt.value;
+      updateSortButtons();
+      rebuildBoard();
+    });
+
+    sortButtons.push(btn);
+    buttonContainer.appendChild(btn);
+  }
+
+  sortBar.appendChild(buttonContainer);
+  wrapper.appendChild(sortBar);
+
+  // Update button styles based on current sort
+  function updateSortButtons() {
+    for (const btn of sortButtons) {
+      const isActive = btn.dataset.sort === currentSort;
+      btn.style.background = isActive ? 'rgba(59, 130, 246, 0.3)' : 'rgba(0, 0, 0, 0.2)';
+      btn.style.color = isActive ? '#60a5fa' : 'rgba(255, 255, 255, 0.7)';
+      btn.style.borderColor = isActive ? 'rgba(59, 130, 246, 0.5)' : 'rgba(255, 255, 255, 0.2)';
+    }
+  }
+
+  // Board container
   const board = el('div');
   board.className = 'kanban-board';
   board.style.cssText = `
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 16px;
-    height: 100%;
+    flex: 1;
     min-height: 400px;
   `;
 
-  // Deduplicate recurring scenes - show each recurring scene only once
-  const seenRecurringIds = new Set<string>();
-  const deduplicatedScenes = scenes.filter(scene => {
-    if (scene.recurrence_rule) {
-      // For recurring scenes, use a composite key of act_id + title to dedupe
-      const key = `${scene.act_id}:${scene.title}`;
-      if (seenRecurringIds.has(key)) {
-        return false;
+  wrapper.appendChild(board);
+
+  // Build/rebuild the board with current sort
+  function rebuildBoard() {
+    board.innerHTML = '';
+
+    // Deduplicate recurring scenes - show each recurring scene only once
+    const seenRecurringIds = new Set<string>();
+    const deduplicatedScenes = scenes.filter(scene => {
+      if (scene.recurrence_rule) {
+        // For recurring scenes, use a composite key of act_id + title to dedupe
+        const key = `${scene.act_id}:${scene.title}`;
+        if (seenRecurringIds.has(key)) {
+          return false;
+        }
+        seenRecurringIds.add(key);
       }
-      seenRecurringIds.add(key);
+      return true;
+    });
+
+    // Group scenes by effective stage (using calendar date for Planning determination)
+    const scenesByStage: Record<SceneStage, SceneWithAct[]> = {
+      planning: [],
+      in_progress: [],
+      awaiting_data: [],
+      complete: [],
+    };
+
+    for (const scene of deduplicatedScenes) {
+      const effectiveStage = getEffectiveStage(scene);
+      scenesByStage[effectiveStage].push(scene);
     }
-    return true;
-  });
 
-  // Group scenes by effective stage (using calendar date for Planning determination)
-  const scenesByStage: Record<SceneStage, SceneWithAct[]> = {
-    planning: [],
-    in_progress: [],
-    awaiting_data: [],
-    complete: [],
-  };
+    // Sort scenes in each column
+    for (const stage of Object.keys(scenesByStage) as SceneStage[]) {
+      scenesByStage[stage] = sortScenes(scenesByStage[stage], currentSort);
+    }
 
-  for (const scene of deduplicatedScenes) {
-    const effectiveStage = getEffectiveStage(scene);
-    scenesByStage[effectiveStage].push(scene);
+    // Create columns
+    for (const column of COLUMNS) {
+      const columnEl = createColumn(
+        column,
+        scenesByStage[column.stage],
+        onStageChange,
+        onSceneClick
+      );
+      board.appendChild(columnEl);
+    }
   }
 
-  // Create columns
-  for (const column of COLUMNS) {
-    const columnEl = createColumn(
-      column,
-      scenesByStage[column.stage],
-      onStageChange,
-      onSceneClick
-    );
-    board.appendChild(columnEl);
-  }
+  // Initial build
+  rebuildBoard();
 
   return {
-    element: board,
+    element: wrapper,
   };
 }
 

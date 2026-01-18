@@ -98,6 +98,91 @@ def _get_base_event_id(event_id: str) -> str:
     return event_id
 
 
+def _deduplicate_annual_events(events: list) -> list:
+    """Deduplicate annual events (like holidays) that appear as separate entries per year.
+
+    Holiday calendars often have separate events for each year rather than a single
+    recurring event. This function detects events with the same title that fall on
+    the same month/day across different years and deduplicates them.
+
+    For each annual series, only the next upcoming occurrence is kept, and it's
+    marked as a yearly recurring event.
+
+    Args:
+        events: List of CalendarEvent objects.
+
+    Returns:
+        Deduplicated list of CalendarEvent objects.
+    """
+    from collections import defaultdict
+    from reos.cairn.thunderbird import CalendarEvent
+
+    now = datetime.now()
+
+    # Group events by title
+    by_title: dict[str, list] = defaultdict(list)
+    for event in events:
+        by_title[event.title].append(event)
+
+    result = []
+    for title, group in by_title.items():
+        if len(group) == 1:
+            # Only one event with this title, keep as-is
+            result.append(group[0])
+            continue
+
+        # Check if this looks like an annual pattern (same month/day across years)
+        # Group by (month, day) to detect annual patterns
+        by_month_day: dict[tuple[int, int], list] = defaultdict(list)
+        for event in group:
+            key = (event.start.month, event.start.day)
+            by_month_day[key].append(event)
+
+        # If all events fall on the same month/day, it's an annual series
+        if len(by_month_day) == 1:
+            # All events are on the same month/day - this is an annual holiday
+            # Keep only the next upcoming occurrence
+            sorted_events = sorted(group, key=lambda e: e.start)
+
+            # Find the next occurrence (first one after now, or the latest if all past)
+            next_event = None
+            for event in sorted_events:
+                if event.start >= now:
+                    next_event = event
+                    break
+
+            if next_event is None:
+                # All events are in the past, skip
+                continue
+
+            # Create a synthetic yearly recurrence rule
+            yearly_rrule = "RRULE:FREQ=YEARLY"
+
+            # Create a new event marked as recurring
+            annual_event = CalendarEvent(
+                id=next_event.id,
+                title=next_event.title,
+                start=next_event.start,
+                end=next_event.end,
+                location=next_event.location,
+                description=next_event.description,
+                status=next_event.status,
+                all_day=next_event.all_day,
+                is_recurring=True,
+                recurrence_rule=yearly_rrule,
+                recurrence_frequency="yearly",
+            )
+            result.append(annual_event)
+            logger.debug("Deduplicated annual event '%s' (%d occurrences -> 1)",
+                        title, len(group))
+        else:
+            # Events are on different dates, not a simple annual pattern
+            # Keep all of them
+            result.extend(group)
+
+    return result
+
+
 def refresh_all_recurring_scenes(store: "CairnStore") -> int:
     """Refresh next_occurrence for ALL recurring scenes in the database.
 
@@ -359,6 +444,9 @@ def get_base_calendar_events(
                 if next_occ and next_occ <= end:
                     events.append(base_event)
                     seen_ids.add(base_id)
+
+        # Deduplicate annual events (holidays that appear as separate entries per year)
+        events = _deduplicate_annual_events(events)
 
         # Sort by next occurrence (for recurring) or start time
         def sort_key(e):
