@@ -1013,6 +1013,174 @@ def list_tools() -> list[Tool]:
                 "properties": {},
             },
         ),
+        # =====================================================================
+        # Block Editor
+        # =====================================================================
+        Tool(
+            name="cairn_create_block",
+            description=(
+                "Create a new block in a page. Blocks are Notion-style content units "
+                "like paragraphs, headings, lists, code blocks, etc."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "paragraph", "heading_1", "heading_2", "heading_3",
+                            "bulleted_list", "numbered_list", "to_do",
+                            "code", "divider", "callout"
+                        ],
+                        "description": "Block type",
+                    },
+                    "act_id": {"type": "string", "description": "Act ID"},
+                    "page_id": {"type": "string", "description": "Page ID (optional)"},
+                    "parent_id": {"type": "string", "description": "Parent block ID for nesting (optional)"},
+                    "text": {"type": "string", "description": "Plain text content"},
+                    "properties": {
+                        "type": "object",
+                        "description": "Type-specific properties (e.g., language for code, checked for to_do)",
+                    },
+                },
+                "required": ["type", "act_id"],
+            },
+        ),
+        Tool(
+            name="cairn_update_block",
+            description="Update an existing block's content or properties.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "block_id": {"type": "string", "description": "Block ID to update"},
+                    "text": {"type": "string", "description": "New plain text content"},
+                    "properties": {
+                        "type": "object",
+                        "description": "Properties to update (merged with existing)",
+                    },
+                },
+                "required": ["block_id"],
+            },
+        ),
+        Tool(
+            name="cairn_search_blocks",
+            description="Search for blocks containing specific text.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "act_id": {"type": "string", "description": "Limit to specific act (optional)"},
+                    "page_id": {"type": "string", "description": "Limit to specific page (optional)"},
+                    "limit": {"type": "number", "description": "Max results (default: 20)"},
+                },
+                "required": ["query"],
+            },
+        ),
+        Tool(
+            name="cairn_get_page_content",
+            description=(
+                "Get all blocks for a page as readable content. "
+                "Returns blocks in order with their formatting."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "page_id": {"type": "string", "description": "Page ID"},
+                    "format": {
+                        "type": "string",
+                        "enum": ["blocks", "markdown"],
+                        "description": "Output format (default: markdown)",
+                    },
+                },
+                "required": ["page_id"],
+            },
+        ),
+        Tool(
+            name="cairn_create_page",
+            description="Create a new page within an act.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "act_id": {"type": "string", "description": "Act ID"},
+                    "title": {"type": "string", "description": "Page title"},
+                    "parent_page_id": {"type": "string", "description": "Parent page ID for nesting (optional)"},
+                    "icon": {"type": "string", "description": "Page icon emoji (optional)"},
+                },
+                "required": ["act_id", "title"],
+            },
+        ),
+        Tool(
+            name="cairn_list_pages",
+            description="List all pages in an act, optionally filtered by parent.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "act_id": {"type": "string", "description": "Act ID"},
+                    "parent_page_id": {"type": "string", "description": "Filter to children of this page (optional)"},
+                },
+                "required": ["act_id"],
+            },
+        ),
+        Tool(
+            name="cairn_update_page",
+            description="Update a page's title or icon.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "page_id": {"type": "string", "description": "Page ID to update"},
+                    "title": {"type": "string", "description": "New title (optional)"},
+                    "icon": {"type": "string", "description": "New icon emoji (optional)"},
+                },
+                "required": ["page_id"],
+            },
+        ),
+        Tool(
+            name="cairn_add_scene_block",
+            description="Add a scene embed block to a page. Links a scene to appear in page content.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "act_id": {"type": "string", "description": "Act ID"},
+                    "scene_id": {"type": "string", "description": "Scene ID to embed"},
+                    "page_id": {"type": "string", "description": "Page ID (optional)"},
+                    "parent_id": {"type": "string", "description": "Parent block ID (optional)"},
+                },
+                "required": ["act_id", "scene_id"],
+            },
+        ),
+        Tool(
+            name="cairn_get_unchecked_todos",
+            description="Get all unchecked to-do items in an act.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "act_id": {"type": "string", "description": "Act ID"},
+                },
+                "required": ["act_id"],
+            },
+        ),
+        Tool(
+            name="cairn_get_page_tree",
+            description="Get the full page tree (hierarchy) for an act.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "act_id": {"type": "string", "description": "Act ID"},
+                },
+                "required": ["act_id"],
+            },
+        ),
+        Tool(
+            name="cairn_export_page_markdown",
+            description="Export a page's block content as Markdown text.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "page_id": {"type": "string", "description": "Page ID"},
+                },
+                "required": ["page_id"],
+            },
+        ),
     ]
 
 
@@ -1259,6 +1427,42 @@ class CairnToolHandler:
 
         if name == "cairn_get_autostart":
             return self._get_autostart()
+
+        # =====================================================================
+        # Block Editor
+        # =====================================================================
+        if name == "cairn_create_block":
+            return self._create_block(args)
+
+        if name == "cairn_update_block":
+            return self._update_block(args)
+
+        if name == "cairn_search_blocks":
+            return self._search_blocks(args)
+
+        if name == "cairn_get_page_content":
+            return self._get_page_content(args)
+
+        if name == "cairn_create_page":
+            return self._create_page(args)
+
+        if name == "cairn_list_pages":
+            return self._list_pages(args)
+
+        if name == "cairn_update_page":
+            return self._update_page(args)
+
+        if name == "cairn_add_scene_block":
+            return self._add_scene_block(args)
+
+        if name == "cairn_get_unchecked_todos":
+            return self._get_unchecked_todos(args)
+
+        if name == "cairn_get_page_tree":
+            return self._get_page_tree(args)
+
+        if name == "cairn_export_page_markdown":
+            return self._export_page_markdown(args)
 
         raise CairnToolError(
             code="unknown_tool",
@@ -3217,4 +3421,319 @@ class CairnToolHandler:
             "enabled": status["enabled"],
             "desktop_file": status["desktop_file"],
             "message": f"Autostart is currently {'enabled' if status['enabled'] else 'disabled'}.",
+        }
+
+    # =========================================================================
+    # Block Editor implementations
+    # =========================================================================
+
+    def _create_block(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Create a new block."""
+        from ..play import blocks_db
+        from ..play.blocks_models import BlockType
+
+        block_type = args.get("type")
+        act_id = args.get("act_id")
+        if not block_type:
+            raise CairnToolError(code="invalid_input", message="type is required")
+        if not act_id:
+            raise CairnToolError(code="invalid_input", message="act_id is required")
+
+        text = args.get("text", "")
+        properties = args.get("properties")
+
+        # Use create_text_block for simple text content
+        if text:
+            block = blocks_db.create_text_block(
+                type=block_type,
+                act_id=act_id,
+                page_id=args.get("page_id"),
+                parent_id=args.get("parent_id"),
+                text=text,
+                **(properties or {}),
+            )
+        else:
+            block = blocks_db.create_block(
+                type=block_type,
+                act_id=act_id,
+                page_id=args.get("page_id"),
+                parent_id=args.get("parent_id"),
+                properties=properties,
+            )
+
+        return {
+            "success": True,
+            "block_id": block.id,
+            "type": block.type.value,
+            "message": f"Created {block.type.value} block",
+        }
+
+    def _update_block(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Update an existing block."""
+        from ..play import blocks_db
+
+        block_id = args.get("block_id")
+        if not block_id:
+            raise CairnToolError(code="invalid_input", message="block_id is required")
+
+        text = args.get("text")
+        properties = args.get("properties")
+
+        rich_text = None
+        if text is not None:
+            rich_text = [{"content": text}]
+
+        block = blocks_db.update_block(
+            block_id,
+            rich_text=rich_text,
+            properties=properties,
+        )
+
+        if not block:
+            raise CairnToolError(code="not_found", message=f"Block not found: {block_id}")
+
+        return {
+            "success": True,
+            "block_id": block.id,
+            "message": "Block updated",
+        }
+
+    def _search_blocks(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Search for blocks containing text."""
+        from ..play import blocks_db
+        from ..play_db import _get_connection, init_db
+
+        query = args.get("query")
+        if not query:
+            raise CairnToolError(code="invalid_input", message="query is required")
+
+        act_id = args.get("act_id")
+        page_id = args.get("page_id")
+        limit = args.get("limit", 20)
+
+        init_db()
+        conn = _get_connection()
+
+        # Search rich_text table for matching content
+        sql = """
+            SELECT DISTINCT b.id, b.type, b.act_id, b.page_id, rt.content
+            FROM blocks b
+            JOIN rich_text rt ON rt.block_id = b.id
+            WHERE rt.content LIKE ?
+        """
+        params = [f"%{query}%"]
+
+        if act_id:
+            sql += " AND b.act_id = ?"
+            params.append(act_id)
+
+        if page_id:
+            sql += " AND b.page_id = ?"
+            params.append(page_id)
+
+        sql += f" ORDER BY b.updated_at DESC LIMIT {int(limit)}"
+
+        cursor = conn.execute(sql, params)
+        results = []
+        for row in cursor:
+            results.append({
+                "block_id": row["id"],
+                "type": row["type"],
+                "act_id": row["act_id"],
+                "page_id": row["page_id"],
+                "preview": row["content"][:100] + ("..." if len(row["content"]) > 100 else ""),
+            })
+
+        return {
+            "success": True,
+            "count": len(results),
+            "results": results,
+        }
+
+    def _get_page_content(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Get all blocks for a page."""
+        from ..play import blocks_db
+        from ..play.markdown_renderer import render_markdown
+
+        page_id = args.get("page_id")
+        if not page_id:
+            raise CairnToolError(code="invalid_input", message="page_id is required")
+
+        output_format = args.get("format", "markdown")
+
+        blocks = blocks_db.get_page_blocks(page_id, recursive=True)
+
+        if output_format == "markdown":
+            content = render_markdown(blocks)
+            return {
+                "success": True,
+                "page_id": page_id,
+                "format": "markdown",
+                "content": content,
+                "block_count": len(blocks),
+            }
+        else:
+            return {
+                "success": True,
+                "page_id": page_id,
+                "format": "blocks",
+                "blocks": [b.to_dict(include_children=True) for b in blocks],
+                "block_count": len(blocks),
+            }
+
+    def _create_page(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Create a new page within an act."""
+        from .. import play_db
+
+        act_id = args.get("act_id")
+        title = args.get("title")
+        if not act_id:
+            raise CairnToolError(code="invalid_input", message="act_id is required")
+        if not title:
+            raise CairnToolError(code="invalid_input", message="title is required")
+
+        parent_page_id = args.get("parent_page_id")
+        icon = args.get("icon")
+
+        _, page_id = play_db.create_page(
+            act_id=act_id,
+            title=title,
+            parent_page_id=parent_page_id,
+            icon=icon,
+        )
+
+        return {
+            "success": True,
+            "page_id": page_id,
+            "title": title,
+            "message": f"Created page '{title}'",
+        }
+
+    def _list_pages(self, args: dict[str, Any]) -> dict[str, Any]:
+        """List all pages in an act."""
+        from .. import play_db
+
+        act_id = args.get("act_id")
+        if not act_id:
+            raise CairnToolError(code="invalid_input", message="act_id is required")
+
+        parent_page_id = args.get("parent_page_id")
+
+        pages = play_db.list_pages(act_id, parent_page_id)
+
+        return {
+            "success": True,
+            "act_id": act_id,
+            "count": len(pages),
+            "pages": pages,
+        }
+
+    def _update_page(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Update a page's title or icon."""
+        from .. import play_db
+
+        page_id = args.get("page_id")
+        if not page_id:
+            raise CairnToolError(code="invalid_input", message="page_id is required")
+
+        title = args.get("title")
+        icon = args.get("icon")
+
+        page = play_db.update_page(
+            page_id=page_id,
+            title=title,
+            icon=icon,
+        )
+
+        if not page:
+            raise CairnToolError(code="not_found", message=f"Page not found: {page_id}")
+
+        return {
+            "success": True,
+            "page_id": page_id,
+            "title": page["title"],
+            "message": "Page updated",
+        }
+
+    def _add_scene_block(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Add a scene embed block to a page."""
+        from ..play import blocks_tree
+
+        act_id = args.get("act_id")
+        scene_id = args.get("scene_id")
+        if not act_id:
+            raise CairnToolError(code="invalid_input", message="act_id is required")
+        if not scene_id:
+            raise CairnToolError(code="invalid_input", message="scene_id is required")
+
+        page_id = args.get("page_id")
+        parent_id = args.get("parent_id")
+
+        try:
+            block = blocks_tree.create_scene_block(
+                act_id=act_id,
+                scene_id=scene_id,
+                page_id=page_id,
+                parent_id=parent_id,
+            )
+        except ValueError as e:
+            raise CairnToolError(code="invalid_input", message=str(e)) from e
+
+        return {
+            "success": True,
+            "block_id": block.id,
+            "scene_id": scene_id,
+            "message": f"Added scene embed block for scene {scene_id}",
+        }
+
+    def _get_unchecked_todos(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Get all unchecked to-do items in an act."""
+        from .. import play_db
+
+        act_id = args.get("act_id")
+        if not act_id:
+            raise CairnToolError(code="invalid_input", message="act_id is required")
+
+        todos = play_db.get_unchecked_todos(act_id)
+
+        return {
+            "success": True,
+            "act_id": act_id,
+            "count": len(todos),
+            "todos": todos,
+        }
+
+    def _get_page_tree(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Get the full page tree for an act."""
+        from .. import play_db
+
+        act_id = args.get("act_id")
+        if not act_id:
+            raise CairnToolError(code="invalid_input", message="act_id is required")
+
+        tree = play_db.get_page_tree(act_id)
+
+        return {
+            "success": True,
+            "act_id": act_id,
+            "pages": tree,
+        }
+
+    def _export_page_markdown(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Export a page's block content as Markdown."""
+        from ..play import blocks_db
+        from ..play.markdown_renderer import render_markdown
+
+        page_id = args.get("page_id")
+        if not page_id:
+            raise CairnToolError(code="invalid_input", message="page_id is required")
+
+        blocks = blocks_db.get_page_blocks(page_id, recursive=True)
+        markdown = render_markdown(blocks)
+
+        return {
+            "success": True,
+            "page_id": page_id,
+            "markdown": markdown,
+            "block_count": len(blocks),
         }

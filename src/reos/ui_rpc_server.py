@@ -152,6 +152,7 @@ from .rpc_handlers.context import (
 # System/Thunderbird/Autostart RPC handlers (extracted to separate module)
 from .rpc_handlers.system import (
     handle_system_live_state as _handle_system_live_state,
+    handle_system_open_terminal as _handle_system_open_terminal,
     handle_cairn_thunderbird_status as _handle_cairn_thunderbird_status,
     handle_thunderbird_check as _handle_thunderbird_check,
     handle_thunderbird_configure as _handle_thunderbird_configure,
@@ -197,6 +198,31 @@ from .rpc_handlers.execution import (
     handle_code_plan_start as _handle_code_plan_start,
     handle_code_plan_state as _handle_code_plan_state,
     handle_code_plan_result as _handle_code_plan_result,
+)
+
+# Blocks RPC handlers (extracted to separate module)
+from .rpc_handlers.blocks import (
+    handle_blocks_create as _handle_blocks_create,
+    handle_blocks_get as _handle_blocks_get,
+    handle_blocks_list as _handle_blocks_list,
+    handle_blocks_update as _handle_blocks_update,
+    handle_blocks_delete as _handle_blocks_delete,
+    handle_blocks_move as _handle_blocks_move,
+    handle_blocks_reorder as _handle_blocks_reorder,
+    handle_blocks_ancestors as _handle_blocks_ancestors,
+    handle_blocks_descendants as _handle_blocks_descendants,
+    handle_blocks_page_tree as _handle_blocks_page_tree,
+    handle_blocks_page_markdown as _handle_blocks_page_markdown,
+    handle_blocks_import_markdown as _handle_blocks_import_markdown,
+    handle_blocks_create_scene as _handle_blocks_create_scene,
+    handle_blocks_validate_scene as _handle_blocks_validate_scene,
+    handle_blocks_rich_text_get as _handle_blocks_rich_text_get,
+    handle_blocks_rich_text_set as _handle_blocks_rich_text_set,
+    handle_blocks_property_get as _handle_blocks_property_get,
+    handle_blocks_property_set as _handle_blocks_property_set,
+    handle_blocks_property_delete as _handle_blocks_property_delete,
+    handle_blocks_search as _handle_blocks_search,
+    handle_blocks_unchecked_todos as _handle_blocks_unchecked_todos,
 )
 
 _JSON = dict[str, Any]
@@ -1246,6 +1272,311 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
             return _jsonrpc_result(
                 req_id=req_id,
                 result=_handle_play_pages_content_write(db, act_id=act_id, page_id=page_id, text=text),
+            )
+
+        # --- Blocks (Notion-style block editor) ---
+
+        if method == "blocks/create":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            block_type = params.get("type")
+            act_id = params.get("act_id")
+            if not isinstance(block_type, str) or not block_type:
+                raise RpcError(code=-32602, message="type is required")
+            if not isinstance(act_id, str) or not act_id:
+                raise RpcError(code=-32602, message="act_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_create(
+                    db,
+                    type=block_type,
+                    act_id=act_id,
+                    parent_id=params.get("parent_id"),
+                    page_id=params.get("page_id"),
+                    scene_id=params.get("scene_id"),
+                    position=params.get("position"),
+                    rich_text=params.get("rich_text"),
+                    properties=params.get("properties"),
+                ),
+            )
+
+        if method == "blocks/get":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            block_id = params.get("block_id")
+            if not isinstance(block_id, str) or not block_id:
+                raise RpcError(code=-32602, message="block_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_get(
+                    db,
+                    block_id=block_id,
+                    include_children=bool(params.get("include_children", False)),
+                ),
+            )
+
+        if method == "blocks/list":
+            if not isinstance(params, dict):
+                params = {}
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_list(
+                    db,
+                    page_id=params.get("page_id"),
+                    parent_id=params.get("parent_id"),
+                    act_id=params.get("act_id"),
+                ),
+            )
+
+        if method == "blocks/update":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            block_id = params.get("block_id")
+            if not isinstance(block_id, str) or not block_id:
+                raise RpcError(code=-32602, message="block_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_update(
+                    db,
+                    block_id=block_id,
+                    rich_text=params.get("rich_text"),
+                    properties=params.get("properties"),
+                    position=params.get("position"),
+                ),
+            )
+
+        if method == "blocks/delete":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            block_id = params.get("block_id")
+            if not isinstance(block_id, str) or not block_id:
+                raise RpcError(code=-32602, message="block_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_delete(
+                    db,
+                    block_id=block_id,
+                    recursive=params.get("recursive", True),
+                ),
+            )
+
+        if method == "blocks/move":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            block_id = params.get("block_id")
+            if not isinstance(block_id, str) or not block_id:
+                raise RpcError(code=-32602, message="block_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_move(
+                    db,
+                    block_id=block_id,
+                    new_parent_id=params.get("new_parent_id"),
+                    new_page_id=params.get("new_page_id"),
+                    new_position=params.get("new_position"),
+                ),
+            )
+
+        if method == "blocks/reorder":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            block_ids = params.get("block_ids")
+            if not isinstance(block_ids, list):
+                raise RpcError(code=-32602, message="block_ids must be a list")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_reorder(db, block_ids=block_ids),
+            )
+
+        if method == "blocks/ancestors":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            block_id = params.get("block_id")
+            if not isinstance(block_id, str) or not block_id:
+                raise RpcError(code=-32602, message="block_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_ancestors(db, block_id=block_id),
+            )
+
+        if method == "blocks/descendants":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            block_id = params.get("block_id")
+            if not isinstance(block_id, str) or not block_id:
+                raise RpcError(code=-32602, message="block_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_descendants(db, block_id=block_id),
+            )
+
+        if method == "blocks/page/tree":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            page_id = params.get("page_id")
+            if not isinstance(page_id, str) or not page_id:
+                raise RpcError(code=-32602, message="page_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_page_tree(db, page_id=page_id),
+            )
+
+        if method == "blocks/page/markdown":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            page_id = params.get("page_id")
+            if not isinstance(page_id, str) or not page_id:
+                raise RpcError(code=-32602, message="page_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_page_markdown(db, page_id=page_id),
+            )
+
+        if method == "blocks/import/markdown":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            act_id = params.get("act_id")
+            markdown = params.get("markdown")
+            if not isinstance(act_id, str) or not act_id:
+                raise RpcError(code=-32602, message="act_id is required")
+            if not isinstance(markdown, str):
+                raise RpcError(code=-32602, message="markdown is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_import_markdown(
+                    db,
+                    act_id=act_id,
+                    page_id=params.get("page_id"),
+                    markdown=markdown,
+                ),
+            )
+
+        if method == "blocks/scene/create":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            act_id = params.get("act_id")
+            scene_id = params.get("scene_id")
+            if not isinstance(act_id, str) or not act_id:
+                raise RpcError(code=-32602, message="act_id is required")
+            if not isinstance(scene_id, str) or not scene_id:
+                raise RpcError(code=-32602, message="scene_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_create_scene(
+                    db,
+                    act_id=act_id,
+                    scene_id=scene_id,
+                    parent_id=params.get("parent_id"),
+                    page_id=params.get("page_id"),
+                    position=params.get("position"),
+                ),
+            )
+
+        if method == "blocks/scene/validate":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            block_id = params.get("block_id")
+            scene_id = params.get("scene_id")
+            if not isinstance(block_id, str) or not block_id:
+                raise RpcError(code=-32602, message="block_id is required")
+            if not isinstance(scene_id, str) or not scene_id:
+                raise RpcError(code=-32602, message="scene_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_validate_scene(db, block_id=block_id, scene_id=scene_id),
+            )
+
+        if method == "blocks/rich_text/get":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            block_id = params.get("block_id")
+            if not isinstance(block_id, str) or not block_id:
+                raise RpcError(code=-32602, message="block_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_rich_text_get(db, block_id=block_id),
+            )
+
+        if method == "blocks/rich_text/set":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            block_id = params.get("block_id")
+            spans = params.get("spans")
+            if not isinstance(block_id, str) or not block_id:
+                raise RpcError(code=-32602, message="block_id is required")
+            if not isinstance(spans, list):
+                raise RpcError(code=-32602, message="spans must be a list")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_rich_text_set(db, block_id=block_id, spans=spans),
+            )
+
+        if method == "blocks/property/get":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            block_id = params.get("block_id")
+            key = params.get("key")
+            if not isinstance(block_id, str) or not block_id:
+                raise RpcError(code=-32602, message="block_id is required")
+            if not isinstance(key, str) or not key:
+                raise RpcError(code=-32602, message="key is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_property_get(db, block_id=block_id, key=key),
+            )
+
+        if method == "blocks/property/set":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            block_id = params.get("block_id")
+            key = params.get("key")
+            value = params.get("value")
+            if not isinstance(block_id, str) or not block_id:
+                raise RpcError(code=-32602, message="block_id is required")
+            if not isinstance(key, str) or not key:
+                raise RpcError(code=-32602, message="key is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_property_set(db, block_id=block_id, key=key, value=value),
+            )
+
+        if method == "blocks/property/delete":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            block_id = params.get("block_id")
+            key = params.get("key")
+            if not isinstance(block_id, str) or not block_id:
+                raise RpcError(code=-32602, message="block_id is required")
+            if not isinstance(key, str) or not key:
+                raise RpcError(code=-32602, message="key is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_property_delete(db, block_id=block_id, key=key),
+            )
+
+        if method == "blocks/search":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            act_id = params.get("act_id")
+            query = params.get("query")
+            if not isinstance(act_id, str) or not act_id:
+                raise RpcError(code=-32602, message="act_id is required")
+            if not isinstance(query, str) or not query:
+                raise RpcError(code=-32602, message="query is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_search(db, act_id=act_id, query=query),
+            )
+
+        if method == "blocks/unchecked_todos":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            act_id = params.get("act_id")
+            if not isinstance(act_id, str) or not act_id:
+                raise RpcError(code=-32602, message="act_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_blocks_unchecked_todos(db, act_id=act_id),
             )
 
         # --- Context Meter & Knowledge Management ---

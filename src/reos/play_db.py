@@ -40,7 +40,9 @@ _local = threading.local()
 # v4: Flatten hierarchy - remove old scenes tier, beats become scenes
 # v5: Add pages table for nested knowledgebase pages
 # v6: Add calendar metadata columns to scenes (consolidate from cairn_metadata)
-SCHEMA_VERSION = 6
+# v7: Add blocks, block_properties, rich_text tables for Notion-style block editor
+# v8: Add root_block_id to acts for block-based root content
+SCHEMA_VERSION = 8
 
 
 def _play_db_path() -> Path:
@@ -126,6 +128,7 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             repo_path TEXT,
             artifact_type TEXT,
             code_config TEXT,  -- JSON string
+            root_block_id TEXT,  -- v8: Root block for act's main content
             position INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -191,6 +194,51 @@ def _init_schema(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_pages_act_id ON pages(act_id);
         CREATE INDEX IF NOT EXISTS idx_pages_parent ON pages(parent_page_id);
+
+        -- Blocks table (v7: Notion-style block editor)
+        CREATE TABLE IF NOT EXISTS blocks (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            parent_id TEXT,
+            act_id TEXT NOT NULL REFERENCES acts(act_id) ON DELETE CASCADE,
+            page_id TEXT REFERENCES pages(page_id) ON DELETE CASCADE,
+            scene_id TEXT REFERENCES scenes(scene_id) ON DELETE SET NULL,
+            position INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_blocks_parent ON blocks(parent_id);
+        CREATE INDEX IF NOT EXISTS idx_blocks_act ON blocks(act_id);
+        CREATE INDEX IF NOT EXISTS idx_blocks_page ON blocks(page_id);
+        CREATE INDEX IF NOT EXISTS idx_blocks_position ON blocks(parent_id, position);
+
+        -- Block properties table (v7: key-value for type-specific data)
+        CREATE TABLE IF NOT EXISTS block_properties (
+            block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+            key TEXT NOT NULL,
+            value TEXT,
+            PRIMARY KEY (block_id, key)
+        );
+
+        -- Rich text table (v7: inline formatted text spans)
+        CREATE TABLE IF NOT EXISTS rich_text (
+            id TEXT PRIMARY KEY,
+            block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+            position INTEGER NOT NULL DEFAULT 0,
+            content TEXT NOT NULL,
+            bold INTEGER DEFAULT 0,
+            italic INTEGER DEFAULT 0,
+            strikethrough INTEGER DEFAULT 0,
+            code INTEGER DEFAULT 0,
+            underline INTEGER DEFAULT 0,
+            color TEXT,
+            background_color TEXT,
+            link_url TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_rich_text_block ON rich_text(block_id);
+        CREATE INDEX IF NOT EXISTS idx_rich_text_position ON rich_text(block_id, position);
     """)
 
     conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
@@ -233,6 +281,16 @@ def _run_schema_migrations(conn: sqlite3.Connection, current_version: int) -> No
     if current_version < 6:
         logger.info("Running v6 migration: Add calendar metadata columns to scenes")
         _migrate_v5_to_v6(conn)
+
+    # Migration v6 -> v7: Add blocks, block_properties, rich_text tables
+    if current_version < 7:
+        logger.info("Running v7 migration: Add block editor tables")
+        _migrate_v6_to_v7(conn)
+
+    # Migration v7 -> v8: Add root_block_id to acts table
+    if current_version < 8:
+        logger.info("Running v8 migration: Add root_block_id to acts")
+        _migrate_v7_to_v8(conn)
 
     # Update schema version
     conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
@@ -430,6 +488,87 @@ def _migrate_v5_to_v6(conn: sqlite3.Connection) -> None:
     _migrate_calendar_data_from_cairn(conn)
 
     logger.info("v6 migration complete")
+
+
+def _migrate_v6_to_v7(conn: sqlite3.Connection) -> None:
+    """Migrate from v6 to v7 schema.
+
+    Adds blocks, block_properties, and rich_text tables for
+    Notion-style block-based content editing.
+    """
+    # Create blocks table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS blocks (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            parent_id TEXT,
+            act_id TEXT NOT NULL,
+            page_id TEXT,
+            scene_id TEXT,
+            position INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (act_id) REFERENCES acts(act_id) ON DELETE CASCADE,
+            FOREIGN KEY (page_id) REFERENCES pages(page_id) ON DELETE CASCADE,
+            FOREIGN KEY (scene_id) REFERENCES scenes(scene_id) ON DELETE SET NULL
+        )
+    """)
+
+    # Create block_properties table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS block_properties (
+            block_id TEXT NOT NULL,
+            key TEXT NOT NULL,
+            value TEXT,
+            PRIMARY KEY (block_id, key),
+            FOREIGN KEY (block_id) REFERENCES blocks(id) ON DELETE CASCADE
+        )
+    """)
+
+    # Create rich_text table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS rich_text (
+            id TEXT PRIMARY KEY,
+            block_id TEXT NOT NULL,
+            position INTEGER NOT NULL DEFAULT 0,
+            content TEXT NOT NULL,
+            bold INTEGER DEFAULT 0,
+            italic INTEGER DEFAULT 0,
+            strikethrough INTEGER DEFAULT 0,
+            code INTEGER DEFAULT 0,
+            underline INTEGER DEFAULT 0,
+            color TEXT,
+            background_color TEXT,
+            link_url TEXT,
+            FOREIGN KEY (block_id) REFERENCES blocks(id) ON DELETE CASCADE
+        )
+    """)
+
+    # Create indexes for efficient queries
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_blocks_parent ON blocks(parent_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_blocks_act ON blocks(act_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_blocks_page ON blocks(page_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_blocks_position ON blocks(parent_id, position)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rich_text_block ON rich_text(block_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rich_text_position ON rich_text(block_id, position)")
+
+    logger.info("v7 migration complete")
+
+
+def _migrate_v7_to_v8(conn: sqlite3.Connection) -> None:
+    """Migrate from v7 to v8 schema.
+
+    Adds root_block_id column to acts table for block-based root content.
+    """
+    # Get current columns
+    cursor = conn.execute("PRAGMA table_info(acts)")
+    columns = [row[1] for row in cursor.fetchall()]
+
+    if "root_block_id" not in columns:
+        logger.info("Adding root_block_id column to acts table")
+        conn.execute("ALTER TABLE acts ADD COLUMN root_block_id TEXT")
+
+    logger.info("v8 migration complete")
 
 
 def _migrate_calendar_data_from_cairn(conn: sqlite3.Connection) -> None:
@@ -696,7 +835,7 @@ def list_acts() -> tuple[list[dict[str, Any]], str | None]:
     conn = _get_connection()
 
     cursor = conn.execute("""
-        SELECT act_id, title, active, notes, repo_path, artifact_type, code_config, color
+        SELECT act_id, title, active, notes, repo_path, artifact_type, code_config, color, root_block_id
         FROM acts
         ORDER BY position ASC
     """)
@@ -721,6 +860,7 @@ def list_acts() -> tuple[list[dict[str, Any]], str | None]:
             "artifact_type": row["artifact_type"],
             "code_config": code_config,
             "color": row["color"],
+            "root_block_id": row["root_block_id"],
         }
         acts.append(act)
 
@@ -734,7 +874,7 @@ def get_act(act_id: str) -> dict[str, Any] | None:
     """Get a single act by ID."""
     conn = _get_connection()
     cursor = conn.execute("""
-        SELECT act_id, title, active, notes, repo_path, artifact_type, code_config, color
+        SELECT act_id, title, active, notes, repo_path, artifact_type, code_config, color, root_block_id
         FROM acts WHERE act_id = ?
     """, (act_id,))
 
@@ -758,6 +898,7 @@ def get_act(act_id: str) -> dict[str, Any] | None:
         "repo_path": row["repo_path"],
         "artifact_type": row["artifact_type"],
         "code_config": code_config,
+        "root_block_id": row["root_block_id"],
     }
 
 
@@ -1271,6 +1412,66 @@ def find_scene_by_thunderbird_event(thunderbird_event_id: str) -> dict[str, Any]
         "recurrence_rule": row["recurrence_rule"],
         "thunderbird_event_id": row["thunderbird_event_id"],
     }
+
+
+def get_scenes_with_upcoming_events(hours: int = 168) -> list[dict[str, Any]]:
+    """Get scenes with calendar events in the next N hours.
+
+    This returns scenes that have calendar_event_start set within the
+    specified time window. For recurring events, uses next_occurrence
+    if available.
+
+    Args:
+        hours: Look ahead this many hours (default 168 = 7 days).
+
+    Returns:
+        List of scene dicts with calendar data, sorted by effective time.
+    """
+    from datetime import datetime, timedelta
+
+    conn = _get_connection()
+    now = datetime.now()
+    cutoff = (now + timedelta(hours=hours)).isoformat()
+    now_iso = now.isoformat()
+
+    # Get scenes where either:
+    # 1. next_occurrence is within the window (for recurring events), or
+    # 2. calendar_event_start is within the window (for one-time events)
+    cursor = conn.execute("""
+        SELECT
+            scene_id, act_id, title, stage, notes, link,
+            calendar_event_id, calendar_event_start, calendar_event_end,
+            calendar_event_title, recurrence_rule, next_occurrence,
+            calendar_name, category
+        FROM scenes
+        WHERE calendar_event_start IS NOT NULL
+          AND (
+              (next_occurrence IS NOT NULL AND next_occurrence >= ? AND next_occurrence <= ?)
+              OR (next_occurrence IS NULL AND calendar_event_start >= ? AND calendar_event_start <= ?)
+          )
+        ORDER BY COALESCE(next_occurrence, calendar_event_start) ASC
+    """, (now_iso, cutoff, now_iso, cutoff))
+
+    results = []
+    for row in cursor.fetchall():
+        results.append({
+            "scene_id": row["scene_id"],
+            "act_id": row["act_id"],
+            "title": row["title"],
+            "stage": row["stage"],
+            "notes": row["notes"],
+            "link": row["link"],
+            "calendar_event_id": row["calendar_event_id"],
+            "start": row["calendar_event_start"],
+            "end": row["calendar_event_end"],
+            "calendar_event_title": row["calendar_event_title"],
+            "recurrence_rule": row["recurrence_rule"],
+            "next_occurrence": row["next_occurrence"],
+            "calendar_name": row["calendar_name"],
+            "category": row["category"],
+        })
+
+    return results
 
 
 def set_scene_thunderbird_event_id(scene_id: str, thunderbird_event_id: str | None) -> bool:
@@ -1822,3 +2023,182 @@ def write_page_content(act_id: str, page_id: str, text: str) -> None:
 
     content_path = pages_dir / f"{page_id}.md"
     content_path.write_text(text, encoding="utf-8")
+
+
+# =============================================================================
+# Act Block Integration (v8)
+# =============================================================================
+
+
+def set_act_root_block(act_id: str, root_block_id: str | None) -> bool:
+    """Set the root block ID for an act.
+
+    Args:
+        act_id: The act ID.
+        root_block_id: The block ID to set as root, or None to clear.
+
+    Returns:
+        True if updated, False if act not found.
+    """
+    now = _now_iso()
+
+    with _transaction() as conn:
+        cursor = conn.execute("""
+            UPDATE acts SET root_block_id = ?, updated_at = ?
+            WHERE act_id = ?
+        """, (root_block_id, now, act_id))
+
+        return cursor.rowcount > 0
+
+
+def get_act_root_block(act_id: str) -> dict[str, Any] | None:
+    """Get the root block for an act.
+
+    Returns the block data if the act has a root block, None otherwise.
+    This imports from blocks_db to avoid circular imports.
+    """
+    act = get_act(act_id)
+    if not act or not act.get("root_block_id"):
+        return None
+
+    # Import here to avoid circular imports
+    from .play.blocks_db import get_block
+
+    block = get_block(act["root_block_id"])
+    if block:
+        return block.to_dict()
+    return None
+
+
+def create_act_with_root_block(
+    *,
+    title: str,
+    notes: str = "",
+    color: str | None = None,
+) -> tuple[list[dict[str, Any]], str, str]:
+    """Create a new act with an auto-created root page block.
+
+    This is the recommended way to create acts for the block-based system.
+    The root block serves as the main content container for the act.
+
+    Args:
+        title: Act title.
+        notes: Act notes.
+        color: Act color.
+
+    Returns:
+        Tuple of (acts list, act_id, root_block_id).
+    """
+    # Import here to avoid circular imports
+    from .play.blocks_db import create_block
+
+    # Create the act first
+    acts, act_id = create_act(title=title, notes=notes, color=color)
+
+    # Create a root "page" block for the act
+    root_block = create_block(
+        type="page",
+        act_id=act_id,
+        properties={"title": title},
+    )
+
+    # Link the root block to the act
+    set_act_root_block(act_id, root_block.id)
+
+    # Refresh acts list
+    acts, _ = list_acts()
+
+    return acts, act_id, root_block.id
+
+
+def get_unchecked_todos(act_id: str) -> list[dict[str, Any]]:
+    """Get all unchecked to-do blocks in an act.
+
+    Searches for blocks of type 'to_do' that have checked=false.
+
+    Args:
+        act_id: The act ID.
+
+    Returns:
+        List of unchecked to-do block data with their text content.
+    """
+    init_db()
+    conn = _get_connection()
+
+    # Find all to_do blocks in this act that are not checked
+    cursor = conn.execute("""
+        SELECT b.id, b.page_id, b.parent_id, b.position, b.created_at, b.updated_at
+        FROM blocks b
+        LEFT JOIN block_properties bp ON b.id = bp.block_id AND bp.key = 'checked'
+        WHERE b.act_id = ?
+          AND b.type = 'to_do'
+          AND (bp.value IS NULL OR bp.value = 'false' OR bp.value = '0')
+        ORDER BY b.created_at
+    """, (act_id,))
+
+    todos = []
+    for row in cursor:
+        block_id = row["id"]
+
+        # Get the text content from rich_text
+        rt_cursor = conn.execute("""
+            SELECT content FROM rich_text WHERE block_id = ? ORDER BY position
+        """, (block_id,))
+        text = " ".join(rt_row["content"] for rt_row in rt_cursor)
+
+        todos.append({
+            "block_id": block_id,
+            "page_id": row["page_id"],
+            "parent_id": row["parent_id"],
+            "text": text,
+            "created_at": row["created_at"],
+        })
+
+    return todos
+
+
+def search_blocks_in_act(act_id: str, query: str) -> list[dict[str, Any]]:
+    """Search for blocks containing text in an act.
+
+    Performs a simple LIKE search on rich_text content.
+
+    Args:
+        act_id: The act ID.
+        query: Text to search for.
+
+    Returns:
+        List of matching blocks with their text content.
+    """
+    init_db()
+    conn = _get_connection()
+
+    # Search in rich_text content
+    cursor = conn.execute("""
+        SELECT DISTINCT b.id, b.type, b.page_id, b.parent_id, b.position, b.created_at
+        FROM blocks b
+        JOIN rich_text rt ON b.id = rt.block_id
+        WHERE b.act_id = ?
+          AND rt.content LIKE ?
+        ORDER BY b.created_at
+    """, (act_id, f"%{query}%"))
+
+    results = []
+    for row in cursor:
+        block_id = row["id"]
+
+        # Get full text content
+        rt_cursor = conn.execute("""
+            SELECT content FROM rich_text WHERE block_id = ? ORDER BY position
+        """, (block_id,))
+        text = " ".join(rt_row["content"] for rt_row in rt_cursor)
+
+        results.append({
+            "block_id": block_id,
+            "type": row["type"],
+            "page_id": row["page_id"],
+            "parent_id": row["parent_id"],
+            "text": text,
+            "created_at": row["created_at"],
+        })
+
+    return results
