@@ -28,6 +28,7 @@ import { renderCollapsedDiffPreview } from './diffPreview';
 import { createDiffPreviewOverlay } from './diffPreviewOverlay';
 import { createCodeModeView } from './codeModeView';
 import { createCairnView } from './cairnView';
+import { createArchiveReviewOverlay, ArchivePreview, ArchiveReviewResult } from './archiveReviewOverlay';
 import { buildPlayWindow } from './playWindow';
 import type {
   ChatRespondResult,
@@ -435,6 +436,59 @@ function buildUi() {
     kernelRequest,
   });
 
+  // ============ Archive Review Overlay ============
+  let currentArchivePreview: ArchivePreview | null = null;
+
+  const archiveReviewOverlay = createArchiveReviewOverlay({
+    onConfirm: async (result: ArchiveReviewResult) => {
+      if (!currentConversationId || !currentArchivePreview) return;
+
+      try {
+        const archiveResult = await kernelRequest('conversation/archive/confirm', {
+          conversation_id: currentConversationId,
+          title: result.editedTitle,
+          summary: result.editedSummary,
+          act_id: currentArchivePreview.linked_act_id,
+          knowledge_entries: result.approvedEntries,
+          additional_notes: result.additionalNotes,
+          rating: result.rating,
+        }) as { archive_id: string; title: string; message_count: number; knowledge_entries_added: number };
+
+        // Show success message in CAIRN view
+        let successMsg = `Archived "${archiveResult.title}" (${archiveResult.message_count} messages)`;
+        if (archiveResult.knowledge_entries_added > 0) {
+          successMsg += `. Saved ${archiveResult.knowledge_entries_added} knowledge entries`;
+        }
+        successMsg += '.';
+        cairnView.addChatMessage('assistant', successMsg);
+
+        // Clear the chat
+        cairnView.clearChat();
+        currentConversationId = null;
+        currentArchivePreview = null;
+
+      } catch (e) {
+        cairnView.addChatMessage('assistant', `Archive failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      }
+    },
+    onCancel: () => {
+      currentArchivePreview = null;
+      cairnView.addChatMessage('assistant', 'Archive cancelled.');
+    },
+    getActTitle: async (actId: string) => {
+      try {
+        const result = await kernelRequest('play/acts/list', {}) as { acts: Array<{ act_id: string; title: string }> };
+        const act = result.acts.find(a => a.act_id === actId);
+        return act?.title || null;
+      } catch {
+        return null;
+      }
+    },
+  });
+
+  // Add overlay to document
+  document.body.appendChild(archiveReviewOverlay.container);
+
   // ============ CAIRN View (Conversational) ============
   const cairnView = createCairnView({
     onSendMessage: async (message: string, options?: { extendedThinking?: boolean }) => {
@@ -444,6 +498,10 @@ function buildUi() {
     getConversationId: () => currentConversationId,
     onConversationCleared: () => {
       currentConversationId = null;
+    },
+    showArchiveReview: (preview: ArchivePreview) => {
+      currentArchivePreview = preview;
+      archiveReviewOverlay.show(preview);
     },
   });
 

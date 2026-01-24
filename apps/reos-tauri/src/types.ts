@@ -555,6 +555,19 @@ export type ArchiveGetResult = {
 };
 
 // Conversation Archive types (LLM-driven memory system)
+export type ConversationArchivePreview = {
+  title: string;
+  summary: string;
+  linked_act_id: string | null;
+  linking_reason: string | null;
+  knowledge_entries: Array<{
+    category: string;
+    content: string;
+  }>;
+  topics: string[];
+  message_count: number;
+};
+
 export type ConversationArchiveResult = {
   archive_id: string;
   title: string;

@@ -12,11 +12,22 @@ import { el } from './dom';
 import type { ChatRespondResult, ExtendedThinkingTrace, ThinkingNode, FacetCheck, Tension } from './types';
 import { highlight, injectSyntaxHighlightStyles } from './syntaxHighlight';
 
+interface ArchivePreviewData {
+  title: string;
+  summary: string;
+  linked_act_id: string | null;
+  linking_reason: string | null;
+  knowledge_entries: Array<{ category: string; content: string }>;
+  topics: string[];
+  message_count: number;
+}
+
 interface CairnViewCallbacks {
   onSendMessage: (message: string, options?: { extendedThinking?: boolean }) => Promise<void>;
   kernelRequest: (method: string, params: unknown) => Promise<unknown>;
   getConversationId: () => string | null;
   onConversationCleared: () => void;
+  showArchiveReview: (preview: ArchivePreviewData) => void;
 }
 
 /** Full message data including LLM context for expandable details */
@@ -231,7 +242,7 @@ export function createCairnView(
     deleteBtn.style.background = 'rgba(239, 68, 68, 0.15)';
   });
 
-  // Archive button handler
+  // Archive button handler - shows preview first
   archiveBtn.addEventListener('click', async () => {
     const conversationId = callbacks.getConversationId();
     if (!conversationId) {
@@ -239,36 +250,23 @@ export function createCairnView(
       return;
     }
 
-    // Show archiving indicator
+    // Show analyzing indicator
     const originalText = archiveBtn.innerHTML;
-    archiveBtn.innerHTML = `<span>⏳</span><span>Archiving...</span>`;
+    archiveBtn.innerHTML = `<span>⏳</span><span>Analyzing...</span>`;
     archiveBtn.style.pointerEvents = 'none';
 
     try {
-      const result = await callbacks.kernelRequest('conversation/archive', {
+      // Get preview from LLM analysis
+      const preview = await callbacks.kernelRequest('conversation/archive/preview', {
         conversation_id: conversationId,
         auto_link: true,
-        extract_knowledge: true,
-      }) as { archive_id: string; title: string; message_count: number; knowledge_entries_added: number; linked_act_id: string | null };
+      }) as ArchivePreviewData;
 
-      // Show success message
-      let successMsg = `Archived "${result.title}" (${result.message_count} messages)`;
-      if (result.knowledge_entries_added > 0) {
-        successMsg += `. Extracted ${result.knowledge_entries_added} knowledge entries`;
-      }
-      if (result.linked_act_id) {
-        successMsg += ` and linked to act`;
-      }
-      successMsg += '.';
-
-      addChatMessage('assistant', successMsg);
-
-      // Clear the chat after archiving
-      clearChat();
-      callbacks.onConversationCleared();
+      // Show the review overlay
+      callbacks.showArchiveReview(preview);
 
     } catch (e) {
-      addChatMessage('assistant', `Archive failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      addChatMessage('assistant', `Analysis failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
     } finally {
       archiveBtn.innerHTML = originalText;
       archiveBtn.style.pointerEvents = 'auto';

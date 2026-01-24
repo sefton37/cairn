@@ -3111,6 +3111,50 @@ def _handle_chat_clear(
 # Conversation Archive Service (LLM-driven memory system)
 # -------------------------------------------------------------------------
 
+def _handle_conversation_archive_preview(
+    db: Database,
+    *,
+    conversation_id: str,
+    auto_link: bool = True,
+) -> dict[str, Any]:
+    """Preview archive extraction before saving."""
+    from .services.archive_service import ArchiveService
+
+    service = ArchiveService(db)
+    preview = service.preview_archive(
+        conversation_id,
+        auto_link=auto_link,
+    )
+    return preview.to_dict()
+
+
+def _handle_conversation_archive_confirm(
+    db: Database,
+    *,
+    conversation_id: str,
+    title: str,
+    summary: str,
+    act_id: str | None = None,
+    knowledge_entries: list[dict[str, str]],
+    additional_notes: str = "",
+    rating: int | None = None,
+) -> dict[str, Any]:
+    """Archive a conversation with user-reviewed data."""
+    from .services.archive_service import ArchiveService
+
+    service = ArchiveService(db)
+    result = service.archive_with_review(
+        conversation_id,
+        title=title,
+        summary=summary,
+        act_id=act_id,
+        knowledge_entries=knowledge_entries,
+        additional_notes=additional_notes,
+        rating=rating,
+    )
+    return result.to_dict()
+
+
 def _handle_conversation_archive(
     db: Database,
     *,
@@ -4874,6 +4918,58 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
             )
 
         # --- Conversation Archive (LLM-driven memory system) ---
+
+        if method == "conversation/archive/preview":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            conversation_id = params.get("conversation_id")
+            if not isinstance(conversation_id, str) or not conversation_id:
+                raise RpcError(code=-32602, message="conversation_id is required")
+            auto_link = params.get("auto_link", True)
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_conversation_archive_preview(
+                    db,
+                    conversation_id=conversation_id,
+                    auto_link=bool(auto_link),
+                ),
+            )
+
+        if method == "conversation/archive/confirm":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            conversation_id = params.get("conversation_id")
+            title = params.get("title")
+            summary = params.get("summary")
+            if not isinstance(conversation_id, str) or not conversation_id:
+                raise RpcError(code=-32602, message="conversation_id is required")
+            if not isinstance(title, str) or not title:
+                raise RpcError(code=-32602, message="title is required")
+            if not isinstance(summary, str):
+                raise RpcError(code=-32602, message="summary is required")
+            act_id = params.get("act_id")
+            knowledge_entries = params.get("knowledge_entries", [])
+            additional_notes = params.get("additional_notes", "")
+            rating = params.get("rating")
+            if not isinstance(knowledge_entries, list):
+                raise RpcError(code=-32602, message="knowledge_entries must be a list")
+            if not isinstance(additional_notes, str):
+                additional_notes = ""
+            if rating is not None and not isinstance(rating, int):
+                raise RpcError(code=-32602, message="rating must be an integer or null")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_conversation_archive_confirm(
+                    db,
+                    conversation_id=conversation_id,
+                    title=title,
+                    summary=summary,
+                    act_id=act_id,
+                    knowledge_entries=knowledge_entries,
+                    additional_notes=additional_notes,
+                    rating=rating,
+                ),
+            )
 
         if method == "conversation/archive":
             if not isinstance(params, dict):

@@ -122,6 +122,30 @@ class ArchiveResult:
 
 
 @dataclass
+class ArchivePreview:
+    """Preview of archive analysis before saving."""
+
+    title: str
+    summary: str
+    linked_act_id: str | None
+    linking_reason: str | None
+    knowledge_entries: list[dict[str, str]]
+    topics: list[str]
+    message_count: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "title": self.title,
+            "summary": self.summary,
+            "linked_act_id": self.linked_act_id,
+            "linking_reason": self.linking_reason,
+            "knowledge_entries": self.knowledge_entries,
+            "topics": self.topics,
+            "message_count": self.message_count,
+        }
+
+
+@dataclass
 class ArchiveQualityAssessment:
     """Quality assessment of an archive."""
 
@@ -163,6 +187,150 @@ class ArchiveService:
     def __init__(self, db: Database):
         self._db = db
         self._knowledge_store = KnowledgeStore()
+
+    def preview_archive(
+        self,
+        conversation_id: str,
+        *,
+        auto_link: bool = True,
+    ) -> ArchivePreview:
+        """Preview what will be extracted before archiving.
+
+        Runs LLM analysis without saving anything. Returns a preview
+        that can be reviewed and modified before calling archive_with_review.
+
+        Args:
+            conversation_id: The conversation to analyze
+            auto_link: If True, LLM will suggest act link
+
+        Returns:
+            ArchivePreview with analysis results
+        """
+        # Get conversation messages
+        messages = self._db.get_messages(conversation_id=conversation_id, limit=500)
+        if not messages:
+            raise ValueError("No messages in conversation")
+
+        formatted_messages = [
+            {
+                "role": m["role"],
+                "content": m["content"],
+                "created_at": m.get("created_at", ""),
+            }
+            for m in messages
+        ]
+
+        # Get acts context for LLM linking
+        acts_context = self._get_acts_context() if auto_link else "N/A"
+
+        # Run LLM analysis
+        analysis = self._analyze_conversation(formatted_messages, acts_context)
+
+        return ArchivePreview(
+            title=analysis.get("title", f"Conversation {datetime.now(UTC).isoformat()[:10]}"),
+            summary=analysis.get("summary", ""),
+            linked_act_id=analysis.get("linked_act_id"),
+            linking_reason=analysis.get("linking_reason"),
+            knowledge_entries=analysis.get("knowledge_entries", []),
+            topics=analysis.get("topics", []),
+            message_count=len(messages),
+        )
+
+    def archive_with_review(
+        self,
+        conversation_id: str,
+        *,
+        title: str,
+        summary: str,
+        act_id: str | None = None,
+        knowledge_entries: list[dict[str, str]],
+        additional_notes: str = "",
+        rating: int | None = None,
+    ) -> ArchiveResult:
+        """Archive a conversation with user-reviewed data.
+
+        Called after preview_archive when user has reviewed and approved.
+
+        Args:
+            conversation_id: The conversation to archive
+            title: User-approved/edited title
+            summary: User-approved/edited summary
+            act_id: The act to link to (user-approved)
+            knowledge_entries: User-approved knowledge entries
+            additional_notes: Additional notes from user
+            rating: User's quality rating (1-5) for learning
+
+        Returns:
+            ArchiveResult with archive details
+        """
+        # Get conversation messages
+        messages = self._db.get_messages(conversation_id=conversation_id, limit=500)
+        if not messages:
+            raise ValueError("No messages in conversation")
+
+        formatted_messages = [
+            {
+                "role": m["role"],
+                "content": m["content"],
+                "created_at": m.get("created_at", ""),
+            }
+            for m in messages
+        ]
+
+        # Save the archive with user-provided title and summary
+        archive = self._knowledge_store.save_archive(
+            messages=formatted_messages,
+            act_id=act_id,
+            title=title,
+            summary=summary,
+        )
+
+        # Store archive metadata in database
+        self._store_archive_metadata(
+            archive_id=archive.archive_id,
+            conversation_id=conversation_id,
+            act_id=act_id,
+            linking_reason=None,  # User approved, no need for reason
+            topics=[],
+            sentiment="neutral",
+        )
+
+        # Add user-approved knowledge entries
+        knowledge_added = 0
+        if knowledge_entries:
+            added = self._knowledge_store.add_learned_entries(
+                entries=knowledge_entries,
+                act_id=act_id,
+                source_archive_id=archive.archive_id,
+                deduplicate=True,
+            )
+            knowledge_added = len(added)
+
+        # If user provided additional notes, add them as observations
+        if additional_notes.strip():
+            self._knowledge_store.add_learned_entries(
+                entries=[{"category": "observation", "content": additional_notes.strip()}],
+                act_id=act_id,
+                source_archive_id=archive.archive_id,
+                deduplicate=False,  # User explicitly added this
+            )
+            knowledge_added += 1
+
+        # If user provided a rating, store it for learning
+        if rating is not None:
+            self.submit_user_feedback(archive.archive_id, rating)
+
+        return ArchiveResult(
+            archive_id=archive.archive_id,
+            title=archive.title,
+            summary=archive.summary,
+            message_count=archive.message_count,
+            linked_act_id=act_id,
+            linking_reason=None,
+            knowledge_entries_added=knowledge_added,
+            topics=[],
+            archived_at=archive.archived_at,
+        )
 
     def archive_conversation(
         self,
