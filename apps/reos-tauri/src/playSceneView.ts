@@ -362,11 +362,14 @@ export function createPlaySceneView(options: PlaySceneViewOptions): {
       font-size: 14px;
     `;
 
+    // Define available stages - recurring scenes cannot be set to 'complete'
+    const isRecurring = !!scene.recurrence_rule;
     const stages = [
       { value: 'planning', label: 'Planning' },
       { value: 'in_progress', label: 'In Progress' },
       { value: 'awaiting_data', label: 'Awaiting Data' },
-      { value: 'complete', label: 'Complete' },
+      // Only show 'Complete' option for non-recurring scenes
+      ...(!isRecurring ? [{ value: 'complete', label: 'Complete' }] : []),
     ];
 
     for (const s of stages) {
@@ -376,6 +379,19 @@ export function createPlaySceneView(options: PlaySceneViewOptions): {
       option.selected = scene.stage === s.value;
       option.style.cssText = 'background: #1a1a2e; color: #e5e7eb;';
       stageSelect.appendChild(option);
+    }
+
+    // Add hint for recurring scenes
+    if (isRecurring) {
+      const recurringHint = el('div');
+      recurringHint.textContent = 'Recurring scenes cannot be marked complete.';
+      recurringHint.style.cssText = `
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.4);
+        margin-top: 4px;
+        font-style: italic;
+      `;
+      stageSection.appendChild(recurringHint);
     }
 
     stageSelect.addEventListener('change', async () => {
@@ -396,6 +412,68 @@ export function createPlaySceneView(options: PlaySceneViewOptions): {
     stageSection.appendChild(stageLabel);
     stageSection.appendChild(stageSelect);
     content.appendChild(stageSection);
+
+    // Needs Attention checkbox (disable auto-complete)
+    // Only show for non-recurring scenes
+    if (!scene.recurrence_rule) {
+      const attentionSection = el('div');
+      attentionSection.style.cssText = `
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      `;
+
+      const attentionCheckbox = el('input') as HTMLInputElement;
+      attentionCheckbox.type = 'checkbox';
+      attentionCheckbox.id = 'disable-auto-complete';
+      attentionCheckbox.checked = !!(scene as any).disable_auto_complete;
+      attentionCheckbox.style.cssText = `
+        width: 18px;
+        height: 18px;
+        accent-color: #ef4444;
+        cursor: pointer;
+      `;
+
+      const attentionLabel = el('label') as HTMLLabelElement;
+      attentionLabel.htmlFor = 'disable-auto-complete';
+      attentionLabel.style.cssText = `
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.8);
+        cursor: pointer;
+        user-select: none;
+      `;
+      attentionLabel.textContent = 'Needs Attention (disable auto-complete)';
+
+      const attentionHint = el('div');
+      attentionHint.textContent = 'When checked, this scene will move to "Need Attention" when overdue instead of auto-completing.';
+      attentionHint.style.cssText = `
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.4);
+        margin-top: 4px;
+        margin-left: 28px;
+      `;
+
+      attentionCheckbox.addEventListener('change', async () => {
+        try {
+          await kernelRequest('play/scenes/update', {
+            act_id: actId,
+            scene_id: sceneId,
+            disable_auto_complete: attentionCheckbox.checked,
+          });
+          await loadAllScenes();
+          await onSceneChange();
+          render();
+        } catch (e) {
+          console.error('Failed to update disable_auto_complete:', e);
+        }
+      });
+
+      attentionSection.appendChild(attentionCheckbox);
+      attentionSection.appendChild(attentionLabel);
+      content.appendChild(attentionSection);
+      content.appendChild(attentionHint);
+    }
 
     // Notes
     const notesSection = el('div');

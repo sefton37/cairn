@@ -42,7 +42,9 @@ _local = threading.local()
 # v6: Add calendar metadata columns to scenes (consolidate from cairn_metadata)
 # v7: Add blocks, block_properties, rich_text tables for Notion-style block editor
 # v8: Add root_block_id to acts for block-based root content
-SCHEMA_VERSION = 8
+# v9: Add disable_auto_complete column to scenes (auto-complete vs needs_attention on overdue)
+# v10: Enforce recurring scenes cannot be 'complete' - cleanup existing data
+SCHEMA_VERSION = 10
 
 
 def _play_db_path() -> Path:
@@ -136,6 +138,7 @@ def _init_schema(conn: sqlite3.Connection) -> None:
 
         -- Scenes table (v4: the todo/task items, formerly called Beats)
         -- v6: Added calendar metadata columns (calendar_event_start, etc.)
+        -- v9: Added disable_auto_complete for overdue behavior control
         CREATE TABLE IF NOT EXISTS scenes (
             scene_id TEXT PRIMARY KEY,
             act_id TEXT NOT NULL REFERENCES acts(act_id) ON DELETE CASCADE,
@@ -153,6 +156,8 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             next_occurrence TEXT,
             calendar_name TEXT,
             category TEXT,
+            -- v9: When true, overdue scenes go to need_attention instead of auto-completing
+            disable_auto_complete INTEGER NOT NULL DEFAULT 0,
             position INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -291,6 +296,16 @@ def _run_schema_migrations(conn: sqlite3.Connection, current_version: int) -> No
     if current_version < 8:
         logger.info("Running v8 migration: Add root_block_id to acts")
         _migrate_v7_to_v8(conn)
+
+    # Migration v8 -> v9: Add disable_auto_complete to scenes table
+    if current_version < 9:
+        logger.info("Running v9 migration: Add disable_auto_complete to scenes")
+        _migrate_v8_to_v9(conn)
+
+    # Migration v9 -> v10: Enforce recurring scenes cannot be 'complete'
+    if current_version < 10:
+        logger.info("Running v10 migration: Clean up recurring scenes in 'complete' stage")
+        _migrate_v9_to_v10(conn)
 
     # Update schema version
     conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
@@ -569,6 +584,51 @@ def _migrate_v7_to_v8(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE acts ADD COLUMN root_block_id TEXT")
 
     logger.info("v8 migration complete")
+
+
+def _migrate_v8_to_v9(conn: sqlite3.Connection) -> None:
+    """Migrate from v8 to v9 schema.
+
+    Adds disable_auto_complete column to scenes table.
+    When false (default): Non-recurring scenes auto-complete when overdue.
+    When true: Overdue scenes go to need_attention instead of auto-completing.
+
+    Also cleans up recurring scenes that were incorrectly set to 'complete'.
+    Recurring scenes represent ongoing series and cannot be completed.
+    """
+    # Get current columns
+    cursor = conn.execute("PRAGMA table_info(scenes)")
+    columns = [row[1] for row in cursor.fetchall()]
+
+    if "disable_auto_complete" not in columns:
+        logger.info("Adding disable_auto_complete column to scenes table")
+        conn.execute("ALTER TABLE scenes ADD COLUMN disable_auto_complete INTEGER NOT NULL DEFAULT 0")
+
+    logger.info("v9 migration complete")
+
+
+def _migrate_v9_to_v10(conn: sqlite3.Connection) -> None:
+    """Migrate from v9 to v10 schema.
+
+    Enforces that recurring scenes cannot be in 'complete' stage.
+    Recurring scenes represent ongoing series and should never be marked complete.
+    This cleans up any existing data that violates this rule.
+    """
+    # Clean up: Reset any recurring scenes that are in 'complete' stage to 'in_progress'
+    cursor = conn.execute("""
+        UPDATE scenes
+        SET stage = 'in_progress', updated_at = ?
+        WHERE recurrence_rule IS NOT NULL
+          AND recurrence_rule != ''
+          AND stage = 'complete'
+    """, (_now_iso(),))
+    cleaned = cursor.rowcount
+    if cleaned > 0:
+        logger.info(f"Reset {cleaned} recurring scenes from 'complete' to 'in_progress'")
+    else:
+        logger.info("No recurring scenes needed cleanup")
+
+    logger.info("v10 migration complete")
 
 
 def _migrate_calendar_data_from_cairn(conn: sqlite3.Connection) -> None:
@@ -1063,7 +1123,7 @@ def list_scenes(act_id: str) -> list[dict[str, Any]]:
         SELECT scene_id, act_id, title, stage, notes, link, calendar_event_id,
                recurrence_rule, thunderbird_event_id,
                calendar_event_start, calendar_event_end, calendar_event_title,
-               next_occurrence, calendar_name, category
+               next_occurrence, calendar_name, category, disable_auto_complete
         FROM scenes
         WHERE act_id = ?
         ORDER BY position ASC
@@ -1086,6 +1146,7 @@ def list_scenes(act_id: str) -> list[dict[str, Any]]:
             "next_occurrence": row["next_occurrence"],
             "calendar_name": row["calendar_name"],
             "category": row["category"],
+            "disable_auto_complete": bool(row["disable_auto_complete"]),
         }
         for row in cursor
     ]
@@ -1102,7 +1163,7 @@ def list_all_scenes() -> list[dict[str, Any]]:
         SELECT s.scene_id, s.act_id, s.title, s.stage, s.notes, s.link,
                s.calendar_event_id, s.recurrence_rule, s.thunderbird_event_id,
                s.calendar_event_start, s.calendar_event_end, s.calendar_event_title,
-               s.next_occurrence, s.calendar_name, s.category,
+               s.next_occurrence, s.calendar_name, s.category, s.disable_auto_complete,
                a.title as act_title, a.color as act_color
         FROM scenes s
         JOIN acts a ON s.act_id = a.act_id
@@ -1126,6 +1187,7 @@ def list_all_scenes() -> list[dict[str, Any]]:
             "next_occurrence": row["next_occurrence"],
             "calendar_name": row["calendar_name"],
             "category": row["category"],
+            "disable_auto_complete": bool(row["disable_auto_complete"]),
             "act_title": row["act_title"],
             "act_color": row["act_color"],
         }
@@ -1140,7 +1202,7 @@ def get_scene(scene_id: str) -> dict[str, Any] | None:
         SELECT scene_id, act_id, title, stage, notes, link, calendar_event_id,
                recurrence_rule, thunderbird_event_id,
                calendar_event_start, calendar_event_end, calendar_event_title,
-               next_occurrence, calendar_name, category
+               next_occurrence, calendar_name, category, disable_auto_complete
         FROM scenes WHERE scene_id = ?
     """, (scene_id,))
 
@@ -1164,13 +1226,15 @@ def get_scene(scene_id: str) -> dict[str, Any] | None:
         "next_occurrence": row["next_occurrence"],
         "calendar_name": row["calendar_name"],
         "category": row["category"],
+        "disable_auto_complete": bool(row["disable_auto_complete"]),
     }
 
 
 def create_scene(*, act_id: str, title: str, stage: str = "planning",
                  notes: str = "", link: str | None = None, calendar_event_id: str | None = None,
                  recurrence_rule: str | None = None,
-                 thunderbird_event_id: str | None = None) -> tuple[list[dict[str, Any]], str]:
+                 thunderbird_event_id: str | None = None,
+                 disable_auto_complete: bool = False) -> tuple[list[dict[str, Any]], str]:
     """Create a new scene."""
     scene_id = _new_id("scene")
     now = _now_iso()
@@ -1186,10 +1250,10 @@ def create_scene(*, act_id: str, title: str, stage: str = "planning",
         conn.execute("""
             INSERT INTO scenes
             (scene_id, act_id, title, stage, notes, link, calendar_event_id, recurrence_rule,
-             thunderbird_event_id, position, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             thunderbird_event_id, disable_auto_complete, position, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (scene_id, act_id, title, stage, notes, link, calendar_event_id, recurrence_rule,
-              thunderbird_event_id, position, now, now))
+              thunderbird_event_id, 1 if disable_auto_complete else 0, position, now, now))
 
     return list_scenes(act_id), scene_id
 
@@ -1197,11 +1261,32 @@ def create_scene(*, act_id: str, title: str, stage: str = "planning",
 def update_scene(*, act_id: str, scene_id: str, title: str | None = None,
                  stage: str | None = None, notes: str | None = None, link: str | None = None,
                  calendar_event_id: str | None = None, recurrence_rule: str | None = None,
-                 thunderbird_event_id: str | None = None) -> list[dict[str, Any]]:
-    """Update a scene."""
+                 thunderbird_event_id: str | None = None,
+                 disable_auto_complete: bool | None = None) -> list[dict[str, Any]]:
+    """Update a scene.
+
+    Note: Recurring scenes cannot be set to 'complete' stage. They represent
+    ongoing series, not one-time tasks. If stage='complete' is requested for
+    a recurring scene, it will be ignored.
+    """
     now = _now_iso()
 
     with _transaction() as conn:
+        # Check if this is a recurring scene when trying to set stage to complete
+        if stage == "complete":
+            cursor = conn.execute(
+                "SELECT recurrence_rule FROM scenes WHERE scene_id = ?",
+                (scene_id,)
+            )
+            row = cursor.fetchone()
+            if row and row["recurrence_rule"]:
+                # Recurring scenes cannot be completed - ignore the stage change
+                logger.warning(
+                    f"Attempted to set recurring scene {scene_id} to 'complete'. "
+                    "Recurring scenes cannot be completed. Ignoring stage change."
+                )
+                stage = None  # Don't update the stage
+
         updates = ["updated_at = ?"]
         params: list[Any] = [now]
 
@@ -1226,6 +1311,9 @@ def update_scene(*, act_id: str, scene_id: str, title: str | None = None,
         if thunderbird_event_id is not None:
             updates.append("thunderbird_event_id = ?")
             params.append(thunderbird_event_id if thunderbird_event_id else None)
+        if disable_auto_complete is not None:
+            updates.append("disable_auto_complete = ?")
+            params.append(1 if disable_auto_complete else 0)
 
         params.append(scene_id)
 
@@ -2155,6 +2243,33 @@ def get_unchecked_todos(act_id: str) -> list[dict[str, Any]]:
         })
 
     return todos
+
+
+def cleanup_recurring_scenes_stage() -> int:
+    """Clean up recurring scenes that are incorrectly set to 'complete'.
+
+    Recurring scenes represent ongoing series and cannot be completed.
+    This function resets any such scenes to 'in_progress'.
+
+    Returns:
+        Number of scenes that were cleaned up.
+    """
+    init_db()
+
+    with _transaction() as conn:
+        cursor = conn.execute("""
+            UPDATE scenes
+            SET stage = 'in_progress', updated_at = ?
+            WHERE recurrence_rule IS NOT NULL
+              AND recurrence_rule != ''
+              AND stage = 'complete'
+        """, (_now_iso(),))
+        cleaned = cursor.rowcount
+
+    if cleaned > 0:
+        logger.info(f"Cleaned up {cleaned} recurring scenes from 'complete' to 'in_progress'")
+
+    return cleaned
 
 
 def search_blocks_in_act(act_id: str, query: str) -> list[dict[str, Any]]:

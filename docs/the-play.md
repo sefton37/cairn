@@ -97,8 +97,108 @@ Each Scene has:
 - Link to external resources (URLs, documents)
 - Calendar event ID (for Thunderbird sync)
 - Recurrence rule (for repeating events)
+- Needs Attention flag (disable auto-complete)
 
 Scenes can be embedded in Pages as Scene blocks, creating a seamless connection between your knowledge base and calendar.
+
+## How Scenes Operate
+
+### The Core Assumption: You Keep Your Calendar
+
+The Play operates on a simple premise: **your calendar is your commitment**. When you put something on your calendar, you intend to do it. The system trusts you to show up.
+
+This is different from task managers that nag you about overdue items. The Play assumes you did what you said you'd do—unless you tell it otherwise.
+
+### Scene Stages
+
+Scenes flow through stages that reflect their lifecycle:
+
+| Stage | Meaning |
+|-------|---------|
+| `planning` | Not yet scheduled or still being defined |
+| `in_progress` | Scheduled and upcoming |
+| `awaiting_data` | Blocked on external input |
+| `need_attention` | Overdue and requires manual resolution |
+| `complete` | Done |
+
+The Kanban board in the Scene View displays these as columns.
+
+### Auto-Complete: Trust Your Calendar
+
+**Non-recurring scenes auto-complete when their time passes.**
+
+If you scheduled a doctor's appointment for 2pm Tuesday and it's now Wednesday, The Play assumes you went to the appointment. The scene automatically moves to `complete`.
+
+This isn't laziness—it's respect. The system trusts that you honor your commitments. It doesn't need you to manually check off every calendar event to prove you did it.
+
+### Recurring Scenes Never Complete
+
+**Recurring scenes can never be marked complete.**
+
+A weekly team standup isn't something you "finish." It's an ongoing series. Each occurrence happens, but the series continues.
+
+Recurring scenes:
+- Cannot be set to `complete` stage (the option is hidden in the UI)
+- Move to `need_attention` when overdue (prompting you to update their status)
+- Represent the entire series, not individual occurrences
+
+If you need to end a recurring series, delete the scene or remove its recurrence rule.
+
+### Needs Attention: The Honesty Safeguard
+
+Sometimes you don't keep your calendar. Meetings get skipped. Appointments get missed. Life happens.
+
+**The "Needs Attention" flag disables auto-complete for scenes that matter.**
+
+When enabled on a non-recurring scene:
+- The scene will NOT auto-complete when its time passes
+- Instead, it moves to the `need_attention` stage
+- You must manually resolve it (complete, reschedule, or delete)
+
+**When to use Needs Attention:**
+
+| Scenario | Use Needs Attention? |
+|----------|---------------------|
+| Doctor appointment you might reschedule | Yes |
+| Weekly team meeting (recurring) | N/A (recurring never auto-completes) |
+| Deadline for a deliverable | Yes |
+| Coffee with a friend | Probably not |
+| Flight departure | No (you either made it or you didn't) |
+
+The flag is a safeguard for commitments where you need accountability. It's up to you to know when to use it. Don't overuse it—if everything needs attention, nothing does.
+
+### The Kanban Flow
+
+The Scene View Kanban board shows the effective stage of each scene:
+
+```
+┌─────────────┬─────────────┬──────────────┬────────────────┬───────────┐
+│  Planning   │ In Progress │ Awaiting Data│ Need Attention │ Complete  │
+├─────────────┼─────────────┼──────────────┼────────────────┼───────────┤
+│ Unscheduled │ Scheduled   │ Blocked on   │ Overdue items  │ Done      │
+│ items       │ upcoming    │ external     │ requiring      │           │
+│             │ events      │ input        │ resolution     │           │
+└─────────────┴─────────────┴──────────────┴────────────────┴───────────┘
+```
+
+**Effective stage computation:**
+1. Explicitly `complete` → Complete column
+2. No scheduled time → Planning column
+3. Overdue + auto-complete enabled → Complete column (auto-completed)
+4. Overdue + auto-complete disabled → Need Attention column
+5. Overdue + recurring → Need Attention column
+6. Scheduled + `planning` stage → In Progress column (has a date)
+7. Otherwise → Use explicit stage
+
+### Summary
+
+| Scene Type | When Overdue | Why |
+|------------|--------------|-----|
+| Non-recurring (default) | Auto-completes | Trust the calendar |
+| Non-recurring + Needs Attention | Goes to Need Attention | You asked for accountability |
+| Recurring | Goes to Need Attention | Series never "finishes" |
+
+The system is designed to get out of your way. It assumes competence. The Needs Attention flag exists for when you want the system to hold you accountable—use it intentionally.
 
 ### Notebooks (Legacy)
 Markdown files attached to Acts (and optionally Scenes). Free-form notes, meeting logs, research, whatever you need. This is the legacy system before blocks were introduced.
@@ -201,7 +301,13 @@ The Play is stored in SQLite (`~/.local/share/reos/reos.db`) with tables:
 
 ### Schema Version
 
-Current schema version: **8** (includes blocks support)
+Current schema version: **10**
+
+Recent schema changes:
+- v10: Enforce recurring scenes cannot be 'complete'
+- v9: Add `disable_auto_complete` for Needs Attention feature
+- v8: Add `root_block_id` for block-based Act content
+- v7: Add blocks, block_properties, rich_text tables
 
 ## Calendar Integration
 

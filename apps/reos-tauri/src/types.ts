@@ -371,6 +371,8 @@ export type PlayScene = {
   calendar_event_id: string | null;
   recurrence_rule: string | null;
   thunderbird_event_id: string | null;
+  // Auto-complete behavior: when true, overdue scenes go to 'need_attention' instead of auto-completing
+  disable_auto_complete: boolean;
   position: number;
   created_at: string;
   updated_at: string;

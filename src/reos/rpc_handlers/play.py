@@ -205,6 +205,7 @@ def handle_play_scenes_list(_db: Database, *, act_id: str) -> dict[str, Any]:
                 "calendar_event_id": s.calendar_event_id,
                 "recurrence_rule": s.recurrence_rule,
                 "thunderbird_event_id": s.thunderbird_event_id,
+                "disable_auto_complete": s.disable_auto_complete,
             }
             for s in scenes
         ]
@@ -314,6 +315,7 @@ def handle_play_scenes_create(
     calendar_event_id: str | None = None,
     recurrence_rule: str | None = None,
     thunderbird_event_id: str | None = None,
+    disable_auto_complete: bool = False,
 ) -> dict[str, Any]:
     """Create a new scene."""
     try:
@@ -326,6 +328,7 @@ def handle_play_scenes_create(
             calendar_event_id=calendar_event_id,
             recurrence_rule=recurrence_rule,
             thunderbird_event_id=thunderbird_event_id,
+            disable_auto_complete=disable_auto_complete,
         )
     except ValueError as exc:
         raise RpcError(code=-32602, message=str(exc)) from exc
@@ -342,6 +345,7 @@ def handle_play_scenes_create(
                 "calendar_event_id": s.calendar_event_id,
                 "recurrence_rule": s.recurrence_rule,
                 "thunderbird_event_id": s.thunderbird_event_id,
+                "disable_auto_complete": s.disable_auto_complete,
             }
             for s in scenes
         ]
@@ -360,6 +364,7 @@ def handle_play_scenes_update(
     calendar_event_id: str | None = None,
     recurrence_rule: str | None = None,
     thunderbird_event_id: str | None = None,
+    disable_auto_complete: bool | None = None,
 ) -> dict[str, Any]:
     """Update a scene."""
     try:
@@ -373,6 +378,7 @@ def handle_play_scenes_update(
             calendar_event_id=calendar_event_id,
             recurrence_rule=recurrence_rule,
             thunderbird_event_id=thunderbird_event_id,
+            disable_auto_complete=disable_auto_complete,
         )
     except ValueError as exc:
         raise RpcError(code=-32602, message=str(exc)) from exc
@@ -388,6 +394,7 @@ def handle_play_scenes_update(
                 "calendar_event_id": s.calendar_event_id,
                 "recurrence_rule": s.recurrence_rule,
                 "thunderbird_event_id": s.thunderbird_event_id,
+                "disable_auto_complete": s.disable_auto_complete,
             }
             for s in scenes
         ]

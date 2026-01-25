@@ -3,10 +3,12 @@
 This module provides backend computation of derived fields like effective_stage,
 ensuring the UI receives ready-to-display data rather than computing it itself.
 
-The effective_stage logic mirrors playKanbanBoard.ts:42-144 exactly:
+The effective_stage logic:
 - complete -> 'complete'
 - unscheduled -> 'planning'
-- overdue -> 'need_attention'
+- overdue (non-recurring, disable_auto_complete=False) -> 'complete' (auto-complete)
+- overdue (non-recurring, disable_auto_complete=True) -> 'need_attention'
+- overdue (recurring) -> 'need_attention'
 - planning + scheduled -> 'in_progress'
 - else -> raw stage
 """
@@ -113,14 +115,39 @@ def is_overdue(scene: dict[str, Any]) -> bool:
         return False
 
 
+def should_auto_complete(scene: dict[str, Any]) -> bool:
+    """Determine if an overdue scene should auto-complete.
+
+    Auto-completion occurs when:
+    1. The scene is NOT recurring (one-time event)
+    2. The scene does NOT have disable_auto_complete=True
+
+    Args:
+        scene: Scene dict with recurrence_rule and disable_auto_complete fields.
+
+    Returns:
+        True if the scene should auto-complete when overdue, False otherwise.
+    """
+    # Recurring scenes never auto-complete
+    if scene.get("recurrence_rule"):
+        return False
+
+    # Check if auto-complete is disabled
+    if scene.get("disable_auto_complete"):
+        return False
+
+    return True
+
+
 def compute_effective_stage(scene: dict[str, Any]) -> str:
     """Get the effective Kanban column for a scene.
 
     Priority order:
     1. Completed items -> 'complete'
     2. Unscheduled items -> 'planning'
-    3. Overdue items (date passed, not complete) -> 'need_attention'
-    4. Scheduled items use their actual stage, but 'planning' becomes 'in_progress'
+    3. Overdue items (non-recurring, auto-complete enabled) -> 'complete'
+    4. Overdue items (recurring OR auto-complete disabled) -> 'need_attention'
+    5. Scheduled items use their actual stage, but 'planning' becomes 'in_progress'
 
     Args:
         scene: Scene dict with stage and calendar fields.
@@ -139,9 +166,14 @@ def compute_effective_stage(scene: dict[str, Any]) -> str:
     if is_unscheduled(scene):
         return "planning"
 
-    # Overdue items (date passed but not complete) go to Need Attention
+    # Overdue items - either auto-complete or need attention
     if is_overdue(scene):
-        return "need_attention"
+        if should_auto_complete(scene):
+            # Auto-complete: non-recurring scenes without disable_auto_complete
+            return "complete"
+        else:
+            # Need attention: recurring scenes OR disable_auto_complete=True
+            return "need_attention"
 
     # For scheduled items, 'planning' stage becomes 'in_progress' since they have a date
     # (Planning column is only for unscheduled items)

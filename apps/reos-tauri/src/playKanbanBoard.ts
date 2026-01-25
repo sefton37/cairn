@@ -180,8 +180,8 @@ export function createPlayKanbanBoard(options: PlayKanbanBoardOptions): {
   board.className = 'kanban-board';
   board.style.cssText = `
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 16px;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
     flex: 1;
     min-height: 400px;
   `;
@@ -266,7 +266,7 @@ function createColumn(
   const header = el('div');
   header.className = 'kanban-column-header';
   header.style.cssText = `
-    padding: 12px 16px;
+    padding: 8px 10px;
     background: ${column.color}22;
     border-bottom: 2px solid ${column.color};
   `;
@@ -281,19 +281,23 @@ function createColumn(
   const headerTitle = el('span');
   headerTitle.textContent = column.label;
   headerTitle.style.cssText = `
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 600;
     color: ${column.color};
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   `;
 
   const headerCount = el('span');
   headerCount.textContent = String(scenes.length);
   headerCount.style.cssText = `
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 10px;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 8px;
     background: ${column.color}33;
     color: ${column.color};
+    flex-shrink: 0;
   `;
 
   headerTop.appendChild(headerTitle);
@@ -320,11 +324,11 @@ function createColumn(
   cardsContainer.dataset.stage = column.stage;
   cardsContainer.style.cssText = `
     flex: 1;
-    padding: 12px;
+    padding: 8px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     min-height: 100px;
   `;
 
@@ -434,15 +438,15 @@ function createSceneCard(
   const urgencyColor = getUrgencyColor(urgency);
   const isRecurring = !!scene.recurrence_rule;
 
-  // Match CAIRN "What Needs Attention" card style exactly
+  // Compact card style for 5-column layout
   card.style.cssText = `
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    padding: 12px;
-    margin-bottom: 8px;
+    border-radius: 6px;
+    padding: 8px;
     cursor: grab;
     transition: background 0.2s;
+    border-left: 3px solid ${actColor};
   `;
 
   // Drag handlers
@@ -464,7 +468,7 @@ function createSceneCard(
     onSceneClick(scene.scene_id, scene.act_id);
   });
 
-  // Hover effect (matches CAIRN)
+  // Hover effect
   card.addEventListener('mouseenter', () => {
     card.style.background = 'rgba(255, 255, 255, 0.08)';
   });
@@ -473,78 +477,135 @@ function createSceneCard(
     card.style.background = 'rgba(255, 255, 255, 0.05)';
   });
 
-  // Title row with urgency dot, title, recurring icon, and act label (matches CAIRN exactly)
+  // Title row with urgency dot and title
   const titleRow = el('div');
   titleRow.style.cssText = `
     display: flex;
-    align-items: center;
-    gap: 8px;
+    align-items: flex-start;
+    gap: 6px;
     margin-bottom: 4px;
   `;
 
   // Urgency dot
   const urgencyDot = el('span');
   urgencyDot.style.cssText = `
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: ${urgencyColor};
     flex-shrink: 0;
+    margin-top: 4px;
   `;
 
-  // Title
+  // Title (with truncation)
   const title = el('span');
   title.textContent = scene.title;
+  title.title = scene.title; // Tooltip for full title
   title.style.cssText = `
     font-weight: 500;
     color: #fff;
-    font-size: 13px;
+    font-size: 11px;
+    line-height: 1.3;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    flex: 1;
   `;
 
   titleRow.appendChild(urgencyDot);
   titleRow.appendChild(title);
 
-  // Recurring icon (inline with title, matches CAIRN)
+  // Recurring icon (inline with title)
   if (isRecurring) {
     const recurringIcon = el('span');
     recurringIcon.textContent = '🔄';
     recurringIcon.title = `Recurring: ${scene.recurrence_rule}`;
     recurringIcon.style.cssText = `
-      font-size: 11px;
-      margin-left: 4px;
+      font-size: 9px;
+      flex-shrink: 0;
     `;
     titleRow.appendChild(recurringIcon);
   }
 
-  // Act label (inline with title, matches CAIRN style)
-  const actLabel = el('span');
-  actLabel.textContent = `Act: ${scene.act_title}`;
-  actLabel.style.cssText = `
-    font-size: 10px;
-    margin-left: 6px;
-    padding: 2px 6px;
-    background: ${actColor}33;
-    color: ${actColor};
-    border-radius: 4px;
-  `;
-  titleRow.appendChild(actLabel);
-
   card.appendChild(titleRow);
 
-  // Date/reason row (matches CAIRN style exactly)
-  const reasonText = formatSceneReason(scene);
+  // Meta row: Act label and date on separate line
+  const metaRow = el('div');
+  metaRow.style.cssText = `
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+  `;
+
+  // Act label (compact)
+  const actLabel = el('span');
+  actLabel.textContent = scene.act_title;
+  actLabel.title = `Act: ${scene.act_title}`;
+  actLabel.style.cssText = `
+    font-size: 9px;
+    padding: 1px 4px;
+    background: ${actColor}33;
+    color: ${actColor};
+    border-radius: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 70px;
+  `;
+  metaRow.appendChild(actLabel);
+
+  // Date/reason (compact)
+  const reasonText = formatSceneReasonCompact(scene);
   if (reasonText) {
-    const reasonRow = el('div');
-    reasonRow.textContent = reasonText;
-    reasonRow.style.cssText = `
-      font-size: 12px;
-      color: rgba(255, 255, 255, 0.5);
-      padding-left: 16px;
+    const reasonEl = el('span');
+    reasonEl.textContent = reasonText;
+    reasonEl.style.cssText = `
+      font-size: 9px;
+      color: rgba(255, 255, 255, 0.4);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     `;
-    card.appendChild(reasonRow);
+    metaRow.appendChild(reasonEl);
   }
 
+  card.appendChild(metaRow);
+
   return card;
+}
+
+/**
+ * Compact version of formatSceneReason for narrow cards.
+ */
+function formatSceneReasonCompact(scene: SceneWithAct): string {
+  const dateStr = scene.next_occurrence || scene.calendar_event_start;
+
+  if (!dateStr) {
+    return '';
+  }
+
+  try {
+    const eventTime = new Date(dateStr);
+    const now = new Date();
+    const diffMs = eventTime.getTime() - now.getTime();
+    const diffMinutes = Math.round(diffMs / 60000);
+
+    if (diffMinutes <= 0 && diffMinutes > -60) {
+      return 'Now';
+    } else if (diffMinutes > 0 && diffMinutes < 60) {
+      return `${diffMinutes}m`;
+    } else if (diffMinutes >= 60 && diffMinutes < 1440) {
+      const hours = Math.floor(diffMinutes / 60);
+      return `${hours}h`;
+    } else {
+      // Format as "Jan 14" for compact display
+      return eventTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+  } catch {
+    return '';
+  }
 }
 
 /**

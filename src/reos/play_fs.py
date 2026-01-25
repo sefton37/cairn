@@ -94,6 +94,10 @@ class Scene:
     Calendar integration fields:
     - calendar_event_id: Inbound sync - ID of the Thunderbird event this Scene reflects
     - thunderbird_event_id: Outbound sync - ID of the Thunderbird event created for this Scene
+
+    Auto-complete behavior:
+    - By default, non-recurring scenes auto-complete when their time passes
+    - If disable_auto_complete=True, overdue scenes go to 'need_attention' instead
     """
     scene_id: str
     act_id: str  # Parent Act ID
@@ -105,6 +109,8 @@ class Scene:
     calendar_event_id: str | None = None      # Inbound sync: TB event that Scene reflects
     recurrence_rule: str | None = None        # RRULE string if recurring
     thunderbird_event_id: str | None = None   # Outbound sync: TB event created for Scene
+    # Auto-complete behavior (v9)
+    disable_auto_complete: bool = False       # If True, overdue -> need_attention instead of complete
 
 
 @dataclass(frozen=True)
@@ -256,6 +262,7 @@ def _dict_to_scene(d: dict[str, Any]) -> Scene:
         calendar_event_id=d.get("calendar_event_id"),
         recurrence_rule=d.get("recurrence_rule"),
         thunderbird_event_id=d.get("thunderbird_event_id"),
+        disable_auto_complete=bool(d.get("disable_auto_complete", False)),
     )
 
 
@@ -510,6 +517,7 @@ def create_scene(
     calendar_event_id: str | None = None,
     recurrence_rule: str | None = None,
     thunderbird_event_id: str | None = None,
+    disable_auto_complete: bool = False,
 ) -> tuple[list[Scene], str]:
     """Create a Scene under an Act.
 
@@ -522,6 +530,7 @@ def create_scene(
         calendar_event_id: Optional calendar event ID this Scene is linked to (inbound sync).
         recurrence_rule: Optional RRULE string for recurring events.
         thunderbird_event_id: Optional Thunderbird event ID created for this Scene (outbound sync).
+        disable_auto_complete: If True, overdue scenes go to need_attention instead of auto-completing.
 
     Returns:
         Tuple of (list of scenes in act, new scene_id).
@@ -550,7 +559,7 @@ def create_scene(
     scenes_data, scene_id = play_db.create_scene(
         act_id=act_id, title=title.strip(), stage=stage, notes=notes, link=link,
         calendar_event_id=calendar_event_id, recurrence_rule=recurrence_rule,
-        thunderbird_event_id=thunderbird_event_id
+        thunderbird_event_id=thunderbird_event_id, disable_auto_complete=disable_auto_complete
     )
     return [_dict_to_scene(d) for d in scenes_data], scene_id
 
@@ -566,6 +575,7 @@ def update_scene(
     calendar_event_id: str | None = None,
     recurrence_rule: str | None = None,
     thunderbird_event_id: str | None = None,
+    disable_auto_complete: bool | None = None,
 ) -> list[Scene]:
     """Update a Scene's fields.
 
@@ -579,6 +589,7 @@ def update_scene(
         calendar_event_id: New calendar event ID (optional).
         recurrence_rule: New recurrence rule (optional).
         thunderbird_event_id: New Thunderbird event ID (optional).
+        disable_auto_complete: New auto-complete setting (optional).
     """
     _validate_id(name="act_id", value=act_id)
     _validate_id(name="scene_id", value=scene_id)
@@ -596,7 +607,7 @@ def update_scene(
         act_id=act_id, scene_id=scene_id, title=title.strip() if title else None,
         stage=stage, notes=notes, link=link,
         calendar_event_id=calendar_event_id, recurrence_rule=recurrence_rule,
-        thunderbird_event_id=thunderbird_event_id
+        thunderbird_event_id=thunderbird_event_id, disable_auto_complete=disable_auto_complete
     )
     return [_dict_to_scene(d) for d in scenes_data]
 
