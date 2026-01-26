@@ -44,6 +44,29 @@ ReOS is a Linux desktop AI assistant with three core components:
 
 ## Core Data Models
 
+### Atomic Operations (V2 Foundation)
+
+Every user request is classified into atomic operations using the 3x2x3 taxonomy:
+
+```python
+# Classification dimensions
+destination_type: "stream" | "file" | "process"  # Where output goes
+consumer_type: "human" | "machine"               # Who consumes result
+execution_semantics: "read" | "interpret" | "execute"  # What action
+
+# Example classifications
+"show memory"        → (stream, human, read)
+"save to notes.txt"  → (file, human, execute)
+"run pytest"         → (process, machine, execute)
+```
+
+Agents generate atomic operations:
+- **CAIRN** → Calendar/Play operations (mostly file, human, read/execute)
+- **ReOS** → System operations (mostly process, machine, execute)
+- **RIVA** → Code operations (mostly file, machine, execute)
+
+See [Foundation](../../../docs/FOUNDATION.md) for complete architecture.
+
 ### The Play Hierarchy (2-tier)
 
 ```python

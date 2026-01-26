@@ -43,8 +43,60 @@ Supported block types:
 | `divider` | Horizontal rule | No | - |
 | `callout` | Highlighted note | Yes | `icon?: string`, `color?: string` |
 | `scene` | Calendar event embed | No | - |
+| `atomic_operation` | Classified operation | Yes | See below |
 
 **Nestable types** can have children blocks nested under them.
+
+### Atomic Operation Block Type
+
+The `atomic_operation` block type represents a classified user operation. Operations ARE blocks, enabling unified storage and querying.
+
+**Properties:**
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `destination_type` | `'stream' \| 'file' \| 'process'` | Where output goes |
+| `consumer_type` | `'human' \| 'machine'` | Who consumes result |
+| `execution_semantics` | `'read' \| 'interpret' \| 'execute'` | What action is taken |
+| `classification_confidence` | `number` | 0.0-1.0 confidence score |
+| `user_request` | `string` | Original user request text |
+| `status` | `string` | Operation status |
+
+**Example:**
+
+```json
+{
+  "id": "op-abc123",
+  "type": "atomic_operation",
+  "properties": {
+    "destination_type": "process",
+    "consumer_type": "machine",
+    "execution_semantics": "execute",
+    "classification_confidence": 0.85,
+    "user_request": "run pytest",
+    "status": "complete"
+  }
+}
+```
+
+Operations can have child operations when decomposed:
+
+```json
+{
+  "id": "op-parent",
+  "type": "atomic_operation",
+  "properties": {
+    "user_request": "Check memory and optimize auth.py",
+    "status": "decomposed"
+  },
+  "children": [
+    {"id": "op-child1", "type": "atomic_operation", "properties": {...}},
+    {"id": "op-child2", "type": "atomic_operation", "properties": {...}}
+  ]
+}
+```
+
+See [Atomic Operations](./atomic-operations.md) for the complete taxonomy and [RLHF Learning](./rlhf-learning.md) for feedback collection on operations.
 
 ### RichTextSpan
 

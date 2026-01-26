@@ -609,6 +609,81 @@ Or via RPC:
 - `tests/test_code_intent.py` - Intent discovery
 - `tests/test_code_contract.py` - Contract building
 
+## RIVA's Contract System as Atomic Operations
+
+RIVA's contract-based approach naturally maps to the [atomic operations taxonomy](./atomic-operations.md). Each contract step generates one or more atomic operations.
+
+### Contract Steps → Atomic Operations
+
+| Contract Step Type | Destination | Consumer | Semantics | Notes |
+|-------------------|-------------|----------|-----------|-------|
+| Read file | stream | machine | read | Gather context |
+| Analyze code | stream | machine | interpret | Static analysis |
+| Edit file | file | machine | execute | Code modification |
+| Create file | file | machine | execute | New file creation |
+| Run tests | process | machine | interpret | pytest execution |
+| Run command | process | machine | execute | Shell command |
+
+### Example: Contract to Atomic Operations
+
+```
+Contract: "Add authentication to user endpoint"
+├── Step 1: Read existing code
+│   └── Atomic Op: (stream, machine, read)
+│       └── Read src/api/users.py
+│
+├── Step 2: Analyze authentication patterns
+│   └── Atomic Op: (stream, machine, interpret)
+│       └── Find auth patterns in codebase
+│
+├── Step 3: Edit endpoint file
+│   └── Atomic Op: (file, machine, execute)
+│       └── Modify src/api/users.py
+│
+├── Step 4: Generate tests
+│   └── Atomic Op: (file, machine, execute)
+│       └── Create tests/test_users_auth.py
+│
+└── Step 5: Run tests
+    └── Atomic Op: (process, machine, interpret)
+        └── pytest tests/test_users_auth.py
+```
+
+### RIVA Verification → V2 5-Layer System
+
+RIVA's 4-layer verification extends to the V2 5-layer system:
+
+| RIVA Layer | V2 Layer | Implementation |
+|------------|----------|----------------|
+| Syntax | Syntax | Tree-sitter parsing |
+| Semantic | Semantic | Static analysis, type checking |
+| Behavioral | Behavioral | pytest, runtime checks |
+| Intent | Intent | LLM judge (when active) |
+| — | **Safety** | **New**: Explicit dangerous pattern blocking |
+
+The addition of an explicit Safety layer makes blocking dangerous code a first-class concern rather than embedding it within other layers.
+
+See [Verification Layers](./verification-layers.md) for the complete 5-layer system.
+
+### The Kernel Principle Alignment
+
+RIVA's kernel principle "If you can't verify it, decompose it" is the foundation of the atomic operations architecture:
+
+- **RIVA** decomposes coding intentions into verifiable contract steps
+- **V2** decomposes user requests into verifiable atomic operations
+- Both use recursive decomposition until direct verification is possible
+
+### RLHF Integration
+
+RIVA sessions generate rich feedback data:
+
+- **Contract completion** → Positive signal for step decomposition
+- **Verification failure** → Learning opportunity for better analysis
+- **User modification** → Correction feedback for intent understanding
+- **Test failure** → Behavioral feedback for code quality
+
+See [RLHF Learning](./rlhf-learning.md) for the complete feedback system.
+
 ## File Structure
 
 ```

@@ -459,6 +459,79 @@ CREATE TABLE coherence_traces (
 );
 ```
 
+## CAIRN as Atomic Operation Generator
+
+CAIRN doesn't replace atomic operations—it **generates** them. Every CAIRN intent maps to one or more atomic operations classified by the [3x2x3 taxonomy](./atomic-operations.md).
+
+### Intent Category → Atomic Operation Mapping
+
+| CAIRN Category | Typical Operations | Destination | Consumer | Semantics |
+|----------------|-------------------|-------------|----------|-----------|
+| `CALENDAR` query | Get upcoming events | stream | human | read |
+| `CALENDAR` create | Create calendar event | file | human | execute |
+| `PLAY` list | List Acts/Scenes | stream | human | read |
+| `PLAY` create | Create Act/Scene | file | human | execute |
+| `PLAY` update | Update Act/Scene | file | human | execute |
+| `SYSTEM` info | System status query | stream | human | read |
+| `CONTACTS` search | Find contacts | stream | human | read |
+| `PERSONAL` | Identity reflection | stream | human | interpret |
+
+### Intent Engine → Atomic Operation Flow
+
+```
+User: "What's on my calendar tomorrow?"
+              │
+              ▼
+┌─────────────────────────────────────────────────┐
+│          CAIRN Intent Engine                     │
+│                                                  │
+│  Stage 1: Extract Intent                         │
+│    Category: CALENDAR                            │
+│    Action: VIEW                                  │
+│                                                  │
+│  Stage 2: Verify Intent                          │
+│    Tool: cairn_get_calendar                      │
+│    Args: {date: "tomorrow"}                      │
+│                                                  │
+│  ──────────────────────────────────────────────  │
+│  │ Generate Atomic Operation                   │ │
+│  │   destination: stream (display to user)     │ │
+│  │   consumer: human                           │ │
+│  │   semantics: read                           │ │
+│  ──────────────────────────────────────────────  │
+│                                                  │
+│  Stage 3: Execute Tool                           │
+│    Call cairn_get_calendar(date="tomorrow")      │
+│                                                  │
+│  Stage 4: Generate Response                      │
+│    Format results for human consumption          │
+└─────────────────────────────────────────────────┘
+```
+
+### Coherence Kernel as Intent Verification
+
+The Coherence Kernel (described above) aligns with the [Intent Verification Layer](./verification-layers.md):
+
+| Coherence Concept | V2 Verification Analog |
+|-------------------|------------------------|
+| Identity Model | User context for classification |
+| Attention Demand | Incoming atomic operation |
+| Coherence Check | Intent verification layer |
+| Anti-pattern fast path | Safety verification blocklist |
+
+The kernel principle "If you can't verify coherence, decompose the demand" is the attention-management manifestation of the universal principle "If you can't verify it, decompose it."
+
+### RLHF Integration
+
+CAIRN operations generate feedback opportunities:
+
+- **Surfacing accepted** → Positive signal for coherence scoring
+- **Surfacing deferred** → Neutral (valid response)
+- **Surfacing rejected** → Negative signal, potential anti-pattern
+- **User override** → High-value correction feedback
+
+See [RLHF Learning](./rlhf-learning.md) for the complete feedback system.
+
 ## File Structure
 
 ```

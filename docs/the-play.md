@@ -372,6 +372,59 @@ play/kb/*              - Notebook read/write
 play/pages/*           - Page management
 ```
 
+## Atomic Operations in The Play
+
+Every user action on Acts and Scenes generates [atomic operations](./atomic-operations.md). The Play integrates with the V2 architecture as the primary data store for human-consumable, persistent content.
+
+### User Actions → Atomic Operations
+
+| User Action | Destination | Consumer | Semantics |
+|-------------|-------------|----------|-----------|
+| View Acts list | stream | human | read |
+| Create Act | file | human | execute |
+| Update Act title | file | human | execute |
+| Delete Act | file | human | execute |
+| View Scenes | stream | human | read |
+| Create Scene | file | human | execute |
+| Move Scene stage | file | human | execute |
+| Mark Scene complete | file | human | execute |
+
+### Block Editor Actions as Atomic Operations
+
+The Notion-style block editor generates atomic operations for each edit:
+
+| Block Action | Destination | Consumer | Semantics |
+|--------------|-------------|----------|-----------|
+| Create block | file | human | execute |
+| Update block content | file | human | execute |
+| Delete block | file | human | execute |
+| Move block | file | human | execute |
+| Toggle todo checkbox | file | human | execute |
+| Search blocks | stream | human | read |
+
+### Two-Tier Philosophy and Atomic Operations
+
+The Play's two-tier simplicity (Acts → Scenes) prevents complexity hiding in the same way atomic operations prevent verification hiding:
+
+- **Acts** answer "What narrative does this belong to?" → Operation context
+- **Scenes** answer "When am I doing this?" → Operation temporal binding
+- **Atomic Operations** answer "What exactly will happen?" → Operation verification
+
+Both systems enforce clarity by limiting depth:
+- The Play: 2 levels (Acts, Scenes)
+- Atomic Operations: 3 dimensions (destination, consumer, semantics)
+
+### RLHF Integration
+
+Play actions generate feedback opportunities:
+
+- **Scene completed on time** → Positive signal for auto-complete
+- **Scene marked "needs attention"** → User requested accountability
+- **Act archived** → Long-term outcome signal
+- **Block content persisted** → Positive content quality signal
+
+See [RLHF Learning](./rlhf-learning.md) for the complete feedback system.
+
 ## MCP Tools
 
 CAIRN exposes MCP tools for Play management:
@@ -386,6 +439,8 @@ See `docs/cairn_architecture.md` for full tool documentation.
 
 ## Related Documentation
 
-- `docs/blocks-api.md` - Detailed blocks API documentation
-- `docs/cairn_architecture.md` - CAIRN attention minder design
-- `docs/testing-strategy.md` - Testing approach
+- [Foundation](./FOUNDATION.md) - Core philosophy and architecture
+- [Atomic Operations](./atomic-operations.md) - Operation classification
+- [Blocks API](./blocks-api.md) - Detailed blocks API documentation
+- [CAIRN Architecture](./cairn_architecture.md) - CAIRN attention minder design
+- [Testing Strategy](./testing-strategy.md) - Testing approach

@@ -293,6 +293,75 @@ Proposal: sudo systemctl start nginx
 
 ---
 
+## ReOS as Atomic Operation Generator
+
+Parse Gate generates [atomic operations](./atomic-operations.md) from natural language shell requests. Each parsed intent maps to a classified operation.
+
+### Intent → Atomic Operation Mapping
+
+| Parse Gate Intent | Destination | Consumer | Semantics | Example |
+|-------------------|-------------|----------|-----------|---------|
+| Run program | process | machine | execute | `gimp` |
+| Install package | process | machine | execute | `sudo apt install gimp` |
+| Remove package | process | machine | execute | `sudo apt remove gimp` |
+| Start service | process | machine | execute | `sudo systemctl start nginx` |
+| Stop service | process | machine | execute | `sudo systemctl stop nginx` |
+| Query status | stream | human | read | `systemctl status nginx` |
+| List packages | stream | human | read | `dpkg -l | grep gimp` |
+| File search | stream | human | read | `find . -name "*.py"` |
+
+### Parse Gate → Atomic Operation Flow
+
+```
+User: "picture editor"
+          │
+          ▼
+┌─────────────────────────────────────────────────┐
+│          Parse Gate Pipeline                     │
+│                                                  │
+│  Intent Analysis                                 │
+│    Verb: run (implicit)                          │
+│    Target: picture editor                        │
+│                                                  │
+│  Context Gathering                               │
+│    Semantic search: GIMP (0.72 similarity)       │
+│                                                  │
+│  ──────────────────────────────────────────────  │
+│  │ Generate Atomic Operation                   │ │
+│  │   destination: process (spawns program)     │ │
+│  │   consumer: machine (UI interaction)        │ │
+│  │   semantics: execute                        │ │
+│  │   confidence: 0.85                          │ │
+│  ──────────────────────────────────────────────  │
+│                                                  │
+│  Proposal: gimp                                  │
+│  [y/n/e]:                                        │
+└─────────────────────────────────────────────────┘
+```
+
+### Safety Layer Integration
+
+Parse Gate's three-layer extraction aligns with the [V2 verification system](./verification-layers.md):
+
+| Parse Gate Layer | V2 Verification Layer |
+|------------------|----------------------|
+| Layer 1: Output Sanitization | Syntax verification |
+| Layer 2: Command Validation | Semantic verification |
+| Layer 3: Dangerous Pattern Blocking | Safety verification |
+
+### RLHF Integration
+
+Parse Gate proposals generate feedback:
+
+- **Proposal accepted** → Positive signal for context matching
+- **Proposal modified** → Correction feedback for proposal quality
+- **Proposal rejected** → Negative signal, learning opportunity
+- **Quick execution** → High confidence in proposal
+
+See [RLHF Learning](./rlhf-learning.md) for the complete feedback system.
+
+---
+
 ## Dependencies
 
 **Required:**

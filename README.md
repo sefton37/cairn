@@ -458,14 +458,30 @@ Talking Rock is for you if:
 
 ## Documentation
 
+### Foundation (Start Here)
+
+- **[Foundation](docs/FOUNDATION.md)** — Core philosophy and architecture overview
+- [Atomic Operations](docs/atomic-operations.md) — 3x2x3 classification taxonomy
+- [Verification Layers](docs/verification-layers.md) — 5-layer verification system
+- [RLHF Learning](docs/rlhf-learning.md) — Feedback and learning loop
+
+### Getting Started
+
 - [Beginner's Guide](docs/beginners-guide.md) — New to Linux? Start here
-- [Technical Roadmap](docs/tech-roadmap.md) — Development plans
 - [App Vision](docs/app-vision.md) — What we're building and why
-- [CAIRN Architecture](docs/cairn_architecture.md) — Attention minder design
-- [Parse Gate Architecture](docs/parse-gate.md) — Context-aware shell proposals
+
+### Agent Architecture
+
+- [CAIRN Architecture](docs/cairn_architecture.md) — Attention minder (generates atomic operations for life management)
+- [Parse Gate](docs/parse-gate.md) — ReOS system helper (generates atomic operations for shell commands)
+- [RIVA Architecture](docs/code_mode_architecture.md) — Code agent (generates atomic operations for development, frozen)
+- [The Play](docs/the-play.md) — Life organization system
+
+### Reference
+
 - [Security Design](docs/security.md) — How we protect your system
-- [The Play System](docs/the-play.md) — Knowledge organization
-- [RIVA Architecture](docs/code_mode_architecture.md) — Code agent design (frozen)
+- [Blocks API](docs/blocks-api.md) — Block-based content system
+- [Technical Roadmap](docs/tech-roadmap.md) — Development plans
 
 ---
 
