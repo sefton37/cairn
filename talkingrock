@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+# Talking Rock - Local-first AI assistant
+# Single entry point for starting the application
+set -euo pipefail
+
+script_source="${BASH_SOURCE[0]}"
+if command -v readlink >/dev/null 2>&1; then
+  resolved="$(readlink -f "$script_source" 2>/dev/null || true)"
+  if [[ -n "$resolved" ]]; then
+    script_source="$resolved"
+  fi
+elif command -v realpath >/dev/null 2>&1; then
+  resolved="$(realpath "$script_source" 2>/dev/null || true)"
+  if [[ -n "$resolved" ]]; then
+    script_source="$resolved"
+  fi
+fi
+
+repo_root="$(cd "$(dirname "$script_source")" && pwd)"
+
+free_vite_port_if_needed() {
+  local port=1420
+
+  if ! command -v lsof >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local pids
+  pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+  if [[ -z "$pids" ]]; then
+    return 0
+  fi
+
+  local pid
+  for pid in $pids; do
+    local args
+    args="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+    if [[ "$args" == *vite* ]] || [[ "$args" == *"node"*"vite"* ]]; then
+      echo "Talking Rock: Port $port in use by prior dev server (pid $pid); stopping it…" >&2
+      kill "$pid" 2>/dev/null || true
+    fi
+  done
+}
+
+can_launch_tauri() {
+  local tauri_dir="$repo_root/apps/reos-tauri"
+
+  if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
+    return 1
+  fi
+
+  if [[ ! -d "$tauri_dir" ]]; then
+    return 1
+  fi
+
+  if ! command -v npm >/dev/null 2>&1; then
+    return 1
+  fi
+
+  if [[ -f "$HOME/.cargo/env" ]]; then
+    # shellcheck disable=SC1091
+    source "$HOME/.cargo/env"
+  fi
+
+  if ! command -v cargo >/dev/null 2>&1; then
+    return 1
+  fi
+
+  if ! command -v rustc >/dev/null 2>&1; then
+    return 1
+  fi
+
+  if ! command -v pkg-config >/dev/null 2>&1; then
+    return 1
+  fi
+
+  if ! pkg-config --exists glib-2.0 gio-2.0 >/dev/null 2>&1; then
+    return 1
+  fi
+  if ! pkg-config --exists webkit2gtk-4.1 >/dev/null 2>&1 && ! pkg-config --exists webkit2gtk-4.0 >/dev/null 2>&1; then
+    return 1
+  fi
+
+  return 0
+}
+
+python_bin="$repo_root/.venv/bin/python"
+if [[ ! -x "$python_bin" ]]; then
+  echo "Talking Rock: missing venv interpreter at $python_bin" >&2
+  echo "Create it with: python3.12 -m venv .venv && .venv/bin/python -m pip install -e ." >&2
+  exit 1
+fi
+
+# Default: start GUI. Use flags for other modes.
+mode="gui"
+if [[ "${1:-}" == "--service" ]]; then
+  mode="service"
+  shift
+fi
+
+if [[ "${1:-}" == "--mcp" ]]; then
+  mode="mcp"
+  shift
+fi
+
+if [[ "${1:-}" == "--prompt" || "${1:-}" == "-p" ]]; then
+  mode="prompt"
+  shift
+fi
+
+if [[ "${1:-}" == "--shell" ]]; then
+  mode="shell"
+  shift
+fi
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  cat <<'EOF'
+Talking Rock - Local-first AI assistant
+
+Usage:
+  ./talkingrock                  # Launch the desktop app
+  ./talkingrock --service        # Start backend service only (FastAPI)
+  ./talkingrock --mcp            # Start MCP server (stdio)
+  ./talkingrock --prompt "text"  # Run single natural language prompt
+  ./talkingrock -p "text"        # Short form of --prompt
+  ./talkingrock --shell          # Install shell integration
+
+Shell Integration:
+  Install: ./talkingrock --shell
+  Then type natural language directly in your terminal!
+  Example: "what files are in my home directory"
+
+Environment:
+  REOS_LOG_LEVEL=DEBUG    Enable verbose logging
+EOF
+  exit 0
+fi
+
+if [[ "$mode" == "gui" ]]; then
+  if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
+    echo "Talking Rock: No display detected (DISPLAY/WAYLAND_DISPLAY is empty)." >&2
+    echo "Run the service instead: ./talkingrock --service" >&2
+    exit 2
+  fi
+
+  if ! can_launch_tauri; then
+    echo "Talking Rock: Cannot launch (missing prerequisites)." >&2
+    echo "Required: npm + Rust toolchain + pkg-config + webkit2gtk" >&2
+    echo "On Ubuntu/Debian, run: $repo_root/install-tauri-deps.sh" >&2
+    exit 4
+  fi
+
+  "$repo_root/scripts/bootstrap.sh" >/dev/null 2>&1 || true
+  free_vite_port_if_needed
+
+  echo "Talking Rock: Starting..." >&2
+  cd "$repo_root/apps/reos-tauri"
+  exec npm run tauri:dev
+elif [[ "$mode" == "mcp" ]]; then
+  exec "$python_bin" -m reos.mcp "$@"
+elif [[ "$mode" == "prompt" ]]; then
+  exec "$python_bin" -m reos.shell_cli "$@"
+elif [[ "$mode" == "shell" ]]; then
+  exec "$repo_root/scripts/install-shell-integration.sh" "$@"
+else
+  exec "$python_bin" -m reos "$@"
+fi
