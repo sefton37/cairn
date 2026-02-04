@@ -12,6 +12,7 @@ The executor ensures all operations are reversible when possible.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import shutil
 import subprocess
@@ -22,6 +23,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 from .models import (
     AtomicOperation,
@@ -119,7 +122,10 @@ class StateCapture:
                                 "cmdline": cmdline.strip(),
                                 "running": True,
                             })
-                    except Exception:
+                    except Exception as e:
+                        logger.debug(
+                            "Failed to read process info for PID %d: %s", pid, e
+                        )
                         processes.append({"pid": pid, "running": False})
             else:
                 # Get summary of user processes
@@ -138,8 +144,10 @@ class StateCapture:
                                 "cmdline": parts[1],
                                 "running": True,
                             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "Failed to capture process state: %s (pids=%s)", e, pids
+            )
 
         return processes
 
@@ -162,8 +170,11 @@ class StateCapture:
                 metrics["load_5m"] = float(parts[1])
                 metrics["load_15m"] = float(parts[2])
 
-        except Exception:
-            pass
+        except FileNotFoundError:
+            # Not on Linux, /proc doesn't exist
+            logger.debug("System metrics unavailable (not Linux)")
+        except Exception as e:
+            logger.warning("Failed to capture system metrics: %s", e)
 
         return metrics
 
@@ -183,15 +194,22 @@ class StateCapture:
     def backup_file(self, path: str, max_size_mb: int = 100) -> Optional[str]:
         """Create backup of a file.
 
-        Returns backup path or None if backup failed.
+        Returns backup path or None if backup failed or skipped.
         """
         source = Path(path)
         if not source.exists():
+            logger.debug("Backup skipped: file does not exist: %s", path)
             return None
 
         # Check size limit
         size_mb = source.stat().st_size / (1024 * 1024)
         if size_mb > max_size_mb:
+            logger.warning(
+                "Backup skipped: file too large (%.1f MB > %d MB limit): %s",
+                size_mb,
+                max_size_mb,
+                path,
+            )
             return None
 
         # Create backup
@@ -201,7 +219,8 @@ class StateCapture:
         try:
             shutil.copy2(source, backup_path)
             return str(backup_path)
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to backup file %s to %s: %s", path, backup_path, e)
             return None
 
     def restore_file(self, backup_path: str, original_path: str) -> bool:
@@ -209,7 +228,13 @@ class StateCapture:
         try:
             shutil.copy2(backup_path, original_path)
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "Failed to restore file from %s to %s: %s",
+                backup_path,
+                original_path,
+                e,
+            )
             return False
 
     def _hash_file(self, path: Path) -> str:
@@ -620,7 +645,15 @@ class OperationExecutor:
                     timeout=30,
                 )
                 results.append((cmd, proc.returncode == 0))
+                if proc.returncode != 0:
+                    logger.warning(
+                        "Undo command failed (exit %d): %s, stderr: %s",
+                        proc.returncode,
+                        cmd,
+                        proc.stderr[:200] if proc.stderr else "(no stderr)",
+                    )
             except Exception as e:
+                logger.warning("Undo command raised exception: %s, error: %s", cmd, e)
                 results.append((cmd, False))
 
         all_success = all(success for _, success in results)
@@ -643,7 +676,8 @@ class OperationExecutor:
             try:
                 os.remove(path)
                 deleted.append(path)
-            except Exception:
+            except Exception as e:
+                logger.warning("Failed to delete created file %s: %s", path, e)
                 failed.append(path)
 
         if failed:

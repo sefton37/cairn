@@ -1162,17 +1162,19 @@ class ChatAgent:
             conversation_context = ctx.conversation_history or ""
 
             # Process through atomic ops bridge (decomposition + verification + execution)
-            bridge = CairnAtomicBridge(
-                conn=self._db,
-                intent_engine=intent_engine,
-            )
-            bridge_result = bridge.process_request(
-                user_input=user_text,
-                user_id="default",
-                execute_tool=execute_tool,
-                persona_context=ctx.play_context,
-                conversation_context=conversation_context,
-            )
+            # CairnAtomicBridge expects a raw sqlite3.Connection, so use transaction() context
+            with self._db.transaction() as conn:
+                bridge = CairnAtomicBridge(
+                    conn=conn,
+                    intent_engine=intent_engine,
+                )
+                bridge_result = bridge.process_request(
+                    user_input=user_text,
+                    user_id="default",
+                    execute_tool=execute_tool,
+                    persona_context=ctx.play_context,
+                    conversation_context=conversation_context,
+                )
 
             # Extract result from bridge
             result = bridge_result.intent_result
@@ -1622,8 +1624,8 @@ class ChatAgent:
             if play_attachments:
                 att_list = ", ".join(f"{a.file_name} ({a.file_type})" for a in play_attachments)
                 ctx_parts.append(f"PLAY_ATTACHMENTS: {att_list}")
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Failed to read me.md: %s", e)
 
         # 3. Selected Act and its hierarchy
         try:
