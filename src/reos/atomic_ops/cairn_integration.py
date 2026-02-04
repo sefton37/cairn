@@ -16,10 +16,13 @@ CAIRN generates atomic operations that are primarily:
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 from .models import (
     AtomicOperation,
@@ -193,8 +196,6 @@ class CairnAtomicBridge:
         Returns:
             CairnOperationResult with operation, verification, and response.
         """
-        import sys
-
         # Step 1: Process through atomic ops pipeline (includes decomposition)
         proc_result = self.processor.process_request(
             request=user_input,
@@ -232,7 +233,7 @@ class CairnAtomicBridge:
         # Check if request was decomposed into multiple operations
         primary_op = proc_result.operations[0]
         if primary_op.is_decomposed and primary_op.child_ids:
-            print(f"[ATOMIC] Decomposed into {len(primary_op.child_ids)} operations", file=sys.stderr)
+            logger.debug("Decomposed into %d operations", len(primary_op.child_ids))
             # Process each child operation and combine results
             return self._process_decomposed(
                 parent_op=primary_op,
@@ -256,7 +257,7 @@ class CairnAtomicBridge:
 
         if self.intent_engine and has_contextual_ref:
             # Only enhance when we need to resolve contextual references
-            print(f"[ATOMIC] Enhancing intent for contextual reference", file=sys.stderr)
+            logger.debug("Enhancing intent for contextual reference")
             operation = self._enhance_with_intent(
                 operation, user_input, conversation_context=conversation_context
             )
@@ -285,7 +286,7 @@ class CairnAtomicBridge:
             is_stream = operation.classification.destination == DestinationType.STREAM
             if is_read_op and is_stream:
                 # Use FAST mode for read-only stream operations (conversational queries)
-                print(f"[ATOMIC] Using FAST verification for READ/INTERPRET + STREAM", file=sys.stderr)
+                logger.debug("Using FAST verification for READ/INTERPRET + STREAM")
                 self.verifier.set_mode(VerificationMode.FAST)
             else:
                 # Use STANDARD mode for mutations and file/process operations
@@ -305,27 +306,24 @@ class CairnAtomicBridge:
         response = ""
         intent_result = None
 
-        # DIAGNOSTIC: Log to file for debugging
-        import os
-        log_path = os.path.expanduser("~/.reos-data/cairn_debug.log")
-        with open(log_path, "a") as f:
-            f.write(f"\n=== CAIRN REQUEST: {user_input[:50]}... ===\n")
-            f.write(f"verification.passed={verification.passed}\n")
-            f.write(f"auto_approved={auto_approved}, needs_approval={needs_approval}\n")
-            f.write(f"persona_context length={len(persona_context)}\n")
-            f.write(f"persona_context preview: {persona_context[:300] if persona_context else 'EMPTY'}...\n")
+        logger.debug(
+            "CAIRN request: %.50s... verification.passed=%s auto_approved=%s "
+            "needs_approval=%s persona_context_len=%d",
+            user_input, verification.passed, auto_approved, needs_approval,
+            len(persona_context),
+        )
 
         if verification.passed and (auto_approved or not needs_approval):
             # Execute through CAIRN intent engine
             if self.intent_engine and execute_tool:
-                print(f"[CAIRN DIAG] Calling intent_engine.process with {len(persona_context)} chars of context", file=sys.stderr)
+                logger.debug("Calling intent_engine.process with %d chars of context", len(persona_context))
                 intent_result = self.intent_engine.process(
                     user_input=operation.user_request,  # Use operation's request (may be sub-request)
                     execute_tool=execute_tool,
                     persona_context=persona_context,
                 )
                 response = intent_result.response
-                print(f"[CAIRN DIAG] Got response: {response[:100]}...", file=sys.stderr)
+                logger.debug("Got response: %.100s...", response)
 
                 # Update operation with execution result
                 operation.execution_result = ExecutionResult(
@@ -539,14 +537,12 @@ class CairnAtomicBridge:
         Each child operation is processed through the full pipeline
         and results are combined.
         """
-        import sys
-
         all_responses = []
         all_intent_results = []
         any_failed = False
 
         for child_op in child_ops:
-            print(f"[ATOMIC] Processing child: {child_op.user_request[:50]!r}", file=sys.stderr)
+            logger.debug("Processing child: %.50s", child_op.user_request)
 
             # Enhance with CAIRN intent
             if self.intent_engine:
@@ -694,8 +690,6 @@ class CairnAtomicBridge:
         and extracts the appropriate intent category and action.
         """
         import json
-        import sys
-
         if not conversation_context:
             return None
 
@@ -725,10 +719,10 @@ What is the user referring to and what do they want to do?"""
             raw = llm.chat_json(system=system, user=user, temperature=0.1, top_p=0.9)
             data = json.loads(raw)
             if data.get("category"):
-                print(f"[ATOMIC] Resolved contextual ref: {data}", file=sys.stderr)
+                logger.debug("Resolved contextual ref: %s", data)
                 return data
         except Exception as e:
-            print(f"[ATOMIC] Failed to resolve contextual ref: {e}", file=sys.stderr)
+            logger.debug("Failed to resolve contextual ref: %s", e)
 
         return None
 

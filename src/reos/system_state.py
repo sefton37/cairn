@@ -469,7 +469,7 @@ class SteadyStateCollector:
                         is_loopback="LOOPBACK" in iface.get("flags", []),
                     ))
             except json.JSONDecodeError:
-                pass
+                logger.debug("Failed to parse 'ip -j addr' output")
         return interfaces
 
     def _detect_package_manager(self) -> str:
