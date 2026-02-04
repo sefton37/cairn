@@ -37,6 +37,9 @@ class ProcessingResult:
     primary_operation_id: str
     decomposed: bool
     message: str
+    # Clarification fields from decomposition (avoids redundant decompose call)
+    needs_clarification: bool = False
+    clarification_prompt: str | None = None
 
 
 class AtomicOpsProcessor:
@@ -200,6 +203,8 @@ class AtomicOpsProcessor:
             primary_operation_id=primary_id,
             decomposed=decomp_result.decomposed,
             message=decomp_result.reasoning,
+            needs_clarification=decomp_result.needs_clarification,
+            clarification_prompt=decomp_result.clarification_prompt,
         )
 
     def get_operation(self, operation_id: str) -> Optional[AtomicOperation]:

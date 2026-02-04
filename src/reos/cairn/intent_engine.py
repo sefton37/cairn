@@ -1235,8 +1235,19 @@ TARGET: {verified_intent.intent.target}
 """
 
         # Build user message with actual data
+        # DIAGNOSTIC: Log to file
+        import os
+        log_path = os.path.expanduser("~/.reos-data/cairn_debug.log")
+        with open(log_path, "a") as f:
+            f.write(f"\n--- INTENT ENGINE ---\n")
+            f.write(f"category={verified_intent.intent.category.name}\n")
+            f.write(f"persona_context length={len(persona_context)}\n")
+
         if verified_intent.intent.category == IntentCategory.PERSONAL:
-            # Personal questions - use persona context
+            # Personal questions - use persona context directly
+            with open(log_path, "a") as f:
+                f.write(f"PERSONAL branch - using persona_context\n")
+                f.write(f"preview: {persona_context[:300] if persona_context else 'EMPTY'}...\n")
             user = f"""USER QUESTION: {verified_intent.intent.raw_input}
 
 YOUR KNOWLEDGE ABOUT THIS USER:

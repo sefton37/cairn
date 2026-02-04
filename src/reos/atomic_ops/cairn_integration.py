@@ -214,13 +214,8 @@ class CairnAtomicBridge:
                 response="I couldn't process that request.",
             )
 
-        # Check if decomposition needs clarification
-        decomp_result = self.processor.decomposer.decompose(
-            request=user_input,
-            user_id=user_id,
-            source_agent="cairn",
-        )
-        if decomp_result.needs_clarification and decomp_result.clarification_prompt:
+        # Check if decomposition needs clarification (use info from processor, no redundant call)
+        if proc_result.needs_clarification and proc_result.clarification_prompt:
             # Return clarification request instead of proceeding with uncertain decomposition
             return CairnOperationResult(
                 operation=AtomicOperation(user_request=user_input, user_id=user_id),
@@ -230,7 +225,7 @@ class CairnAtomicBridge:
                     results={},
                     warnings=["Clarification needed"],
                 ),
-                response=decomp_result.clarification_prompt,
+                response=proc_result.clarification_prompt,
                 needs_approval=True,
             )
 
@@ -253,8 +248,20 @@ class CairnAtomicBridge:
         operation = primary_op
 
         # Step 2: Enhance classification with CAIRN intent if available
-        # Pass conversation context so intent engine understands "fix that", etc.
-        if self.intent_engine:
+        # SIMPLIFIED: Only run enhancement for contextual references ("fix that", "do it")
+        # Simple queries already have good classification from the processor
+        contextual_refs = {"that", "it", "this", "those", "them"}
+        words = set(user_input.lower().split())
+        has_contextual_ref = bool(words & contextual_refs)
+
+        if self.intent_engine and has_contextual_ref:
+            # Only enhance when we need to resolve contextual references
+            print(f"[ATOMIC] Enhancing intent for contextual reference", file=sys.stderr)
+            operation = self._enhance_with_intent(
+                operation, user_input, conversation_context=conversation_context
+            )
+        elif self.intent_engine and not operation.classification:
+            # Also enhance if we don't have a classification yet
             operation = self._enhance_with_intent(
                 operation, user_input, conversation_context=conversation_context
             )
@@ -268,7 +275,22 @@ class CairnAtomicBridge:
             additional_context=conversation_context if conversation_context else None,
         )
 
-        # Step 4: Run verification pipeline
+        # Step 4: Run verification pipeline with INTENT-AWARE mode selection
+        # READ/INTERPRET operations on STREAM don't need full verification
+        if operation.classification:
+            from .models import ExecutionSemantics, DestinationType
+            is_read_op = operation.classification.semantics in (
+                ExecutionSemantics.READ, ExecutionSemantics.INTERPRET
+            )
+            is_stream = operation.classification.destination == DestinationType.STREAM
+            if is_read_op and is_stream:
+                # Use FAST mode for read-only stream operations (conversational queries)
+                print(f"[ATOMIC] Using FAST verification for READ/INTERPRET + STREAM", file=sys.stderr)
+                self.verifier.set_mode(VerificationMode.FAST)
+            else:
+                # Use STANDARD mode for mutations and file/process operations
+                self.verifier.set_mode(VerificationMode.STANDARD)
+
         verification = self.verifier.verify(operation, context)
 
         # Step 5: Determine if approval needed
@@ -283,15 +305,27 @@ class CairnAtomicBridge:
         response = ""
         intent_result = None
 
+        # DIAGNOSTIC: Log to file for debugging
+        import os
+        log_path = os.path.expanduser("~/.reos-data/cairn_debug.log")
+        with open(log_path, "a") as f:
+            f.write(f"\n=== CAIRN REQUEST: {user_input[:50]}... ===\n")
+            f.write(f"verification.passed={verification.passed}\n")
+            f.write(f"auto_approved={auto_approved}, needs_approval={needs_approval}\n")
+            f.write(f"persona_context length={len(persona_context)}\n")
+            f.write(f"persona_context preview: {persona_context[:300] if persona_context else 'EMPTY'}...\n")
+
         if verification.passed and (auto_approved or not needs_approval):
             # Execute through CAIRN intent engine
             if self.intent_engine and execute_tool:
+                print(f"[CAIRN DIAG] Calling intent_engine.process with {len(persona_context)} chars of context", file=sys.stderr)
                 intent_result = self.intent_engine.process(
                     user_input=operation.user_request,  # Use operation's request (may be sub-request)
                     execute_tool=execute_tool,
                     persona_context=persona_context,
                 )
                 response = intent_result.response
+                print(f"[CAIRN DIAG] Got response: {response[:100]}...", file=sys.stderr)
 
                 # Update operation with execution result
                 operation.execution_result = ExecutionResult(
@@ -703,28 +737,64 @@ What is the user referring to and what do they want to do?"""
         operation: AtomicOperation,
         verification: PipelineResult,
     ) -> bool:
-        """Determine if operation needs explicit user approval."""
+        """Determine if operation needs explicit user approval.
+
+        Philosophy: READ/INTERPRET operations on STREAM destinations for HUMAN
+        consumers are inherently low-risk (just displaying information). These
+        should respond naturally without approval prompts, even with minor
+        semantic warnings.
+
+        Approval is required for:
+        - EXECUTE operations that modify files/processes
+        - Low confidence classifications (< 0.7)
+        - Safety-critical warnings (not minor semantic notes)
+        """
         # Always approve if verification failed
         if not verification.passed:
             return False  # Will be rejected, not approved
 
-        # Check for warnings that require approval
-        if verification.warnings:
-            return True
-
-        # Check classification - execute operations need approval
+        # Check classification
         if operation.classification:
-            if operation.classification.semantics == ExecutionSemantics.EXECUTE:
-                # File/process execute operations need approval
-                if operation.classification.destination in (
-                    DestinationType.FILE,
-                    DestinationType.PROCESS,
-                ):
+            semantics = operation.classification.semantics
+            destination = operation.classification.destination
+            consumer = operation.classification.consumer
+            confidence = operation.classification.confidence
+
+            # Low-risk operations: READ/INTERPRET on STREAM for HUMAN
+            # These are conversational queries - respond naturally
+            is_low_risk = (
+                semantics in (ExecutionSemantics.READ, ExecutionSemantics.INTERPRET)
+                and destination == DestinationType.STREAM
+                and consumer == ConsumerType.HUMAN
+            )
+
+            # For low-risk operations, only require approval if confidence is very low
+            if is_low_risk:
+                # Trust READ/INTERPRET stream operations with decent confidence
+                if confidence >= 0.5:
+                    return False
+                # Very low confidence still needs approval
+                return True
+
+            # EXECUTE operations on FILE/PROCESS need approval (side effects)
+            if semantics == ExecutionSemantics.EXECUTE:
+                if destination in (DestinationType.FILE, DestinationType.PROCESS):
                     return True
 
-        # Low confidence needs approval
-        if operation.classification and operation.classification.confidence < 0.7:
-            return True
+            # Check for safety-critical warnings (not minor semantic notes)
+            if verification.warnings:
+                safety_keywords = ["destructive", "dangerous", "safety", "security",
+                                   "execute", "delete", "remove", "kill", "process"]
+                for warning in verification.warnings:
+                    warning_lower = warning.lower()
+                    if any(kw in warning_lower for kw in safety_keywords):
+                        return True
+                # Minor warnings (like read vs interpret mismatch) don't require approval
+                # for non-execute operations
+
+            # Low confidence needs approval for non-low-risk operations
+            if confidence < 0.7:
+                return True
 
         return False
 
