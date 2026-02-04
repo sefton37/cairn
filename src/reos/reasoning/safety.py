@@ -468,18 +468,30 @@ class SafetyManager:
         # Try rollback command first
         if action.rollback_command:
             try:
-                result = subprocess.run(
-                    action.rollback_command,
-                    shell=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                )
-                if result.returncode == 0:
-                    success = True
-                    message = f"Rolled back: {action.description}"
+                from reos.security import is_command_safe
+
+                is_safe, warning = is_command_safe(action.rollback_command)
+                if not is_safe:
+                    logger.warning(
+                        "Blocked unsafe rollback command: %s (%s)",
+                        action.rollback_command,
+                        warning,
+                    )
+                    message = f"Rollback command blocked: {warning}"
+                    # Fall through to backup restore below
                 else:
-                    message = f"Rollback command failed: {result.stderr}"
+                    result = subprocess.run(
+                        action.rollback_command,
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
+                    if result.returncode == 0:
+                        success = True
+                        message = f"Rolled back: {action.description}"
+                    else:
+                        message = f"Rollback command failed: {result.stderr}"
             except Exception as e:
                 message = f"Rollback command error: {e}"
 

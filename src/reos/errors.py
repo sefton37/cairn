@@ -696,26 +696,32 @@ def handle_errors(
                 # Already structured, let it propagate
                 raise
             except Exception as e:
-                # Log at appropriate level
+                # Log at appropriate level, redacting sensitive args
                 log_fn = getattr(logger, log_level, logger.error)
+                args_preview = str(args)[:100]
+                if _is_sensitive(args_preview):
+                    args_preview = "<redacted>"
                 log_fn(
                     "Failed to %s: %s (function=%s, args_preview=%s)",
                     operation,
                     e,
                     func.__name__,
-                    str(args)[:100],
+                    args_preview,
                 )
 
                 # Record for persistence if enabled
                 if record:
                     try:
+                        safe_preview = str(args)[:200]
+                        if _is_sensitive(safe_preview):
+                            safe_preview = "<redacted>"
                         record_error(
                             source=func.__module__ or "unknown",
                             operation=operation,
                             exc=e,
                             context={
                                 "function": func.__name__,
-                                "args_preview": str(args)[:200],
+                                "args_preview": safe_preview,
                                 "kwargs_keys": list(kwargs.keys()),
                             },
                         )

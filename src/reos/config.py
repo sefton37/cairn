@@ -23,11 +23,15 @@ from typing import NamedTuple
 # =============================================================================
 
 
-def _env_int(name: str, default: int, min_val: int | None = None) -> int:
-    """Get integer from environment with optional minimum enforcement."""
+def _env_int(
+    name: str, default: int, min_val: int | None = None, max_val: int | None = None
+) -> int:
+    """Get integer from environment with optional min/max enforcement."""
     val = int(os.environ.get(name, str(default)))
     if min_val is not None and val < min_val:
         return min_val
+    if max_val is not None and val > max_val:
+        return max_val
     return val
 
 
@@ -47,10 +51,10 @@ class SecurityLimits:
     MAX_SERVICE_NAME_LEN: int = 256
     MAX_CONTAINER_ID_LEN: int = 256
     MAX_PACKAGE_NAME_LEN: int = 256
-    MAX_COMMAND_LEN: int = _env_int("REOS_MAX_COMMAND_LEN", 4096, min_val=1024)
+    MAX_COMMAND_LEN: int = _env_int("REOS_MAX_COMMAND_LEN", 4096, min_val=1024, max_val=65536)
 
     # Sudo escalation limit (per session)
-    MAX_SUDO_ESCALATIONS: int = _env_int("REOS_MAX_SUDO_ESCALATIONS", 3, min_val=1)
+    MAX_SUDO_ESCALATIONS: int = _env_int("REOS_MAX_SUDO_ESCALATIONS", 3, min_val=1, max_val=20)
 
     # Output truncation (prevent memory exhaustion)
     MAX_COMMAND_OUTPUT: int = 10000

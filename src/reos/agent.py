@@ -1603,7 +1603,7 @@ class ChatAgent:
                 if len(readme_content) > cap:
                     readme_content = readme_content[:cap] + "\n…"
                 ctx_parts.append(f"REOS_README:\n{readme_content}")
-        except Exception:  # noqa: BLE001
+        except (FileNotFoundError, PermissionError, OSError):
             pass
 
         # 2. The Play - Always in context (user's story)
@@ -1624,13 +1624,13 @@ class ChatAgent:
             if play_attachments:
                 att_list = ", ".join(f"{a.file_name} ({a.file_type})" for a in play_attachments)
                 ctx_parts.append(f"PLAY_ATTACHMENTS: {att_list}")
-        except Exception as e:  # noqa: BLE001
+        except (FileNotFoundError, PermissionError, OSError) as e:
             logger.warning("Failed to read me.md: %s", e)
 
         # 3. Selected Act and its hierarchy
         try:
             acts, active_id = play_list_acts()
-        except Exception:  # noqa: BLE001
+        except (FileNotFoundError, PermissionError, OSError):
             return "\n\n".join(ctx_parts)
 
         if not active_id:
