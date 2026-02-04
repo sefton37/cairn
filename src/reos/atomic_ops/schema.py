@@ -388,6 +388,11 @@ class AtomicOpsStore:
 
     This class handles all database interactions for the atomic operations
     system, including CRUD operations, feature storage, and feedback collection.
+
+    Important: This class does NOT manage transactions. The caller must
+    wrap operations in a transaction context (e.g., db.transaction()) and
+    commit/rollback as appropriate. This ensures atomicity when multiple
+    store operations are composed together.
     """
 
     def __init__(self, conn: sqlite3.Connection):
@@ -425,7 +430,7 @@ class AtomicOpsStore:
             op.source_agent,
             now,
         ))
-        self.conn.commit()
+        # Commit managed by caller's transaction context
         return op.id
 
     def get_operation(self, operation_id: str) -> Optional[AtomicOperation]:
@@ -449,7 +454,7 @@ class AtomicOpsStore:
             SET status = ?, completed_at = ?
             WHERE id = ?
         """, (status.value, completed_at, operation_id))
-        self.conn.commit()
+        # Commit managed by caller's transaction context
 
     def update_operation_classification(
         self,
@@ -469,7 +474,7 @@ class AtomicOpsStore:
             classification.confidence,
             operation_id,
         ))
-        self.conn.commit()
+        # Commit managed by caller's transaction context
 
     def list_operations(
         self,
@@ -555,7 +560,7 @@ class AtomicOpsStore:
             json.dumps(classification.alternatives),
             now,
         ))
-        self.conn.commit()
+        # Commit managed by caller's transaction context
         return log_id
 
     # =========================================================================
@@ -646,7 +651,7 @@ class AtomicOpsStore:
             features.request_hash,
             now,
         ))
-        self.conn.commit()
+        # Commit managed by caller's transaction context
 
     # =========================================================================
     # VERIFICATION RESULTS
@@ -678,7 +683,7 @@ class AtomicOpsStore:
             result.execution_time_ms,
             now,
         ))
-        self.conn.commit()
+        # Commit managed by caller's transaction context
         return ver_id
 
     def get_verification_results(self, operation_id: str) -> dict[str, VerificationResult]:
@@ -743,7 +748,7 @@ class AtomicOpsStore:
             reversibility.reason if reversibility else None,
             now,
         ))
-        self.conn.commit()
+        # Commit managed by caller's transaction context
         return exec_id
 
     def _snapshot_to_dict(self, snapshot: StateSnapshot) -> dict:
@@ -801,7 +806,7 @@ class AtomicOpsStore:
             feedback.feedback_confidence,
             now,
         ))
-        self.conn.commit()
+        # Commit managed by caller's transaction context
         return feedback.id
 
     def get_feedback_for_operation(self, operation_id: str) -> list[UserFeedback]:
@@ -878,7 +883,7 @@ class AtomicOpsStore:
             metrics.correction_rate,
             now,
         ))
-        self.conn.commit()
+        # Commit managed by caller's transaction context
         return metric_id
 
     # =========================================================================
