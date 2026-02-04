@@ -256,15 +256,9 @@ from .rpc_handlers.documents import (
     handle_documents_get_chunks as _handle_documents_get_chunks,
 )
 
+from .rpc_handlers import RpcError
+
 _JSON = dict[str, Any]
-
-
-class RpcError(RuntimeError):
-    def __init__(self, code: int, message: str, data: Any | None = None) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.data = data
 
 
 def _jsonrpc_error(*, req_id: Any, code: int, message: str, data: Any | None = None) -> _JSON:

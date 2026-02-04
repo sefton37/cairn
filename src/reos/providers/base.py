@@ -9,15 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
-
-class LLMError(RuntimeError):
-    """Base exception for LLM provider errors.
-
-    Wraps all provider-specific errors (network, auth, rate limits, etc.)
-    into a single exception type for consistent error handling.
-    """
-
-    pass
+from reos.errors import LLMError
 
 
 @dataclass

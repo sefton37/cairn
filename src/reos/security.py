@@ -42,13 +42,7 @@ MAX_PACKAGE_NAME_LEN = SECURITY.MAX_PACKAGE_NAME_LEN
 MAX_COMMAND_LEN = SECURITY.MAX_COMMAND_LEN
 
 
-class ValidationError(Exception):
-    """Raised when input validation fails."""
-
-    def __init__(self, message: str, field: str | None = None):
-        super().__init__(message)
-        self.field = field
-        self.message = message
+from reos.errors import ValidationError
 
 
 def validate_service_name(name: str) -> str:

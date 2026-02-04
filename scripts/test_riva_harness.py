@@ -10,9 +10,6 @@ Examples:
     # With Ollama
     python scripts/test_riva_harness.py --ollama "Add type hints to src/reos/models.py"
 
-    # With Anthropic
-    python scripts/test_riva_harness.py --anthropic "Fix the bug in calculator.py"
-
     # List recent sessions
     python scripts/test_riva_harness.py --list-sessions
 
@@ -24,7 +21,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -133,39 +129,6 @@ def get_ollama_provider(
             print(f"  Connected! Model: {health.current_model or model}")
             if health.model_count:
                 print(f"  Available models: {health.model_count}")
-        else:
-            print(f"  Warning: {health.error}")
-    except Exception as e:
-        print(f"  Connection error: {e}")
-        return None
-
-    return provider
-
-
-def get_anthropic_provider(
-    model: str = "claude-sonnet-4-20250514",
-    api_key: str | None = None,
-) -> Any:
-    """Create an Anthropic provider."""
-    from reos.providers.anthropic import AnthropicProvider
-    from reos.providers.secrets import get_api_key
-
-    # Get API key from keyring or environment
-    key = api_key or os.environ.get("ANTHROPIC_API_KEY") or get_api_key("anthropic")
-
-    if not key:
-        print("Error: No Anthropic API key found.")
-        print("  Set ANTHROPIC_API_KEY environment variable or store in keyring.")
-        return None
-
-    print(f"Connecting to Anthropic with model {model}...")
-    provider = AnthropicProvider(api_key=key, model=model)
-
-    # Test connection
-    try:
-        health = provider.check_health()
-        if health.reachable:
-            print(f"  Connected! Model: {health.current_model or model}")
         else:
             print(f"  Warning: {health.error}")
     except Exception as e:
@@ -383,14 +346,6 @@ def main() -> None:
         metavar="MODEL",
         help="Use Ollama with specified model (default: from ReOS settings)",
     )
-    llm_group.add_argument(
-        "--anthropic",
-        nargs="?",
-        const="__use_settings__",
-        metavar="MODEL",
-        help="Use Anthropic with specified model (default: from ReOS settings)",
-    )
-
     parser.add_argument(
         "--ollama-url",
         default=None,
@@ -432,14 +387,6 @@ def main() -> None:
             health = llm.check_health()
             actual_model = health.current_model or model or "auto"
             llm_name = f"Ollama ({actual_model})"
-        else:
-            print("\nFalling back to heuristics mode.")
-
-    elif args.anthropic:
-        model = None if args.anthropic == "__use_settings__" else args.anthropic
-        llm = get_anthropic_provider(model=model)
-        if llm:
-            llm_name = f"Anthropic ({model or 'default'})"
         else:
             print("\nFalling back to heuristics mode.")
 

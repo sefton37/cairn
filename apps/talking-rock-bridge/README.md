@@ -121,5 +121,4 @@ The extension uses Mozilla's Experiment API to access Thunderbird's internal cal
 ## Related Files
 
 - `src/reos/cairn/thunderbird_bridge.py` - Python HTTP client
-- `src/reos/cairn/beat_calendar_sync.py` - Beat sync logic
 - `tests/test_thunderbird_integration.py` - Integration tests
