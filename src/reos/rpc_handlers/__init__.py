@@ -9,14 +9,6 @@ This package contains handler functions organized by domain:
 
 from __future__ import annotations
 
-from typing import Any
+from reos.rpc.types import RpcError
 
-
-class RpcError(RuntimeError):
-    """JSON-RPC error that can be returned to the client."""
-
-    def __init__(self, code: int, message: str, data: Any | None = None) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.data = data
+__all__ = ["RpcError"]
