@@ -45,19 +45,16 @@ class EmbeddingService:
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
+                    instance = super().__new__(cls)
+                    instance._model = None
+                    instance._model_name = "all-MiniLM-L6-v2"
+                    instance._model_lock = threading.Lock()
+                    instance._initialized = True
+                    cls._instance = instance
         return cls._instance
 
     def __init__(self) -> None:
-        """Initialize the embedding service (idempotent)."""
-        if getattr(self, "_initialized", False):
-            return
-
-        self._model = None
-        self._model_name = "all-MiniLM-L6-v2"
-        self._model_lock = threading.Lock()
-        self._initialized = True
+        """No-op — initialization handled in __new__ under lock."""
 
     def _ensure_model_loaded(self) -> bool:
         """Lazily load the embedding model.

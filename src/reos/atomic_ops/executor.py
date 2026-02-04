@@ -77,7 +77,13 @@ class StateCapture:
 
     def __init__(self, backup_dir: str = "/tmp/reos_backups"):
         self.backup_dir = Path(backup_dir)
-        self.backup_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.backup_dir.mkdir(parents=True, exist_ok=True)
+        except (PermissionError, OSError) as e:
+            logger.error(
+                "Cannot create backup directory %s: %s", self.backup_dir, e
+            )
+            raise
 
     def capture_file_state(self, paths: list[str]) -> dict[str, dict]:
         """Capture state of specified files.
