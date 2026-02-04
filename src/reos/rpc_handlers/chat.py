@@ -120,14 +120,12 @@ def handle_chat_clear(
     conversation_id: str,
 ) -> dict[str, Any]:
     """Clear (delete) a conversation without archiving."""
-    # Delete all messages in the conversation
-    db.execute(
-        "DELETE FROM messages WHERE conversation_id = ?",
-        (conversation_id,),
-    )
+    # Delete all messages in the conversation (uses proper Database method)
+    db.clear_messages(conversation_id=conversation_id)
     # Delete the conversation itself
-    db.execute(
-        "DELETE FROM conversations WHERE conversation_id = ?",
-        (conversation_id,),
-    )
+    with db.transaction() as conn:
+        conn.execute(
+            "DELETE FROM conversations WHERE id = ?",
+            (conversation_id,),
+        )
     return {"ok": True}
