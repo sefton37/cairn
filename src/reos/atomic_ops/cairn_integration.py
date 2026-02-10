@@ -152,6 +152,20 @@ class CairnAtomicBridge:
         Returns:
             CairnOperationResult with operation, verification, and response.
         """
+        # Step 0: Check for pending clarification before normal processing
+        pending = self.processor.store.get_pending_clarification(user_id)
+        if pending:
+            if self._is_clarification_response(user_input, pending):
+                return self._handle_clarification_response(
+                    pending=pending,
+                    user_response=user_input,
+                    user_id=user_id,
+                    execute_tool=execute_tool,
+                    persona_context=persona_context,
+                    safety_level=safety_level,
+                    conversation_context=conversation_context,
+                )
+
         # Step 1: Process through atomic ops pipeline (classification + decomposition)
         proc_result = self.processor.process_request(
             request=user_input,
@@ -173,6 +187,13 @@ class CairnAtomicBridge:
 
         # Check if decomposition needs clarification
         if proc_result.needs_clarification and proc_result.clarification_prompt:
+            # Store the clarification for round-trip retrieval
+            primary_op = proc_result.operations[0] if proc_result.operations else None
+            if primary_op:
+                self.processor.store.store_clarification(
+                    operation_id=primary_op.id,
+                    question=proc_result.clarification_prompt,
+                )
             return CairnOperationResult(
                 operation=AtomicOperation(user_request=user_input, user_id=user_id),
                 verification=PipelineResult(
@@ -799,6 +820,59 @@ What is the user referring to and what do they want to do?"""
                 )
         except Exception as e:
             logger.debug("Failed to resolve contextual ref: %s", e)
+
+    def _is_clarification_response(self, user_input: str, pending: dict) -> bool:
+        """Use LLM to determine if user_input answers the pending clarification."""
+        llm = self.intent_engine.llm if self.intent_engine else None
+        if not llm:
+            return False  # Can't detect without LLM — treat as new request
+
+        system = (
+            "You are determining if a user's message is answering a "
+            "previous clarification question, or is a new unrelated request.\n\n"
+            f"ORIGINAL REQUEST: {pending['original_request']}\n"
+            f"CLARIFICATION QUESTION: {pending['question']}\n\n"
+            "Return ONLY a JSON object:\n"
+            '{"is_answer": true/false, "reasoning": "brief explanation"}'
+        )
+        user = f"USER MESSAGE: {user_input}"
+
+        try:
+            raw = llm.chat_json(system=system, user=user, temperature=0.1, top_p=0.9)
+            data = json.loads(raw)
+            return bool(data.get("is_answer", False))
+        except Exception:
+            return False
+
+    def _handle_clarification_response(
+        self,
+        pending: dict,
+        user_response: str,
+        user_id: str,
+        execute_tool: Callable | None,
+        persona_context: str,
+        safety_level: str,
+        conversation_context: str,
+    ) -> CairnOperationResult:
+        """Re-process the original request with clarification context."""
+        # Mark clarification as resolved
+        self.processor.store.resolve_clarification(pending["id"], user_response)
+
+        # Re-process the original request with clarification appended as context
+        augmented_input = (
+            f"{pending['original_request']} "
+            f"(clarification: {user_response})"
+        )
+
+        # Recurse through normal processing with augmented input
+        return self.process_request(
+            user_input=augmented_input,
+            user_id=user_id,
+            execute_tool=execute_tool,
+            persona_context=persona_context,
+            safety_level=safety_level,
+            conversation_context=conversation_context,
+        )
 
     def _needs_user_approval(
         self,

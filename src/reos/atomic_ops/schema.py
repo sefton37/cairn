@@ -649,6 +649,34 @@ class AtomicOpsStore:
         """, (clar_id, operation_id, question, now))
         return clar_id
 
+    def get_pending_clarification(self, user_id: str) -> dict | None:
+        """Get the most recent unresolved clarification for a user.
+
+        Returns dict with: id, operation_id, question, original_request, created_at.
+        Returns None if no pending clarification exists.
+        """
+        cursor = self.conn.execute("""
+            SELECT cc.id, cc.operation_id, cc.question, ao.user_request AS original_request,
+                   cc.created_at
+            FROM classification_clarifications cc
+            JOIN atomic_operations ao ON cc.operation_id = ao.id
+            WHERE cc.resolved = 0 AND ao.user_id = ?
+            ORDER BY cc.created_at DESC
+            LIMIT 1
+        """, (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return dict(row)
+
+    def resolve_clarification(self, clarification_id: str, user_response: str) -> None:
+        """Mark a clarification as resolved with the user's response."""
+        self.conn.execute("""
+            UPDATE classification_clarifications
+            SET user_response = ?, resolved = 1
+            WHERE id = ?
+        """, (user_response, clarification_id))
+
     # =========================================================================
     # CORRECTIONS FOR FEW-SHOT LEARNING
     # =========================================================================
