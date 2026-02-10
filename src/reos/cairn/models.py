@@ -373,14 +373,14 @@ class SurfacedItem:
     linked_contacts: list[str] = field(default_factory=list)
     linked_events: list[str] = field(default_factory=list)
 
-    # Calendar event details (for calendar_event or beat entity_type)
+    # Calendar event details (for calendar_event entity_type)
     calendar_start: datetime | None = None
     calendar_end: datetime | None = None
     is_recurring: bool = False
     recurrence_frequency: str | None = None  # "DAILY", "WEEKLY", "MONTHLY", "YEARLY"
     next_occurrence: datetime | None = None  # For recurring events
 
-    # Play location (for beat entity_type - enables navigation)
+    # Play location (for scene entity_type - enables navigation)
     act_id: str | None = None
     scene_id: str | None = None
     act_title: str | None = None  # For display in UI

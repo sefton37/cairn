@@ -69,9 +69,7 @@ class TestSchemaInitialization:
         conn = play_db._get_connection()
 
         # Check tables exist
-        cursor = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-        )
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
         tables = {row[0] for row in cursor}
 
         assert "acts" in tables
@@ -155,9 +153,7 @@ class TestActsCRUD:
 
     def test_create_act_with_color(self, initialized_db) -> None:
         """create_act supports color parameter."""
-        acts, act_id = initialized_db.create_act(
-            title="Colored Act", color="#ff5500"
-        )
+        acts, act_id = initialized_db.create_act(title="Colored Act", color="#ff5500")
 
         assert acts[0]["color"] == "#ff5500"
 
@@ -180,9 +176,7 @@ class TestActsCRUD:
         """update_act modifies act fields."""
         _, act_id = initialized_db.create_act(title="Original Title")
 
-        acts, _ = initialized_db.update_act(
-            act_id=act_id, title="Updated Title", notes="New notes"
-        )
+        acts, _ = initialized_db.update_act(act_id=act_id, title="Updated Title", notes="New notes")
 
         updated = next(a for a in acts if a["act_id"] == act_id)
         assert updated["title"] == "Updated Title"
@@ -246,9 +240,7 @@ class TestScenesCRUD:
         """create_scene creates a new scene."""
         _, act_id = initialized_db.create_act(title="Test Act")
 
-        scenes, scene_id = initialized_db.create_scene(
-            act_id=act_id, title="Test Scene"
-        )
+        scenes, scene_id = initialized_db.create_scene(act_id=act_id, title="Test Scene")
 
         assert scene_id.startswith("scene-")
         assert len(scenes) == 1
@@ -416,14 +408,10 @@ class TestUpdateSceneCalendarData:
         _, scene_id = initialized_db.create_scene(act_id=act_id, title="Test Scene")
 
         # Set initial data
-        initialized_db.update_scene_calendar_data(
-            scene_id, calendar_name="Personal"
-        )
+        initialized_db.update_scene_calendar_data(scene_id, calendar_name="Personal")
 
         # Clear with empty string
-        initialized_db.update_scene_calendar_data(
-            scene_id, calendar_name=""
-        )
+        initialized_db.update_scene_calendar_data(scene_id, calendar_name="")
 
         scene = initialized_db.get_scene(scene_id)
         assert scene["calendar_name"] is None
@@ -460,9 +448,7 @@ class TestUpdateSceneCalendarData:
         _, act_id = initialized_db.create_act(title="Test Act")
         _, scene_id = initialized_db.create_scene(act_id=act_id, title="Birthday")
 
-        initialized_db.update_scene_calendar_data(
-            scene_id, category="birthday"
-        )
+        initialized_db.update_scene_calendar_data(scene_id, category="birthday")
 
         scene = initialized_db.get_scene(scene_id)
         assert scene["category"] == "birthday"
@@ -481,9 +467,7 @@ class TestUpdateSceneCalendarData:
         )
 
         # Update only one field
-        initialized_db.update_scene_calendar_data(
-            scene_id, calendar_name="Work"
-        )
+        initialized_db.update_scene_calendar_data(scene_id, calendar_name="Work")
 
         scene = initialized_db.get_scene(scene_id)
         # calendar_event_start and category should be preserved
@@ -740,8 +724,6 @@ class TestPagesCRUD:
 
         assert moved is not None
         assert moved["parent_page_id"] == parent2_id
-
-
 
 
 # =============================================================================

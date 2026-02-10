@@ -207,7 +207,6 @@ class TestToolSelectors:
         )
         assert _play_tool_selector(ctx) == "cairn_list_acts"
 
-
     def test_play_tool_selector_create_act(self) -> None:
         """Play tool selector returns cairn_create_act for creation."""
         ctx = BehaviorModeContext(
@@ -219,14 +218,14 @@ class TestToolSelectors:
         assert _play_tool_selector(ctx) == "cairn_create_act"
 
     def test_play_tool_selector_should_be_in(self) -> None:
-        """Play tool selector recognizes 'should be in' as move."""
+        """Play tool selector recognizes 'should be in' as move for scenes."""
         ctx = BehaviorModeContext(
-            user_input="Job Search should be in the Career act",
+            user_input="move my Job Search scene to Career",
             classification=_make_classification(
                 semantics="execute", domain="play", action_hint="update"
             ),
         )
-        assert _play_tool_selector(ctx) == "cairn_move_beat_to_act"
+        assert _play_tool_selector(ctx) == "cairn_update_scene"
 
     def test_play_tool_selector_delete_scene(self) -> None:
         """Play tool selector returns cairn_delete_scene for scene deletion."""
@@ -298,40 +297,6 @@ class TestBehaviorModeAttributes:
 
 class TestLLMArgExtraction:
     """Test LLM-based argument extraction."""
-
-    def test_beat_move_args_with_llm(self) -> None:
-        """LLM extracts beat_name and target_act_name."""
-        mock_llm = MagicMock()
-        mock_llm.chat_json.return_value = '{"beat_name": "Job Search", "target_act_name": "Career"}'
-
-        from reos.cairn.behavior_modes import _llm_extract_beat_move_args
-
-        ctx = BehaviorModeContext(
-            user_input="Move Job Search to Career act",
-            classification=_make_classification(domain="play", action_hint="update"),
-            play_data={
-                "acts": [{"title": "Career"}, {"title": "Health"}],
-                "all_beats": [{"title": "Job Search", "act_title": "Health"}],
-            },
-            llm=mock_llm,
-        )
-        args = _llm_extract_beat_move_args(ctx)
-
-        assert args.get("beat_name") == "Job Search"
-        assert args.get("target_act_name") == "Career"
-
-    def test_beat_move_args_without_llm(self) -> None:
-        """Without LLM, returns empty args."""
-        from reos.cairn.behavior_modes import _llm_extract_beat_move_args
-
-        ctx = BehaviorModeContext(
-            user_input="Move Job Search to Career",
-            classification=_make_classification(domain="play"),
-            play_data={},
-            llm=None,
-        )
-        args = _llm_extract_beat_move_args(ctx)
-        assert args == {}
 
     def test_scene_move_args_with_llm(self) -> None:
         """LLM extracts scene move arguments."""

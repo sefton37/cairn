@@ -13,15 +13,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from reos.cairn.models import (
     ActivityType,
     ContactRelationship,
     KanbanState,
-    PendingConfirmation,
-    TOOLS_REQUIRING_CONFIRMATION,
     UndoContext,
 )
 from reos.cairn.store import CairnStore
@@ -381,7 +378,7 @@ def list_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {
                     "contact_id": {"type": "string"},
-                    "entity_type": {"type": "string", "enum": ["act", "scene", "beat"]},
+                    "entity_type": {"type": "string", "enum": ["act", "scene"]},
                     "entity_id": {"type": "string"},
                 },
             },
@@ -671,7 +668,7 @@ def list_tools() -> list[Tool]:
             input_schema={
                 "type": "object",
                 "properties": {
-                    "entity_type": {"type": "string", "enum": ["act", "scene", "beat"]},
+                    "entity_type": {"type": "string", "enum": ["act", "scene"]},
                     "entity_id": {"type": "string"},
                     "days": {"type": "number", "description": "Days of history (default: 7)"},
                 },
@@ -871,15 +868,25 @@ def list_tools() -> list[Tool]:
                     "type": {
                         "type": "string",
                         "enum": [
-                            "paragraph", "heading_1", "heading_2", "heading_3",
-                            "bulleted_list", "numbered_list", "to_do",
-                            "code", "divider", "callout"
+                            "paragraph",
+                            "heading_1",
+                            "heading_2",
+                            "heading_3",
+                            "bulleted_list",
+                            "numbered_list",
+                            "to_do",
+                            "code",
+                            "divider",
+                            "callout",
                         ],
                         "description": "Block type",
                     },
                     "act_id": {"type": "string", "description": "Act ID"},
                     "page_id": {"type": "string", "description": "Page ID (optional)"},
-                    "parent_id": {"type": "string", "description": "Parent block ID for nesting (optional)"},
+                    "parent_id": {
+                        "type": "string",
+                        "description": "Parent block ID for nesting (optional)",
+                    },
                     "text": {"type": "string", "description": "Plain text content"},
                     "properties": {
                         "type": "object",
@@ -913,7 +920,10 @@ def list_tools() -> list[Tool]:
                 "properties": {
                     "query": {"type": "string", "description": "Search query"},
                     "act_id": {"type": "string", "description": "Limit to specific act (optional)"},
-                    "page_id": {"type": "string", "description": "Limit to specific page (optional)"},
+                    "page_id": {
+                        "type": "string",
+                        "description": "Limit to specific page (optional)",
+                    },
                     "limit": {"type": "number", "description": "Max results (default: 20)"},
                 },
                 "required": ["query"],
@@ -946,7 +956,10 @@ def list_tools() -> list[Tool]:
                 "properties": {
                     "act_id": {"type": "string", "description": "Act ID"},
                     "title": {"type": "string", "description": "Page title"},
-                    "parent_page_id": {"type": "string", "description": "Parent page ID for nesting (optional)"},
+                    "parent_page_id": {
+                        "type": "string",
+                        "description": "Parent page ID for nesting (optional)",
+                    },
                     "icon": {"type": "string", "description": "Page icon emoji (optional)"},
                 },
                 "required": ["act_id", "title"],
@@ -959,7 +972,10 @@ def list_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {
                     "act_id": {"type": "string", "description": "Act ID"},
-                    "parent_page_id": {"type": "string", "description": "Filter to children of this page (optional)"},
+                    "parent_page_id": {
+                        "type": "string",
+                        "description": "Filter to children of this page (optional)",
+                    },
                 },
                 "required": ["act_id"],
             },
@@ -1574,7 +1590,9 @@ class CairnToolHandler:
                     "title": item.title,
                     "reason": item.reason,
                     "urgency": item.urgency,
-                    "calendar_start": item.calendar_start.isoformat() if item.calendar_start else None,
+                    "calendar_start": item.calendar_start.isoformat()
+                    if item.calendar_start
+                    else None,
                     "calendar_end": item.calendar_end.isoformat() if item.calendar_end else None,
                     "metadata": item.metadata.to_dict() if item.metadata else None,
                 }
@@ -1727,10 +1745,10 @@ class CairnToolHandler:
         }
 
     def _get_todos(self, args: dict[str, Any]) -> dict[str, Any]:
-        """Get todos (Beats) from The Play with CAIRN metadata.
+        """Get todos (Scenes) from The Play with CAIRN metadata.
 
-        Beats are the todos in ReOS - they come from The Play hierarchy.
-        This returns Beats with their CAIRN attention metadata and linked calendar events.
+        Scenes are the todos in ReOS - they come from The Play hierarchy.
+        This returns Scenes with their CAIRN attention metadata.
         """
         from reos import play_fs
 
@@ -1745,63 +1763,61 @@ class CairnToolHandler:
             # Get all Scenes in this Act
             scenes = play_fs.list_scenes(act_id=act.act_id)
             for scene in scenes:
-                # Get all Beats in this Scene
-                beats = play_fs.list_beats(act_id=act.act_id, scene_id=scene.scene_id)
-                for beat in beats:
-                    # Get CAIRN metadata for this Beat
-                    metadata = self.store.get_metadata("beat", beat.beat_id)
+                # Get CAIRN metadata for this Scene
+                metadata = self.store.get_metadata("scene", scene.scene_id)
 
-                    # Filter by kanban state
-                    if kanban_filter:
-                        if metadata is None or metadata.kanban_state.value != kanban_filter:
-                            continue
+                # Filter by kanban state
+                if kanban_filter:
+                    if metadata is None or metadata.kanban_state.value != kanban_filter:
+                        continue
 
-                    # Filter completed if requested
-                    if not include_completed:
-                        if beat.status.lower() in ("done", "completed", "complete"):
-                            continue
-                        if metadata and metadata.kanban_state.value == "done":
-                            continue
+                # Filter completed if requested
+                if not include_completed:
+                    if scene.stage.lower() in ("done", "completed", "complete"):
+                        continue
+                    if metadata and metadata.kanban_state.value == "done":
+                        continue
 
-                    # Get linked calendar events
-                    calendar_events = self.store.get_calendar_events_for_beat(beat.beat_id)
+                todo_item = {
+                    "id": scene.scene_id,
+                    "title": scene.title,
+                    "status": scene.stage,
+                    "notes": scene.notes,
+                    "link": scene.link,
+                    # Context
+                    "act_id": act.act_id,
+                    "act_title": act.title,
+                    "scene_id": scene.scene_id,
+                    "scene_title": scene.title,
+                }
 
-                    todo_item = {
-                        "id": beat.beat_id,
-                        "title": beat.title,
-                        "status": beat.status,
-                        "notes": beat.notes,
-                        "link": beat.link,
-                        # Context
-                        "act_id": act.act_id,
-                        "act_title": act.title,
-                        "scene_id": scene.scene_id,
-                        "scene_title": scene.title,
-                    }
-
-                    # Add CAIRN metadata if available
-                    if metadata:
-                        todo_item.update({
+                # Add CAIRN metadata if available
+                if metadata:
+                    todo_item.update(
+                        {
                             "kanban_state": metadata.kanban_state.value,
                             "priority": metadata.priority,
-                            "due_date": metadata.due_date.isoformat() if metadata.due_date else None,
+                            "due_date": metadata.due_date.isoformat()
+                            if metadata.due_date
+                            else None,
                             "waiting_on": metadata.waiting_on,
-                            "last_touched": metadata.last_touched.isoformat() if metadata.last_touched else None,
-                        })
-                    else:
-                        todo_item.update({
+                            "last_touched": metadata.last_touched.isoformat()
+                            if metadata.last_touched
+                            else None,
+                        }
+                    )
+                else:
+                    todo_item.update(
+                        {
                             "kanban_state": "backlog",
                             "priority": None,
                             "due_date": None,
                             "waiting_on": None,
                             "last_touched": None,
-                        })
+                        }
+                    )
 
-                    # Add linked calendar events
-                    if calendar_events:
-                        todo_item["calendar_events"] = calendar_events
-
-                    todos.append(todo_item)
+                todos.append(todo_item)
 
         # Sort by priority (high first), then by due date
         def sort_key(t):
@@ -1824,6 +1840,7 @@ class CairnToolHandler:
 
         since = datetime.now()
         from datetime import timedelta
+
         since = since - timedelta(days=days)
 
         logs = self.store.get_activity_log(
@@ -1944,7 +1961,9 @@ class CairnToolHandler:
 
             result: dict[str, Any] = {
                 "identity_hash": get_identity_hash(identity),
-                "core_preview": identity.core[:500] + "..." if len(identity.core) > 500 else identity.core,
+                "core_preview": identity.core[:500] + "..."
+                if len(identity.core) > 500
+                else identity.core,
                 "facet_count": len(identity.facets),
                 "anti_pattern_count": len(identity.anti_patterns),
                 "anti_patterns": identity.anti_patterns,
@@ -1971,10 +1990,12 @@ class CairnToolHandler:
             }
 
     # =========================================================================
-    # Beat Organization
+    # Entity Resolution
     # =========================================================================
 
-    def _fuzzy_match(self, query: str, candidates: list[tuple[str, str]]) -> tuple[str, str, float] | None:
+    def _fuzzy_match(
+        self, query: str, candidates: list[tuple[str, str]]
+    ) -> tuple[str, str, float] | None:
         """Fuzzy match a query against candidates.
 
         Args:
@@ -2221,26 +2242,22 @@ class CairnToolHandler:
 
         # Check if this execution has been confirmed
         if not confirmation_id:
-            # Count scenes and beats to show impact
+            # Count scenes to show impact
             scenes = play_fs.list_scenes(act_id=act_id)
-            beat_count = sum(
-                len(play_fs.list_beats(act_id=act_id, scene_id=s.scene_id))
-                for s in scenes
-            )
 
             # Create pending confirmation - user must explicitly approve
             pending = self.store.create_pending_confirmation(
                 tool_name="cairn_delete_act",
                 tool_args={"act_name": act_name},
-                description=f"Delete Act '{act_title}' with {len(scenes)} scenes and {beat_count} beats",
-                warning="This will permanently delete the Act and ALL its contents (scenes, beats).",
+                description=f"Delete Act '{act_title}' with {len(scenes)} scenes",
+                warning="This will permanently delete the Act and ALL its scenes.",
             )
             return {
                 "success": False,
                 "awaiting_confirmation": True,
                 "confirmation_id": pending.confirmation_id,
                 "action": f"Delete Act '{act_title}'",
-                "warning": f"This will permanently delete '{act_title}' including {len(scenes)} scenes and {beat_count} beats.",
+                "warning": f"This will permanently delete '{act_title}' including {len(scenes)} scenes.",
                 "message": f"⚠️ Are you sure you want to delete Act '{act_title}' and all its contents? Say 'yes' or 'confirm' to proceed, or 'cancel' to abort.",
             }
 
@@ -2325,7 +2342,8 @@ class CairnToolHandler:
                     "scene_id": s.scene_id,
                     "title": s.title,
                     "intent": s.intent,
-                    "is_stage_direction": s.scene_id == play_fs._get_stage_direction_scene_id(act_id),
+                    "is_stage_direction": s.scene_id
+                    == play_fs._get_stage_direction_scene_id(act_id),
                 }
                 for s in scenes
             ],
@@ -2408,17 +2426,20 @@ class CairnToolHandler:
         for act in acts:
             scenes = play_fs.list_scenes(act_id=act.act_id)
             for s in scenes:
-                all_scenes.append({
-                    "id": s.scene_id,
-                    "scene_id": s.scene_id,
-                    "title": s.title,
-                    "act_id": act.act_id,
-                    "act_title": act.title,
-                })
+                all_scenes.append(
+                    {
+                        "id": s.scene_id,
+                        "scene_id": s.scene_id,
+                        "title": s.title,
+                        "act_id": act.act_id,
+                        "act_title": act.title,
+                    }
+                )
 
         # Use LLM-based entity resolution
         if self._llm:
             from reos.atomic_ops.entity_resolver import EntityResolver
+
             resolver = EntityResolver(self._llm)
 
             # Resolve scene reference
@@ -2433,11 +2454,10 @@ class CairnToolHandler:
                 return {
                     "success": False,
                     "needs_clarification": True,
-                    "clarification_prompt": resolved.clarification_prompt or f"Which scene did you mean by '{scene_name}'?",
-                    "candidates": resolved.alternatives or [
-                        {"title": s["title"], "act": s["act_title"]}
-                        for s in all_scenes[:10]
-                    ],
+                    "clarification_prompt": resolved.clarification_prompt
+                    or f"Which scene did you mean by '{scene_name}'?",
+                    "candidates": resolved.alternatives
+                    or [{"title": s["title"], "act": s["act_title"]} for s in all_scenes[:10]],
                     "confidence": resolved.confidence,
                     "reasoning": resolved.reasoning,
                 }
@@ -2509,8 +2529,7 @@ class CairnToolHandler:
                     "error": "Multiple scenes match. Please be more specific.",
                     "disambiguation_needed": True,
                     "candidates": [
-                        {"title": m[1], "score": round(m[2], 2)}
-                        for m in all_matches[:5]
+                        {"title": m[1], "score": round(m[2], 2)} for m in all_matches[:5]
                     ],
                     "hint": f"Did you mean one of these scenes in '{source_act_title}'?",
                 }
@@ -2529,11 +2548,13 @@ class CairnToolHandler:
                 candidates = []
                 for m in all_matches[:5]:
                     act_info = scene_to_act.get(m[0], ("", "Unknown"))
-                    candidates.append({
-                        "title": m[1],
-                        "act": act_info[1],
-                        "score": round(m[2], 2),
-                    })
+                    candidates.append(
+                        {
+                            "title": m[1],
+                            "act": act_info[1],
+                            "score": round(m[2], 2),
+                        }
+                    )
                 return {
                     "success": False,
                     "error": "Multiple scenes match. Please be more specific.",
@@ -2553,7 +2574,9 @@ class CairnToolHandler:
                 return {
                     "success": False,
                     "error": f"Could not find Scene matching '{scene_name}' in Act '{source_act_title}'",
-                    "available_scenes": [s[1] for s in scene_lookup],  # scene_lookup is [(id, title)]
+                    "available_scenes": [
+                        s[1] for s in scene_lookup
+                    ],  # scene_lookup is [(id, title)]
                 }
             else:
                 # We searched all acts
@@ -2674,23 +2697,20 @@ class CairnToolHandler:
 
         # Check if this execution has been confirmed
         if not confirmation_id:
-            # Count beats to show impact
-            beats = play_fs.list_beats(act_id=act_id, scene_id=scene_id)
-
             # Create pending confirmation - user must explicitly approve
             pending = self.store.create_pending_confirmation(
                 tool_name="cairn_delete_scene",
                 tool_args={"act_name": act_name, "scene_name": scene_name},
-                description=f"Delete Scene '{scene_title}' from Act '{act_title}' with {len(beats)} beats",
-                warning="This will permanently delete the Scene and ALL its beats.",
+                description=f"Delete Scene '{scene_title}' from Act '{act_title}'",
+                warning="This will permanently delete the Scene.",
             )
             return {
                 "success": False,
                 "awaiting_confirmation": True,
                 "confirmation_id": pending.confirmation_id,
                 "action": f"Delete Scene '{scene_title}'",
-                "warning": f"This will permanently delete '{scene_title}' including {len(beats)} beats.",
-                "message": f"⚠️ Are you sure you want to delete Scene '{scene_title}' and all its beats? Say 'yes' or 'confirm' to proceed, or 'cancel' to abort.",
+                "warning": f"This will permanently delete '{scene_title}'.",
+                "message": f"⚠️ Are you sure you want to delete Scene '{scene_title}'? Say 'yes' or 'confirm' to proceed, or 'cancel' to abort.",
             }
 
         # Execution is confirmed - proceed with delete
@@ -2784,9 +2804,7 @@ class CairnToolHandler:
                 "action_description": undo_context.description,
             }
 
-    def _execute_reverse_tool(
-        self, tool_name: str, args: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _execute_reverse_tool(self, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
         """Execute a reverse tool operation.
 
         This is a dispatcher that calls the appropriate internal method
@@ -2977,7 +2995,6 @@ class CairnToolHandler:
     def _create_block(self, args: dict[str, Any]) -> dict[str, Any]:
         """Create a new block."""
         from ..play import blocks_db
-        from ..play.blocks_models import BlockType
 
         block_type = args.get("type")
         act_id = args.get("act_id")
@@ -3047,7 +3064,6 @@ class CairnToolHandler:
 
     def _search_blocks(self, args: dict[str, Any]) -> dict[str, Any]:
         """Search for blocks containing text."""
-        from ..play import blocks_db
         from ..play_db import _get_connection, init_db
 
         query = args.get("query")
@@ -3083,13 +3099,15 @@ class CairnToolHandler:
         cursor = conn.execute(sql, params)
         results = []
         for row in cursor:
-            results.append({
-                "block_id": row["id"],
-                "type": row["type"],
-                "act_id": row["act_id"],
-                "page_id": row["page_id"],
-                "preview": row["content"][:100] + ("..." if len(row["content"]) > 100 else ""),
-            })
+            results.append(
+                {
+                    "block_id": row["id"],
+                    "type": row["type"],
+                    "act_id": row["act_id"],
+                    "page_id": row["page_id"],
+                    "preview": row["content"][:100] + ("..." if len(row["content"]) > 100 else ""),
+                }
+            )
 
         return {
             "success": True,

@@ -25,7 +25,6 @@ from reos.cairn.models import (
 from reos.cairn.store import CairnStore
 from reos.cairn.surfacing import CairnSurfacer
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -352,7 +351,9 @@ class TestListingFilters:
 class TestSurfacing:
     """Test surfacing algorithms."""
 
-    def test_surface_next_returns_list(self, surfacer: CairnSurfacer, cairn_store: CairnStore) -> None:
+    def test_surface_next_returns_list(
+        self, surfacer: CairnSurfacer, cairn_store: CairnStore
+    ) -> None:
         """surface_next returns a list of surfaced items."""
         cairn_store.get_or_create_metadata("act", "a1")
         cairn_store.set_kanban_state("act", "a1", KanbanState.ACTIVE)
@@ -363,9 +364,11 @@ class TestSurfacing:
         assert isinstance(result, list)
         # May or may not contain items depending on context
         if result:
-            assert hasattr(result[0], 'entity_id')
+            assert hasattr(result[0], "entity_id")
 
-    def test_surface_today_returns_list(self, surfacer: CairnSurfacer, cairn_store: CairnStore) -> None:
+    def test_surface_today_returns_list(
+        self, surfacer: CairnSurfacer, cairn_store: CairnStore
+    ) -> None:
         """surface_today returns a list."""
         cairn_store.get_or_create_metadata("act", "a1")
         cairn_store.set_kanban_state("act", "a1", KanbanState.ACTIVE)
@@ -374,7 +377,9 @@ class TestSurfacing:
 
         assert isinstance(results, list)
 
-    def test_surface_stale_returns_old_items(self, surfacer: CairnSurfacer, cairn_store: CairnStore) -> None:
+    def test_surface_stale_returns_old_items(
+        self, surfacer: CairnSurfacer, cairn_store: CairnStore
+    ) -> None:
         """surface_stale returns items not touched recently."""
         # Create an item and set to ACTIVE state
         cairn_store.get_or_create_metadata("act", "a1")
@@ -394,7 +399,9 @@ class TestSurfacing:
         assert len(results) >= 1
         assert any(r.entity_id == "a1" for r in results)
 
-    def test_surface_waiting_returns_waiting_items(self, surfacer: CairnSurfacer, cairn_store: CairnStore) -> None:
+    def test_surface_waiting_returns_waiting_items(
+        self, surfacer: CairnSurfacer, cairn_store: CairnStore
+    ) -> None:
         """surface_waiting returns items in WAITING state."""
         cairn_store.get_or_create_metadata("act", "a1")
         cairn_store.set_kanban_state("act", "a1", KanbanState.WAITING, waiting_on="Client")
@@ -476,7 +483,7 @@ class TestModels:
         """SurfaceContext has max_items attribute."""
         context = SurfaceContext()
         # Check max_items exists (default should be 5)
-        assert hasattr(context, 'max_items')
+        assert hasattr(context, "max_items")
         assert context.max_items == 5
 
     def test_activity_type_values(self) -> None:
@@ -526,6 +533,7 @@ class TestModels:
     def test_activity_log_entry_to_dict(self) -> None:
         """ActivityLogEntry serializes correctly."""
         from reos.cairn.models import ActivityLogEntry
+
         entry = ActivityLogEntry(
             log_id="log1",
             entity_type="act",
@@ -542,6 +550,7 @@ class TestModels:
     def test_contact_link_to_dict_and_from_dict(self) -> None:
         """ContactLink round-trips through dict."""
         from reos.cairn.models import ContactLink
+
         link = ContactLink(
             link_id="link1",
             contact_id="contact1",
@@ -559,6 +568,7 @@ class TestModels:
     def test_undo_context_to_dict_and_from_dict(self) -> None:
         """UndoContext round-trips through dict."""
         from reos.cairn.models import UndoContext
+
         ctx = UndoContext(
             tool_name="cairn_set_priority",
             reverse_tool="cairn_clear_priority",
@@ -576,6 +586,7 @@ class TestModels:
     def test_pending_confirmation_properties(self) -> None:
         """PendingConfirmation properties work correctly."""
         from reos.cairn.models import PendingConfirmation
+
         conf = PendingConfirmation(
             confirmation_id="conf1",
             tool_name="cairn_delete_act",
@@ -596,6 +607,7 @@ class TestModels:
     def test_pending_confirmation_to_dict_from_dict(self) -> None:
         """PendingConfirmation round-trips through dict."""
         from reos.cairn.models import PendingConfirmation
+
         conf = PendingConfirmation(
             confirmation_id="conf1",
             tool_name="cairn_delete_act",
@@ -614,6 +626,7 @@ class TestModels:
     def test_surfaced_item_fields(self) -> None:
         """SurfacedItem has expected fields."""
         from reos.cairn.models import SurfacedItem
+
         item = SurfacedItem(
             entity_type="act",
             entity_id="a1",
@@ -631,9 +644,9 @@ class TestModels:
     def test_tools_requiring_confirmation(self) -> None:
         """TOOLS_REQUIRING_CONFIRMATION has expected tools."""
         from reos.cairn.models import TOOLS_REQUIRING_CONFIRMATION
+
         assert "cairn_delete_act" in TOOLS_REQUIRING_CONFIRMATION
         assert "cairn_delete_scene" in TOOLS_REQUIRING_CONFIRMATION
-        assert "cairn_delete_beat" in TOOLS_REQUIRING_CONFIRMATION
 
 
 # =============================================================================

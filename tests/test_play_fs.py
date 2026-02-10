@@ -33,6 +33,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[
 
     # Close any existing connection before test
     import reos.play_db as play_db
+
     play_db.close_connection()
 
     yield data_dir
@@ -68,7 +69,6 @@ class TestSceneStageEnum:
         assert SceneStage.IN_PROGRESS.value == "in_progress"
         assert SceneStage.AWAITING_DATA.value == "awaiting_data"
         assert SceneStage.COMPLETE.value == "complete"
-
 
 
 class TestActDataclass:
@@ -138,8 +138,6 @@ class TestSceneDataclass:
         assert scene.calendar_event_id == "cal-789"
         assert scene.recurrence_rule == "FREQ=WEEKLY"
         assert scene.thunderbird_event_id == "tb-event-1"
-
-
 
 
 class TestFileAttachmentDataclass:
@@ -355,7 +353,6 @@ class TestDictConversions:
         assert scene.stage == SceneStage.PLANNING.value
 
 
-
 # =============================================================================
 # Validation Tests
 # =============================================================================
@@ -444,8 +441,7 @@ class TestColorPalette:
         from reos.play_fs import _pick_unused_color, Act, ACT_COLOR_PALETTE
 
         existing = [
-            Act(act_id=str(i), title=str(i), color=c)
-            for i, c in enumerate(ACT_COLOR_PALETTE)
+            Act(act_id=str(i), title=str(i), color=c) for i, c in enumerate(ACT_COLOR_PALETTE)
         ]
         color = _pick_unused_color(existing)
         assert color == ACT_COLOR_PALETTE[0]
@@ -472,7 +468,6 @@ class TestKbRootFor:
 
         path = _kb_root_for(act_id="act-1", scene_id="scene-1")
         assert path == play_root() / "kb" / "acts" / "act-1" / "scenes" / "scene-1"
-
 
 
 class TestResolveKbFile:
@@ -609,11 +604,7 @@ class TestKbWritePreview:
         acts, _ = play_db.list_acts()
         act_id = acts[0]["act_id"]
 
-        result = kb_write_preview(
-            act_id=act_id,
-            path="new.md",
-            text="# New Content"
-        )
+        result = kb_write_preview(act_id=act_id, path="new.md", text="# New Content")
 
         assert result["exists"] is False
         assert result["sha256_new"] is not None
@@ -631,11 +622,7 @@ class TestKbWritePreview:
         kb_root.mkdir(parents=True, exist_ok=True)
         (kb_root / "edit.md").write_text("Original content", encoding="utf-8")
 
-        result = kb_write_preview(
-            act_id=act_id,
-            path="edit.md",
-            text="Modified content"
-        )
+        result = kb_write_preview(act_id=act_id, path="edit.md", text="Modified content")
 
         assert result["exists"] is True
         assert "-Original content" in result["diff"]

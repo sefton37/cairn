@@ -118,8 +118,6 @@ class SceneInfo:
         )
 
 
-
-
 @dataclass
 class AttachmentInfo:
     """Information about a file attachment."""
@@ -377,7 +375,6 @@ class PlayService:
             target_act_id=target_act_id,
         )
 
-
     # --- Knowledge Base (KB) Files ---
 
     def list_kb_files(
@@ -557,38 +554,42 @@ class PlayService:
         # Search story
         story = self.read_story()
         if query_lower in story.lower():
-            results.append({
-                "type": "story",
-                "title": "Your Story",
-                "snippet": self._extract_snippet(story, query_lower),
-            })
+            results.append(
+                {
+                    "type": "story",
+                    "title": "Your Story",
+                    "snippet": self._extract_snippet(story, query_lower),
+                }
+            )
 
         # Search acts
         acts, _ = self.list_acts()
         for act in acts:
             if query_lower in act.title.lower() or query_lower in act.notes.lower():
-                results.append({
-                    "type": "act",
-                    "act_id": act.act_id,
-                    "title": act.title,
-                    "snippet": self._extract_snippet(
-                        act.title + " " + act.notes, query_lower
-                    ),
-                })
+                results.append(
+                    {
+                        "type": "act",
+                        "act_id": act.act_id,
+                        "title": act.title,
+                        "snippet": self._extract_snippet(act.title + " " + act.notes, query_lower),
+                    }
+                )
 
             # Search scenes under this act
             scenes = self.list_scenes(act.act_id)
             for scene in scenes:
                 if query_lower in scene.title.lower() or query_lower in scene.notes.lower():
-                    results.append({
-                        "type": "scene",
-                        "act_id": act.act_id,
-                        "scene_id": scene.scene_id,
-                        "title": scene.title,
-                        "snippet": self._extract_snippet(
-                            scene.title + " " + scene.notes, query_lower
-                        ),
-                    })
+                    results.append(
+                        {
+                            "type": "scene",
+                            "act_id": act.act_id,
+                            "scene_id": scene.scene_id,
+                            "title": scene.title,
+                            "snippet": self._extract_snippet(
+                                scene.title + " " + scene.notes, query_lower
+                            ),
+                        }
+                    )
 
         return results
 

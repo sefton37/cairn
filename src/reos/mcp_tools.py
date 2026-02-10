@@ -23,16 +23,16 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from . import linux_tools
 from .alignment import get_git_summary, is_git_repo
 from .db import Database
 from .repo_discovery import discover_git_repos
 from .repo_sandbox import RepoSandboxError, safe_repo_path
 from .settings import settings
-from . import linux_tools
 
 _JSON = dict[str, Any]
 
@@ -1878,11 +1878,12 @@ def call_tool(db: Database, *, name: str, arguments: dict[str, Any] | None) -> A
 
     # --- CAIRN Tools (Knowledge Management & Thunderbird Integration) ---
     if name.startswith("cairn_"):
+        import logging
         from pathlib import Path
-        from .cairn.mcp_tools import CairnToolHandler, CairnToolError
+
+        from .cairn.mcp_tools import CairnToolError, CairnToolHandler
         from .cairn.store import CairnStore
         from .play_fs import play_root
-        import logging
 
         def get_current_play_path(db):
             """Get current play path, or None."""

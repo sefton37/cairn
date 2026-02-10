@@ -37,12 +37,11 @@ class SceneStage(Enum):
     - AWAITING_DATA: Waiting for external input/data
     - COMPLETE: Done
     """
+
     PLANNING = "planning"
     IN_PROGRESS = "in_progress"
     AWAITING_DATA = "awaiting_data"
     COMPLETE = "complete"
-
-
 
 
 # Color palette for Acts - visually distinct colors that work well in UI
@@ -71,14 +70,15 @@ class Act:
     automatically detect code-related requests and provide agentic
     coding capabilities sandboxed to the assigned repository.
     """
+
     act_id: str
     title: str
     active: bool = False
     notes: str = ""
-    color: str | None = None               # Hex color for UI display (e.g., "#8b5cf6")
+    color: str | None = None  # Hex color for UI display (e.g., "#8b5cf6")
     # Code Mode fields
-    repo_path: str | None = None           # Absolute path to git repo
-    artifact_type: str | None = None       # "python", "typescript", "rust", etc.
+    repo_path: str | None = None  # Absolute path to git repo
+    artifact_type: str | None = None  # "python", "typescript", "rust", etc.
     code_config: dict[str, Any] | None = None  # Per-Act code configuration
 
 
@@ -97,6 +97,7 @@ class Scene:
     - By default, non-recurring scenes auto-complete when their time passes
     - If disable_auto_complete=True, overdue scenes go to 'need_attention' instead
     """
+
     scene_id: str
     act_id: str  # Parent Act ID
     title: str
@@ -104,23 +105,22 @@ class Scene:
     notes: str
     link: str | None = None
     # Calendar integration fields
-    calendar_event_id: str | None = None      # Inbound sync: TB event that Scene reflects
-    recurrence_rule: str | None = None        # RRULE string if recurring
-    thunderbird_event_id: str | None = None   # Outbound sync: TB event created for Scene
+    calendar_event_id: str | None = None  # Inbound sync: TB event that Scene reflects
+    recurrence_rule: str | None = None  # RRULE string if recurring
+    thunderbird_event_id: str | None = None  # Outbound sync: TB event created for Scene
     # Auto-complete behavior (v9)
-    disable_auto_complete: bool = False       # If True, overdue -> need_attention instead of complete
-
-
+    disable_auto_complete: bool = False  # If True, overdue -> need_attention instead of complete
 
 
 @dataclass(frozen=True)
 class FileAttachment:
     """A file attachment reference (stores path only, not file content)."""
+
     attachment_id: str
-    file_path: str      # Absolute path on disk
-    file_name: str      # Display name
-    file_type: str      # Extension (pdf, docx, etc.)
-    added_at: str       # ISO timestamp
+    file_path: str  # Absolute path on disk
+    file_name: str  # Display name
+    file_type: str  # Extension (pdf, docx, etc.)
+    added_at: str  # ISO timestamp
 
 
 def play_root() -> Path:
@@ -141,7 +141,9 @@ def play_root() -> Path:
         return crypto.user_data_root / "play"
 
     # Fallback to default location (development/unauthenticated mode)
-    base = Path(os.environ["REOS_DATA_DIR"]) if os.environ.get("REOS_DATA_DIR") else settings.data_dir
+    base = (
+        Path(os.environ["REOS_DATA_DIR"]) if os.environ.get("REOS_DATA_DIR") else settings.data_dir
+    )
     return base / "play"
 
 
@@ -178,7 +180,9 @@ def ensure_play_skeleton() -> None:
 
     acts = _acts_path()
     if not acts.exists():
-        acts.write_text(json.dumps({"acts": []}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        acts.write_text(
+            json.dumps({"acts": []}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
 
 
 def _ensure_stage_direction_scene(act_id: str) -> None:
@@ -200,6 +204,7 @@ def ensure_your_story_act() -> tuple[list["Act"], str]:
         Tuple of (all acts, your_story_act_id).
     """
     from . import play_db
+
     acts_data, your_story_id = play_db.ensure_your_story_act()
     # Ensure directory exists for KB files
     _act_dir(YOUR_STORY_ACT_ID).mkdir(parents=True, exist_ok=True)
@@ -215,8 +220,6 @@ def write_me_markdown(text: str) -> None:
     """Write the me.md file (Your Story / Play level content)."""
     ensure_play_skeleton()
     _me_path().write_text(text, encoding="utf-8")
-
-
 
 
 def _dict_to_act(d: dict[str, Any]) -> Act:
@@ -249,21 +252,19 @@ def _dict_to_scene(d: dict[str, Any]) -> Scene:
     )
 
 
-
-
 def list_acts() -> tuple[list[Act], str | None]:
     """List all Acts and return the active Act ID."""
     from . import play_db
+
     acts_data, active_id = play_db.list_acts()
     acts = [_dict_to_act(d) for d in acts_data]
     return acts, active_id
 
 
-
-
 def set_active_act_id(*, act_id: str | None) -> tuple[list[Act], str | None]:
     """Set the active act, or clear it if act_id is None."""
     from . import play_db
+
     acts_data, active_id = play_db.set_active_act(act_id)
     acts = [_dict_to_act(d) for d in acts_data]
     return acts, active_id
@@ -272,10 +273,9 @@ def set_active_act_id(*, act_id: str | None) -> tuple[list[Act], str | None]:
 def list_scenes(*, act_id: str) -> list[Scene]:
     """List all Scenes for an Act."""
     from . import play_db
+
     scenes_data = play_db.list_scenes(act_id)
     return [_dict_to_scene(d) for d in scenes_data]
-
-
 
 
 def find_scene_location(scene_id: str) -> dict[str, str | None] | None:
@@ -290,9 +290,8 @@ def find_scene_location(scene_id: str) -> dict[str, str | None] | None:
         Dict with act_id, act_title, scene_id, or None if not found.
     """
     from . import play_db
+
     return play_db.find_scene_location(scene_id)
-
-
 
 
 def _validate_id(*, name: str, value: str) -> None:
@@ -339,6 +338,7 @@ def create_act(*, title: str, notes: str = "", color: str | None = None) -> tupl
         color = _pick_unused_color(existing_acts)
 
     from . import play_db
+
     acts_data, act_id = play_db.create_act(title=title.strip(), notes=notes, color=color)
     acts = [_dict_to_act(d) for d in acts_data]
     # Create directory for KB files
@@ -364,6 +364,7 @@ def update_act(
         raise ValueError("color must be a string")
 
     from . import play_db
+
     acts_data, active_id = play_db.update_act(act_id=act_id, title=title, notes=notes, color=color)
     acts = [_dict_to_act(d) for d in acts_data]
     return acts, active_id
@@ -431,6 +432,7 @@ def assign_repo_to_act(
         repo_path = str(repo)  # Normalize to absolute path
 
     from . import play_db
+
     acts_data, active_id = play_db.assign_repo_to_act(
         act_id=act_id,
         repo_path=repo_path,
@@ -460,6 +462,7 @@ def configure_code_mode(
         raise ValueError("code_config must be a dictionary")
 
     from . import play_db
+
     acts_data, active_id = play_db.configure_code_mode(
         act_id=act_id,
         code_config=code_config,
@@ -516,10 +519,17 @@ def create_scene(
         stage = SceneStage.PLANNING.value
 
     from . import play_db
+
     scenes_data, scene_id = play_db.create_scene(
-        act_id=act_id, title=title.strip(), stage=stage, notes=notes, link=link,
-        calendar_event_id=calendar_event_id, recurrence_rule=recurrence_rule,
-        thunderbird_event_id=thunderbird_event_id, disable_auto_complete=disable_auto_complete
+        act_id=act_id,
+        title=title.strip(),
+        stage=stage,
+        notes=notes,
+        link=link,
+        calendar_event_id=calendar_event_id,
+        recurrence_rule=recurrence_rule,
+        thunderbird_event_id=thunderbird_event_id,
+        disable_auto_complete=disable_auto_complete,
     )
     return [_dict_to_scene(d) for d in scenes_data], scene_id
 
@@ -563,11 +573,18 @@ def update_scene(
         raise ValueError("link must be a string or null")
 
     from . import play_db
+
     scenes_data = play_db.update_scene(
-        act_id=act_id, scene_id=scene_id, title=title.strip() if title else None,
-        stage=stage, notes=notes, link=link,
-        calendar_event_id=calendar_event_id, recurrence_rule=recurrence_rule,
-        thunderbird_event_id=thunderbird_event_id, disable_auto_complete=disable_auto_complete
+        act_id=act_id,
+        scene_id=scene_id,
+        title=title.strip() if title else None,
+        stage=stage,
+        notes=notes,
+        link=link,
+        calendar_event_id=calendar_event_id,
+        recurrence_rule=recurrence_rule,
+        thunderbird_event_id=thunderbird_event_id,
+        disable_auto_complete=disable_auto_complete,
     )
     return [_dict_to_scene(d) for d in scenes_data]
 
@@ -596,6 +613,7 @@ def delete_scene(*, act_id: str, scene_id: str) -> list[Scene]:
         raise ValueError("Cannot delete 'Stage Direction' scene - it is a protected system scene")
 
     from . import play_db
+
     scenes_data = play_db.delete_scene(act_id, scene_id)
     return [_dict_to_scene(d) for d in scenes_data]
 
@@ -624,19 +642,12 @@ def move_scene(
     _validate_id(name="target_act_id", value=target_act_id)
 
     from . import play_db
+
     return play_db.move_scene(
         scene_id=scene_id,
         source_act_id=source_act_id,
         target_act_id=target_act_id,
     )
-
-
-
-
-
-
-
-
 
 
 def _kb_root_for(*, act_id: str, scene_id: str | None = None) -> Path:
@@ -689,8 +700,11 @@ def kb_list_files(*, act_id: str, scene_id: str | None = None) -> list[str]:
 
 def kb_read(*, act_id: str, scene_id: str | None = None, path: str = "kb.md") -> str:
     import sys
+
     print(f"[kb_read] ========== READING ==========", file=sys.stderr, flush=True)
-    print(f"[kb_read] act_id={act_id}, scene_id={scene_id}, path={path}", file=sys.stderr, flush=True)
+    print(
+        f"[kb_read] act_id={act_id}, scene_id={scene_id}, path={path}", file=sys.stderr, flush=True
+    )
     ensure_play_skeleton()
     kb_root = _kb_root_for(act_id=act_id, scene_id=scene_id)
     print(f"[kb_read] kb_root={kb_root}", file=sys.stderr, flush=True)
@@ -723,7 +737,11 @@ Select an Act from the sidebar to focus on a specific narrative, or start writin
         else:
             raise FileNotFoundError(path)
     content = target.read_text(encoding="utf-8", errors="replace")
-    print(f"[kb_read] Read {len(content)} chars, first 100: {content[:100]!r}", file=sys.stderr, flush=True)
+    print(
+        f"[kb_read] Read {len(content)} chars, first 100: {content[:100]!r}",
+        file=sys.stderr,
+        flush=True,
+    )
     return content
 
 
@@ -742,8 +760,17 @@ def kb_write_preview(
     _debug_source: str | None = None,
 ) -> dict[str, Any]:
     import sys
-    print(f"[kb_write_preview] ========== PREVIEW (source={_debug_source}) ==========", file=sys.stderr, flush=True)
-    print(f"[kb_write_preview] act_id={act_id}, path={path}, text_len={len(text)}", file=sys.stderr, flush=True)
+
+    print(
+        f"[kb_write_preview] ========== PREVIEW (source={_debug_source}) ==========",
+        file=sys.stderr,
+        flush=True,
+    )
+    print(
+        f"[kb_write_preview] act_id={act_id}, path={path}, text_len={len(text)}",
+        file=sys.stderr,
+        flush=True,
+    )
     ensure_play_skeleton()
     kb_root = _kb_root_for(act_id=act_id, scene_id=scene_id)
     kb_root.mkdir(parents=True, exist_ok=True)
@@ -754,7 +781,11 @@ def kb_write_preview(
     current = target.read_text(encoding="utf-8", errors="replace") if exists else ""
     current_sha = _sha256_text(current)
     new_sha = _sha256_text(text)
-    print(f"[kb_write_preview] exists={exists}, current_len={len(current)}, current_sha={current_sha[:16]}..., new_sha={new_sha[:16]}...", file=sys.stderr, flush=True)
+    print(
+        f"[kb_write_preview] exists={exists}, current_len={len(current)}, current_sha={current_sha[:16]}..., new_sha={new_sha[:16]}...",
+        file=sys.stderr,
+        flush=True,
+    )
 
     diff_lines = difflib.unified_diff(
         current.splitlines(keepends=True),
@@ -783,8 +814,17 @@ def kb_write_apply(
     _debug_source: str | None = None,
 ) -> dict[str, Any]:
     import sys
-    print(f"[kb_write_apply] ========== APPLY (source={_debug_source}) ==========", file=sys.stderr, flush=True)
-    print(f"[kb_write_apply] act_id={act_id}, path={path}, text_len={len(text)}, expected_sha={expected_sha256_current[:16]}...", file=sys.stderr, flush=True)
+
+    print(
+        f"[kb_write_apply] ========== APPLY (source={_debug_source}) ==========",
+        file=sys.stderr,
+        flush=True,
+    )
+    print(
+        f"[kb_write_apply] act_id={act_id}, path={path}, text_len={len(text)}, expected_sha={expected_sha256_current[:16]}...",
+        file=sys.stderr,
+        flush=True,
+    )
     ensure_play_skeleton()
     kb_root = _kb_root_for(act_id=act_id, scene_id=scene_id)
     kb_root.mkdir(parents=True, exist_ok=True)
@@ -794,14 +834,26 @@ def kb_write_apply(
     exists = target.exists() and target.is_file()
     current = target.read_text(encoding="utf-8", errors="replace") if exists else ""
     current_sha = _sha256_text(current)
-    print(f"[kb_write_apply] current_sha={current_sha[:16]}..., match={current_sha == expected_sha256_current}", file=sys.stderr, flush=True)
+    print(
+        f"[kb_write_apply] current_sha={current_sha[:16]}..., match={current_sha == expected_sha256_current}",
+        file=sys.stderr,
+        flush=True,
+    )
     if current_sha != expected_sha256_current:
-        print(f"[kb_write_apply] CONFLICT! current_sha={current_sha}, expected={expected_sha256_current}", file=sys.stderr, flush=True)
+        print(
+            f"[kb_write_apply] CONFLICT! current_sha={current_sha}, expected={expected_sha256_current}",
+            file=sys.stderr,
+            flush=True,
+        )
         raise ValueError("conflict: file changed since preview")
 
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(text, encoding="utf-8")
-    print(f"[kb_write_apply] SUCCESS - wrote {len(text)} chars to {target}", file=sys.stderr, flush=True)
+    print(
+        f"[kb_write_apply] SUCCESS - wrote {len(text)} chars to {target}",
+        file=sys.stderr,
+        flush=True,
+    )
     after_sha = _sha256_text(text)
     return {"ok": True, "sha256_current": after_sha}
 
@@ -816,9 +868,8 @@ def list_attachments(
 ) -> list[FileAttachment]:
     """List file attachments at the specified level (Play, Act, or Scene)."""
     from . import play_db
-    attachments_data = play_db.list_attachments(
-        act_id=act_id, scene_id=scene_id
-    )
+
+    attachments_data = play_db.list_attachments(act_id=act_id, scene_id=scene_id)
     return [
         FileAttachment(
             attachment_id=d["attachment_id"],
@@ -862,9 +913,9 @@ def add_attachment(
         file_name = p.name
 
     from . import play_db
+
     play_db.add_attachment(
-        act_id=act_id, scene_id=scene_id,
-        file_path=file_path, file_name=file_name
+        act_id=act_id, scene_id=scene_id, file_path=file_path, file_name=file_name
     )
     return list_attachments(act_id=act_id, scene_id=scene_id)
 
@@ -886,6 +937,7 @@ def remove_attachment(
     _validate_id(name="attachment_id", value=attachment_id)
 
     from . import play_db
+
     removed = play_db.remove_attachment(attachment_id)
     if not removed:
         raise ValueError("unknown attachment_id")

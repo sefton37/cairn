@@ -1779,8 +1779,6 @@ def clear_scene_thunderbird_event_id(scene_id: str) -> bool:
     return set_scene_thunderbird_event_id(scene_id, None)
 
 
-
-
 # =============================================================================
 # Attachments Operations
 # =============================================================================

@@ -46,7 +46,7 @@ def intent_engine(mock_llm: MagicMock) -> CairnIntentEngine:
     """Create an intent engine with mock LLM."""
     return CairnIntentEngine(
         llm=mock_llm,
-        available_tools={"cairn_get_calendar", "cairn_list_acts", "cairn_list_beats"},
+        available_tools={"cairn_get_calendar", "cairn_list_acts"},
     )
 
 
@@ -66,7 +66,7 @@ def engine_with_play_data(mock_llm: MagicMock) -> CairnIntentEngine:
     }
     return CairnIntentEngine(
         llm=mock_llm,
-        available_tools={"cairn_move_beat_to_act", "cairn_list_acts", "cairn_list_beats"},
+        available_tools={"cairn_list_acts"},
         play_data=play_data,
     )
 

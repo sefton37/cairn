@@ -268,7 +268,7 @@ class CairnStore:
         """Get metadata for a Play entity.
 
         Args:
-            entity_type: Type of entity (act, scene, beat).
+            entity_type: Type of entity (act, scene).
             entity_id: ID of the entity.
 
         Returns:
@@ -294,7 +294,7 @@ class CairnStore:
         """Get metadata for a Play entity, creating if it doesn't exist.
 
         Args:
-            entity_type: Type of entity (act, scene, beat).
+            entity_type: Type of entity (act, scene).
             entity_id: ID of the entity.
 
         Returns:

@@ -29,6 +29,7 @@ class TestChatService:
     def chat_service(self, db: Database):
         """Create a ChatService instance."""
         from reos.services.chat_service import ChatService
+
         return ChatService(db)
 
     def test_chat_service_init(self, chat_service) -> None:
@@ -171,6 +172,7 @@ class TestContextService:
     def context_service(self, db: Database):
         """Create a ContextService instance."""
         from reos.services.context_service import ContextService
+
         return ContextService(db)
 
     def test_context_service_init(self, context_service) -> None:
@@ -252,6 +254,7 @@ class TestPlayService:
     def play_service(self):
         """Create a PlayService instance."""
         from reos.services.play_service import PlayService
+
         return PlayService()
 
     def test_play_service_init(self, play_service) -> None:
@@ -271,7 +274,6 @@ class TestPlayService:
         if active_id:
             scenes = play_service.list_scenes(act_id=active_id)
             assert isinstance(scenes, list)
-
 
     def test_read_me_markdown(self, play_service) -> None:
         """Should read the Play markdown."""
@@ -306,6 +308,7 @@ class TestKnowledgeService:
     def knowledge_service(self):
         """Create a KnowledgeService instance."""
         from reos.services.knowledge_service import KnowledgeService
+
         return KnowledgeService()
 
     def test_knowledge_service_init(self, knowledge_service) -> None:
