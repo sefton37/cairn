@@ -74,10 +74,8 @@ def _play_tool_selector(ctx: BehaviorModeContext) -> str | None:
         entity = "act"
     elif any(w in user_lower for w in ["scene ", "scenes", " scene", "scene,"]):
         entity = "scene"
-    elif any(w in user_lower for w in ["beat ", "beats", " beat", "beat,", "event "]):
-        entity = "beat"
 
-    # Move operations (beat or scene)
+    # Move operations (scene only)
     move_patterns = [
         "should be in",
         "should be for",
@@ -96,9 +94,9 @@ def _play_tool_selector(ctx: BehaviorModeContext) -> str | None:
     if user_lower.startswith("move ") or " move " in user_lower:
         if entity == "scene":
             return "cairn_update_scene"
-        return "cairn_move_beat_to_act"
     if any(p in user_lower for p in move_patterns):
-        return "cairn_move_beat_to_act"
+        if entity == "scene":
+            return "cairn_update_scene"
 
     # Map action + entity to tool
     tool_map = {
@@ -112,11 +110,6 @@ def _play_tool_selector(ctx: BehaviorModeContext) -> str | None:
         ("scene", "create"): "cairn_create_scene",
         ("scene", "update"): "cairn_update_scene",
         ("scene", "delete"): "cairn_delete_scene",
-        ("beat", "view"): "cairn_list_beats",
-        ("beat", "search"): "cairn_list_beats",
-        ("beat", "create"): "cairn_create_beat",
-        ("beat", "update"): "cairn_update_beat",
-        ("beat", "delete"): "cairn_delete_beat",
     }
 
     if entity and action and (entity, action) in tool_map:
@@ -127,8 +120,6 @@ def _play_tool_selector(ctx: BehaviorModeContext) -> str | None:
         return "cairn_list_acts"
     elif entity == "scene":
         return "cairn_list_scenes"
-    elif entity == "beat":
-        return "cairn_list_beats"
 
     return "cairn_list_acts"
 
@@ -138,66 +129,17 @@ def _play_arg_extractor(ctx: BehaviorModeContext) -> dict[str, Any]:
     tool = _play_tool_selector(ctx)
     args: dict[str, Any] = {}
 
-    if tool == "cairn_move_beat_to_act":
-        args = _llm_extract_beat_move_args(ctx)
-    elif tool == "cairn_update_scene":
+    if tool == "cairn_update_scene":
         args = _llm_extract_scene_move_args(ctx)
     elif tool == "cairn_search_contacts":
         args["query"] = ctx.user_input
-    elif tool in ("cairn_list_beats", "cairn_list_scenes"):
+    elif tool == "cairn_list_scenes":
         # Try to extract act_name for filtering
         act_name = _llm_extract_entity_name(ctx, "act")
         if act_name:
             args["act_name"] = act_name
 
     return args
-
-
-def _llm_extract_beat_move_args(ctx: BehaviorModeContext) -> dict[str, Any]:
-    """Use LLM with Play context to extract beat and act names for moves."""
-    if not ctx.llm or not ctx.play_data:
-        return {}
-
-    acts_list = ctx.play_data.get("acts", [])
-    beats_list = ctx.play_data.get("all_beats", [])
-
-    act_names = [a["title"] for a in acts_list]
-    beat_info = [f"'{b['title']}' (in {b['act_title']} act)" for b in beats_list[:20]]
-
-    system = f"""You are an ENTITY EXTRACTOR. Extract the beat name \
-and target act from the user's request.
-
-AVAILABLE ACTS in The Play:
-{json.dumps(act_names, indent=2)}
-
-EXISTING BEATS:
-{chr(10).join(beat_info) if beat_info else "No beats yet"}
-
-The user wants to move a beat to an act. Extract:
-1. beat_name: The EXACT title of the beat (match from EXISTING BEATS list if possible)
-2. target_act_name: The EXACT title of the target act (match from AVAILABLE ACTS list)
-
-Return ONLY a JSON object:
-{{"beat_name": "exact beat title", "target_act_name": "exact act title"}}
-
-IMPORTANT:
-- Match to existing entities using fuzzy matching
-- "Career act" → "Career"
-- If you can't find an exact match, use the closest match
-- Never include "act" or "beat" as part of the name"""
-
-    user = f"USER REQUEST: {ctx.user_input}"
-
-    try:
-        raw = ctx.llm.chat_json(system=system, user=user, temperature=0.1, top_p=0.9)
-        data = json.loads(raw)
-        return {
-            "beat_name": data.get("beat_name", "").strip(),
-            "target_act_name": data.get("target_act_name", "").strip(),
-        }
-    except (json.JSONDecodeError, Exception) as e:
-        logger.warning("LLM beat extraction failed: %s", e)
-        return {}
 
 
 def _llm_extract_scene_move_args(ctx: BehaviorModeContext) -> dict[str, Any]:

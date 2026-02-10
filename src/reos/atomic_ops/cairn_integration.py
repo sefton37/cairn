@@ -585,19 +585,6 @@ class CairnAtomicBridge:
         category: Any,
     ) -> dict[str, Any] | None:
         """Attempt to recover from a tool failure."""
-
-        if tool_name == "cairn_move_beat_to_act" and "not found" in error.lower():
-            try:
-                beats_result = ctx.execute_tool("cairn_list_beats", {})
-                if beats_result and not beats_result.get("error"):
-                    return {
-                        "recovery": True,
-                        "action": "search_beats",
-                        "beats": beats_result,
-                        "original_error": error,
-                    }
-            except Exception as e:
-                logger.warning("Recovery failed: %s", e)
         return None
 
     def approve_operation(

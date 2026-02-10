@@ -43,8 +43,6 @@ class SceneStage(Enum):
     COMPLETE = "complete"
 
 
-# Backward compatibility alias
-BeatStage = SceneStage
 
 
 # Color palette for Acts - visually distinct colors that work well in UI
@@ -113,21 +111,6 @@ class Scene:
     disable_auto_complete: bool = False       # If True, overdue -> need_attention instead of complete
 
 
-@dataclass(frozen=True)
-class Beat:
-    """Backward compatibility alias for Scene.
-
-    DEPRECATED: Use Scene instead. Beats have been merged into Scenes in v4.
-    """
-    beat_id: str
-    title: str
-    stage: str  # SceneStage value
-    notes: str
-    link: str | None = None
-    # Calendar integration fields
-    calendar_event_id: str | None = None
-    recurrence_rule: str | None = None
-    thunderbird_event_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -266,18 +249,6 @@ def _dict_to_scene(d: dict[str, Any]) -> Scene:
     )
 
 
-def _dict_to_beat(d: dict[str, Any]) -> Beat:
-    """Convert a dict to a Beat dataclass (backward compat)."""
-    return Beat(
-        beat_id=d.get("beat_id", d.get("scene_id", "")),  # Accept either
-        title=d.get("title", ""),
-        stage=d.get("stage", SceneStage.PLANNING.value),
-        notes=d.get("notes", ""),
-        link=d.get("link"),
-        calendar_event_id=d.get("calendar_event_id"),
-        recurrence_rule=d.get("recurrence_rule"),
-        thunderbird_event_id=d.get("thunderbird_event_id"),
-    )
 
 
 def list_acts() -> tuple[list[Act], str | None]:
@@ -305,11 +276,6 @@ def list_scenes(*, act_id: str) -> list[Scene]:
     return [_dict_to_scene(d) for d in scenes_data]
 
 
-def list_beats(*, act_id: str, scene_id: str) -> list[Beat]:
-    """List all Beats for a Scene."""
-    from . import play_db
-    beats_data = play_db.list_beats(act_id, scene_id)
-    return [_dict_to_beat(d) for d in beats_data]
 
 
 def find_scene_location(scene_id: str) -> dict[str, str | None] | None:

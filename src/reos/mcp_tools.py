@@ -872,7 +872,7 @@ def list_tools() -> list[Tool]:
                     },
                 },
             ),
-            # --- Play CRUD Tools (Acts, Scenes, Beats management) ---
+            # --- Play CRUD Tools (Acts, Scenes management) ---
             Tool(
                 name="cairn_list_acts",
                 description="List all Acts in The Play. Shows the organizational structure.",
@@ -1007,7 +1007,7 @@ def list_tools() -> list[Tool]:
             ),
             Tool(
                 name="cairn_delete_scene",
-                description="Delete a Scene and all its Beats. Cannot delete 'Stage Direction' scene.",
+                description="Delete a Scene. Cannot delete 'Stage Direction' scene.",
                 input_schema={
                     "type": "object",
                     "properties": {
@@ -1026,111 +1026,6 @@ def list_tools() -> list[Tool]:
                         "act_id": {
                             "type": "string",
                             "description": "Act ID (alternative to act_name)",
-                        },
-                    },
-                },
-            ),
-            Tool(
-                name="cairn_list_beats",
-                description="List Beats, optionally filtered by Act.",
-                input_schema={
-                    "type": "object",
-                    "properties": {
-                        "act_name": {
-                            "type": "string",
-                            "description": "Filter by Act name (fuzzy matched)",
-                        },
-                        "act_id": {"type": "string", "description": "Filter by Act ID"},
-                    },
-                },
-            ),
-            Tool(
-                name="cairn_create_beat",
-                description="Create a new Beat (task/item) in a Scene.",
-                input_schema={
-                    "type": "object",
-                    "properties": {
-                        "title": {"type": "string", "description": "Title for the Beat"},
-                        "act_name": {
-                            "type": "string",
-                            "description": "Act name (fuzzy matched, default: Your Story)",
-                        },
-                        "scene_name": {
-                            "type": "string",
-                            "description": "Scene name (fuzzy matched, default: Stage Direction)",
-                        },
-                        "stage": {
-                            "type": "string",
-                            "enum": ["planning", "in_progress", "awaiting_data", "complete"],
-                            "description": "Stage (default: planning)",
-                        },
-                        "notes": {"type": "string", "description": "Notes for the Beat"},
-                    },
-                    "required": ["title"],
-                },
-            ),
-            Tool(
-                name="cairn_update_beat",
-                description="Update a Beat's title, stage, or notes.",
-                input_schema={
-                    "type": "object",
-                    "properties": {
-                        "beat_name": {
-                            "type": "string",
-                            "description": "Name of the Beat to update (fuzzy matched)",
-                        },
-                        "beat_id": {
-                            "type": "string",
-                            "description": "Beat ID (alternative to beat_name)",
-                        },
-                        "new_title": {"type": "string", "description": "New title for the Beat"},
-                        "stage": {
-                            "type": "string",
-                            "enum": ["planning", "in_progress", "awaiting_data", "complete"],
-                            "description": "New stage",
-                        },
-                        "notes": {"type": "string", "description": "New notes"},
-                    },
-                },
-            ),
-            Tool(
-                name="cairn_delete_beat",
-                description="Delete a Beat.",
-                input_schema={
-                    "type": "object",
-                    "properties": {
-                        "beat_name": {
-                            "type": "string",
-                            "description": "Name of the Beat to delete (fuzzy matched)",
-                        },
-                        "beat_id": {
-                            "type": "string",
-                            "description": "Beat ID (alternative to beat_name)",
-                        },
-                    },
-                },
-            ),
-            Tool(
-                name="cairn_move_beat_to_act",
-                description="Move a Beat to a different Act. Uses fuzzy matching for names.",
-                input_schema={
-                    "type": "object",
-                    "properties": {
-                        "beat_name": {
-                            "type": "string",
-                            "description": "Name of the Beat to move (fuzzy matched)",
-                        },
-                        "beat_id": {
-                            "type": "string",
-                            "description": "Beat ID (alternative to beat_name)",
-                        },
-                        "target_act_name": {
-                            "type": "string",
-                            "description": "Target Act name (fuzzy matched)",
-                        },
-                        "target_act_id": {
-                            "type": "string",
-                            "description": "Target Act ID (alternative to target_act_name)",
                         },
                     },
                 },

@@ -65,7 +65,7 @@ def list_tools() -> list[Tool]:
                 "properties": {
                     "entity_type": {
                         "type": "string",
-                        "enum": ["act", "scene", "beat"],
+                        "enum": ["act", "scene"],
                         "description": "Filter by entity type",
                     },
                     "kanban_state": {
@@ -96,7 +96,7 @@ def list_tools() -> list[Tool]:
                 "properties": {
                     "entity_type": {
                         "type": "string",
-                        "enum": ["act", "scene", "beat"],
+                        "enum": ["act", "scene"],
                     },
                     "entity_id": {"type": "string"},
                 },
@@ -114,7 +114,7 @@ def list_tools() -> list[Tool]:
                 "properties": {
                     "entity_type": {
                         "type": "string",
-                        "enum": ["act", "scene", "beat"],
+                        "enum": ["act", "scene"],
                     },
                     "entity_id": {"type": "string"},
                     "activity_type": {
@@ -137,7 +137,7 @@ def list_tools() -> list[Tool]:
                 "properties": {
                     "entity_type": {
                         "type": "string",
-                        "enum": ["act", "scene", "beat"],
+                        "enum": ["act", "scene"],
                     },
                     "entity_id": {"type": "string"},
                     "priority": {
@@ -164,7 +164,7 @@ def list_tools() -> list[Tool]:
                 "properties": {
                     "entity_type": {
                         "type": "string",
-                        "enum": ["act", "scene", "beat"],
+                        "enum": ["act", "scene"],
                     },
                     "entity_id": {"type": "string"},
                     "state": {
@@ -187,7 +187,7 @@ def list_tools() -> list[Tool]:
                 "properties": {
                     "entity_type": {
                         "type": "string",
-                        "enum": ["act", "scene", "beat"],
+                        "enum": ["act", "scene"],
                     },
                     "entity_id": {"type": "string"},
                     "due_date": {
@@ -206,7 +206,7 @@ def list_tools() -> list[Tool]:
                 "properties": {
                     "entity_type": {
                         "type": "string",
-                        "enum": ["act", "scene", "beat"],
+                        "enum": ["act", "scene"],
                     },
                     "entity_id": {"type": "string"},
                     "defer_until": {
@@ -335,7 +335,7 @@ def list_tools() -> list[Tool]:
                     },
                     "entity_type": {
                         "type": "string",
-                        "enum": ["act", "scene", "beat"],
+                        "enum": ["act", "scene"],
                     },
                     "entity_id": {"type": "string"},
                     "relationship": {

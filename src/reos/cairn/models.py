@@ -47,9 +47,9 @@ class ContactRelationship(Enum):
 
 @dataclass
 class CairnMetadata:
-    """Activity tracking overlay for Play entities (Acts/Scenes/Beats)."""
+    """Activity tracking overlay for Play entities (Acts/Scenes)."""
 
-    entity_type: str            # "act", "scene", "beat"
+    entity_type: str            # "act", "scene"
     entity_id: str
 
     # Activity tracking
@@ -173,7 +173,7 @@ class ContactLink:
 
     link_id: str
     contact_id: str             # Thunderbird contact ID
-    entity_type: str            # "act", "scene", "beat"
+    entity_type: str            # "act", "scene"
     entity_id: str
     relationship: ContactRelationship
     created_at: datetime
@@ -351,7 +351,6 @@ class PendingConfirmation:
 TOOLS_REQUIRING_CONFIRMATION: set[str] = {
     "cairn_delete_act",
     "cairn_delete_scene",
-    "cairn_delete_beat",
     # Add future irreversible tools here
 }
 

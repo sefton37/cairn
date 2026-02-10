@@ -319,23 +319,6 @@ Is this response grounded in the data?"""
         execute_tool: Any,
     ) -> str | None:
         """Try to recover by gathering more data."""
-        if "beat" in user_input.lower() or action == "update":
-            try:
-                beats_result = execute_tool("cairn_list_beats", {})
-                if beats_result and not beats_result.get("error"):
-                    beats = beats_result.get("beats", [])
-                    if beats:
-                        beat_names = [b.get("title", "Unknown") for b in beats[:10]]
-                        return (
-                            "I couldn't find the exact beat you mentioned. "
-                            "Here are your current beats:\n\n"
-                            "• "
-                            + "\n• ".join(beat_names)
-                            + "\n\nWhich one would you like to move? "
-                            "Please use the exact name from the list above."
-                        )
-            except Exception as e:
-                logger.warning("Recovery search failed: %s", e)
         return None
 
     def ask_for_clarification(
