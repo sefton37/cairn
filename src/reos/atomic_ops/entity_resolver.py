@@ -26,7 +26,7 @@ class ResolvedEntity:
     """Result of entity resolution."""
     entity_id: str | None
     entity_name: str | None
-    entity_type: str  # "scene", "act", "beat"
+    entity_type: str  # "scene", "act"
     confidence: float  # 0.0 - 1.0
     reasoning: str
     alternatives: list[dict[str, Any]] = field(default_factory=list)  # Other possible matches

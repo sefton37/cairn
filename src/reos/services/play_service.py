@@ -118,48 +118,6 @@ class SceneInfo:
         )
 
 
-@dataclass
-class BeatInfo:
-    """Backward compatibility class for Beats.
-
-    DEPRECATED: Use SceneInfo instead. In v4, Beats have been merged into Scenes.
-    """
-
-    beat_id: str
-    title: str
-    stage: str = ""  # Renamed from status
-    notes: str = ""
-    link: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "beat_id": self.beat_id,
-            "title": self.title,
-            "stage": self.stage,
-            "notes": self.notes,
-            "link": self.link,
-        }
-
-    @classmethod
-    def from_play_fs(cls, beat: play_fs.Beat) -> BeatInfo:
-        return cls(
-            beat_id=beat.beat_id,
-            title=beat.title,
-            stage=beat.stage,
-            notes=beat.notes,
-            link=beat.link,
-        )
-
-    @classmethod
-    def from_scene_info(cls, scene: SceneInfo) -> BeatInfo:
-        """Convert SceneInfo to BeatInfo for backward compatibility."""
-        return cls(
-            beat_id=scene.scene_id,
-            title=scene.title,
-            stage=scene.stage,
-            notes=scene.notes,
-            link=scene.link,
-        )
 
 
 @dataclass

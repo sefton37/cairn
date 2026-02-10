@@ -332,7 +332,7 @@ Is this response grounded in the data?"""
         if "not in the provided data" in rejection_reason.lower():
             return (
                 f"I want to help you {action} that, but I couldn't find it in my data. "
-                f"Could you please check the exact name? You can ask me to 'list beats' "
+                f"Could you please check the exact name? You can ask me to 'list scenes' "
                 f"or 'list acts' to see what's available."
             )
 

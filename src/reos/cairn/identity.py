@@ -7,7 +7,6 @@ Sources of identity:
 - me.md: Core identity (highest priority)
 - Acts: Major life projects and goals
 - Scenes: Sub-projects and contexts
-- Beats: Specific items and tasks
 - KB entries: Knowledge and notes
 - Anti-patterns: Stored in cairn_anti_patterns.json or items with rejection notes
 
@@ -48,9 +47,8 @@ def build_identity_model(
     1. Core identity from me.md
     2. Goal facets from Acts
     3. Project facets from Scenes
-    4. Task facets from Beats
-    5. Knowledge facets from KB entries
-    6. Anti-patterns from stored rejections
+    4. Knowledge facets from KB entries
+    5. Anti-patterns from stored rejections
 
     Args:
         store: Optional CairnStore for accessing metadata (e.g., for priority weighting)
@@ -92,22 +90,6 @@ def build_identity_model(
                         weight=1.5 if act.active else 1.0,
                     )
                     facets.append(facet)
-
-                    # 4. Extract facets from Beats (tasks)
-                    try:
-                        beats = play_fs.list_beats(act_id=act.act_id, scene_id=scene.scene_id)
-                        for beat in beats:
-                            # Only include beats with notes (meaningful content)
-                            if beat.notes.strip():
-                                facet = IdentityFacet(
-                                    name="task",
-                                    source=f"beat:{act.act_id}/{scene.scene_id}/{beat.beat_id}",
-                                    content=_build_beat_content(beat),
-                                    weight=1.0,
-                                )
-                                facets.append(facet)
-                    except Exception as e:
-                        logger.warning("Failed to read beats for scene %s: %s", scene.scene_id, e)
             except Exception as e:
                 logger.warning("Failed to read scenes for act %s: %s", act.act_id, e)
     except Exception as e:
@@ -157,16 +139,6 @@ def _build_scene_content(scene: play_fs.Scene) -> str:
         parts.append(f"Timeframe: {scene.time_horizon}")
     if scene.notes:
         parts.append(f"Notes: {scene.notes}")
-    return "\n".join(parts)
-
-
-def _build_beat_content(beat: play_fs.Beat) -> str:
-    """Build content string from a Beat."""
-    parts = [f"Task: {beat.title}"]
-    if beat.status:
-        parts.append(f"Status: {beat.status}")
-    if beat.notes:
-        parts.append(f"Notes: {beat.notes}")
     return "\n".join(parts)
 
 

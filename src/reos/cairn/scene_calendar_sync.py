@@ -668,11 +668,4 @@ def delete_scene_with_calendar_sync(
 # Backward Compatibility Aliases
 # =============================================================================
 
-# Keep old function names for backward compatibility
-refresh_all_recurring_beats = refresh_all_recurring_scenes
-sync_calendar_to_beats = sync_calendar_to_scenes
-sync_beat_to_calendar = sync_scene_to_calendar
-update_beat_calendar_event = update_scene_calendar_event
-delete_beat_calendar_event = delete_scene_calendar_event
-create_beat_with_calendar_sync = create_scene_with_calendar_sync
-delete_beat_with_calendar_sync = delete_scene_with_calendar_sync
+# Backward compatibility aliases removed in v4 migration

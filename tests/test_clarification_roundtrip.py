@@ -95,13 +95,13 @@ class TestClarificationStorage:
     def test_store_and_retrieve_pending(self, store: AtomicOpsStore) -> None:
         """Store a clarification, retrieve it as pending."""
         op_id = _create_operation(store, "user-1", "move that to Career")
-        store.store_clarification(op_id, "Which beat did you mean?")
+        store.store_clarification(op_id, "Which scene did you mean?")
         store.conn.commit()
 
         pending = store.get_pending_clarification("user-1")
         assert pending is not None
         assert pending["operation_id"] == op_id
-        assert pending["question"] == "Which beat did you mean?"
+        assert pending["question"] == "Which scene did you mean?"
         assert pending["original_request"] == "move that to Career"
 
     def test_no_pending_when_none_stored(self, store: AtomicOpsStore) -> None:
@@ -112,7 +112,7 @@ class TestClarificationStorage:
     def test_resolve_clears_pending(self, store: AtomicOpsStore) -> None:
         """After resolving, get_pending returns None."""
         op_id = _create_operation(store, "user-1", "move that to Career")
-        store.store_clarification(op_id, "Which beat did you mean?")
+        store.store_clarification(op_id, "Which scene did you mean?")
         store.conn.commit()
 
         pending = store.get_pending_clarification("user-1")
@@ -128,7 +128,7 @@ class TestClarificationStorage:
         op_id1 = _create_operation(store, "user-1", "move that")
         op_id2 = _create_operation(store, "user-1", "delete that scene")
 
-        store.store_clarification(op_id1, "Which beat?")
+        store.store_clarification(op_id1, "Which scene?")
         store.store_clarification(op_id2, "Which scene to delete?")
         store.conn.commit()
 
@@ -142,7 +142,7 @@ class TestClarificationStorage:
         op_id1 = _create_operation(store, "user-1", "move that")
         op_id2 = _create_operation(store, "user-1", "delete that scene")
 
-        clar1_id = store.store_clarification(op_id1, "Which beat?")
+        clar1_id = store.store_clarification(op_id1, "Which scene?")
         store.store_clarification(op_id2, "Which scene to delete?")
         store.conn.commit()
 
@@ -161,17 +161,17 @@ class TestClarificationStorage:
         op_id1 = _create_operation(store, "user-1", "move that")
         op_id2 = _create_operation(store, "user-2", "delete that")
 
-        store.store_clarification(op_id1, "Which beat?")
-        store.store_clarification(op_id2, "Which scene?")
+        store.store_clarification(op_id1, "Which scene from user-1?")
+        store.store_clarification(op_id2, "Which scene from user-2?")
         store.conn.commit()
 
         pending1 = store.get_pending_clarification("user-1")
         pending2 = store.get_pending_clarification("user-2")
 
         assert pending1 is not None
-        assert pending1["question"] == "Which beat?"
+        assert pending1["question"] == "Which scene from user-1?"
         assert pending2 is not None
-        assert pending2["question"] == "Which scene?"
+        assert pending2["question"] == "Which scene from user-2?"
 
 
 # =============================================================================
@@ -197,27 +197,27 @@ class TestClarificationDetection:
         return bridge
 
     def test_detects_direct_answer(self) -> None:
-        """'Job Search' after 'Which beat?' -> is_answer=True."""
+        """'Job Search' after 'Which scene?' -> is_answer=True."""
         llm = MockLLM(response=json.dumps({"is_answer": True, "reasoning": "direct answer"}))
         bridge = self._make_bridge(llm)
 
-        pending = {"question": "Which beat did you mean?", "original_request": "move that"}
+        pending = {"question": "Which scene did you mean?", "original_request": "move that"}
         assert bridge._is_clarification_response("Job Search", pending) is True
         assert llm.call_count == 1
 
     def test_detects_new_request(self) -> None:
-        """'show my calendar' after 'Which beat?' -> is_answer=False."""
+        """'show my calendar' after 'Which scene?' -> is_answer=False."""
         llm = MockLLM(response=json.dumps({"is_answer": False, "reasoning": "new request"}))
         bridge = self._make_bridge(llm)
 
-        pending = {"question": "Which beat did you mean?", "original_request": "move that"}
+        pending = {"question": "Which scene did you mean?", "original_request": "move that"}
         assert bridge._is_clarification_response("show my calendar", pending) is False
 
     def test_fallback_without_llm(self) -> None:
         """No LLM -> returns False (treat as new request)."""
         bridge = self._make_bridge(llm=None)
 
-        pending = {"question": "Which beat?", "original_request": "move that"}
+        pending = {"question": "Which scene?", "original_request": "move that"}
         assert bridge._is_clarification_response("Job Search", pending) is False
 
     def test_handles_llm_error(self) -> None:
@@ -225,7 +225,7 @@ class TestClarificationDetection:
         llm = MockLLM(error=RuntimeError("connection failed"))
         bridge = self._make_bridge(llm)
 
-        pending = {"question": "Which beat?", "original_request": "move that"}
+        pending = {"question": "Which scene?", "original_request": "move that"}
         assert bridge._is_clarification_response("Job Search", pending) is False
 
     def test_handles_invalid_json(self) -> None:
@@ -233,7 +233,7 @@ class TestClarificationDetection:
         llm = MockLLM(response="not json at all")
         bridge = self._make_bridge(llm)
 
-        pending = {"question": "Which beat?", "original_request": "move that"}
+        pending = {"question": "Which scene?", "original_request": "move that"}
         assert bridge._is_clarification_response("Job Search", pending) is False
 
 
@@ -272,7 +272,7 @@ class TestClarificationRoundTrip:
             decomposed=False,
             message="clarification needed",
             needs_clarification=True,
-            clarification_prompt="Which beat did you mean?",
+            clarification_prompt="Which scene did you mean?",
         )
 
         # First, store the operation so the clarification FK is valid
@@ -285,13 +285,13 @@ class TestClarificationRoundTrip:
                 user_id="user-1",
             )
 
-        assert result.response == "Which beat did you mean?"
+        assert result.response == "Which scene did you mean?"
         assert result.needs_approval is True
 
         # Verify clarification was stored
         pending = bridge.processor.store.get_pending_clarification("user-1")
         assert pending is not None
-        assert pending["question"] == "Which beat did you mean?"
+        assert pending["question"] == "Which scene did you mean?"
         assert pending["original_request"] == "move that to Career"
 
     def test_answer_resolves_and_reprocesses(self) -> None:
@@ -316,7 +316,7 @@ class TestClarificationRoundTrip:
             status=OperationStatus.AWAITING_APPROVAL,
         )
         bridge.processor.store.create_operation(op)
-        bridge.processor.store.store_clarification(op.id, "Which beat did you mean?")
+        bridge.processor.store.store_clarification(op.id, "Which scene did you mean?")
         conn.commit()
 
         # Mock process_request on the recursive call (after clarification detection)
@@ -377,7 +377,7 @@ class TestClarificationRoundTrip:
             status=OperationStatus.AWAITING_APPROVAL,
         )
         bridge.processor.store.create_operation(op)
-        bridge.processor.store.store_clarification(op.id, "Which beat did you mean?")
+        bridge.processor.store.store_clarification(op.id, "Which scene did you mean?")
         conn.commit()
 
         # Mock the processor to handle the new request normally
@@ -412,4 +412,4 @@ class TestClarificationRoundTrip:
         # The pending clarification should still be there (not resolved)
         pending = bridge.processor.store.get_pending_clarification("user-1")
         assert pending is not None
-        assert pending["question"] == "Which beat did you mean?"
+        assert pending["question"] == "Which scene did you mean?"

@@ -57,7 +57,6 @@ class IdentityFacet:
     - me.md: Core identity (highest priority)
     - Acts: Major life projects and goals
     - Scenes: Sub-projects and contexts
-    - Beats: Specific items and tasks
     - KB entries: Knowledge and notes
 
     Attributes:
@@ -96,7 +95,7 @@ class IdentityModel:
 
     Built from the Play filesystem:
     - core: me.md content (highest priority, the user's story)
-    - facets: Extracted from Acts/Scenes/Beats/KB entries
+    - facets: Extracted from Acts/Scenes/KB entries
     - anti_patterns: Things the user has explicitly rejected
 
     The identity model is rebuilt as needed from the Play, ensuring

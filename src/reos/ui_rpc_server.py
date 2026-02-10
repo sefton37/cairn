@@ -70,10 +70,6 @@ from .rpc_handlers.play import (
     handle_play_scenes_list_all as _handle_play_scenes_list_all,
     handle_play_scenes_create as _handle_play_scenes_create,
     handle_play_scenes_update as _handle_play_scenes_update,
-    handle_play_beats_list as _handle_play_beats_list,
-    handle_play_beats_create as _handle_play_beats_create,
-    handle_play_beats_update as _handle_play_beats_update,
-    handle_play_beats_move as _handle_play_beats_move,
     handle_play_kb_list as _handle_play_kb_list,
     handle_play_kb_read as _handle_play_kb_read,
     handle_play_kb_write_preview as _handle_play_kb_write_preview,
@@ -908,128 +904,18 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 ),
             )
 
-        if method == "play/beats/list":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            act_id = params.get("act_id")
-            scene_id = params.get("scene_id")
-            if not isinstance(act_id, str) or not act_id:
-                raise RpcError(code=-32602, message="act_id is required")
-            if not isinstance(scene_id, str) or not scene_id:
-                raise RpcError(code=-32602, message="scene_id is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_play_beats_list(db, act_id=act_id, scene_id=scene_id),
-            )
-
-        if method == "play/beats/create":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            act_id = params.get("act_id")
-            scene_id = params.get("scene_id")
-            title = params.get("title")
-            if not isinstance(act_id, str) or not act_id:
-                raise RpcError(code=-32602, message="act_id is required")
-            if not isinstance(scene_id, str) or not scene_id:
-                raise RpcError(code=-32602, message="scene_id is required")
-            if not isinstance(title, str) or not title.strip():
-                raise RpcError(code=-32602, message="title is required")
-            stage = params.get("stage")
-            notes = params.get("notes")
-            link = params.get("link")
-            for k, v in {"stage": stage, "notes": notes, "link": link}.items():
-                if v is not None and not isinstance(v, str):
-                    raise RpcError(code=-32602, message=f"{k} must be a string or null")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_play_beats_create(
-                    db,
-                    act_id=act_id,
-                    scene_id=scene_id,
-                    title=title,
-                    stage=stage,
-                    notes=notes,
-                    link=link,
-                ),
-            )
-
-        if method == "play/beats/update":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            act_id = params.get("act_id")
-            scene_id = params.get("scene_id")
-            beat_id = params.get("beat_id")
-            if not isinstance(act_id, str) or not act_id:
-                raise RpcError(code=-32602, message="act_id is required")
-            if not isinstance(scene_id, str) or not scene_id:
-                raise RpcError(code=-32602, message="scene_id is required")
-            if not isinstance(beat_id, str) or not beat_id:
-                raise RpcError(code=-32602, message="beat_id is required")
-            title = params.get("title")
-            stage = params.get("stage")
-            notes = params.get("notes")
-            link = params.get("link")
-            for k, v in {"title": title, "stage": stage, "notes": notes, "link": link}.items():
-                if v is not None and not isinstance(v, str):
-                    raise RpcError(code=-32602, message=f"{k} must be a string or null")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_play_beats_update(
-                    db,
-                    act_id=act_id,
-                    scene_id=scene_id,
-                    beat_id=beat_id,
-                    title=title,
-                    stage=stage,
-                    notes=notes,
-                    link=link,
-                ),
-            )
-
-        if method == "play/beats/move":
-            if not isinstance(params, dict):
-                raise RpcError(code=-32602, message="params must be an object")
-            beat_id = params.get("beat_id")
-            source_act_id = params.get("source_act_id")
-            source_scene_id = params.get("source_scene_id")
-            target_act_id = params.get("target_act_id")
-            target_scene_id = params.get("target_scene_id")
-            if not isinstance(beat_id, str) or not beat_id:
-                raise RpcError(code=-32602, message="beat_id is required")
-            if not isinstance(source_act_id, str) or not source_act_id:
-                raise RpcError(code=-32602, message="source_act_id is required")
-            if not isinstance(source_scene_id, str) or not source_scene_id:
-                raise RpcError(code=-32602, message="source_scene_id is required")
-            if not isinstance(target_act_id, str) or not target_act_id:
-                raise RpcError(code=-32602, message="target_act_id is required")
-            if not isinstance(target_scene_id, str) or not target_scene_id:
-                raise RpcError(code=-32602, message="target_scene_id is required")
-            return _jsonrpc_result(
-                req_id=req_id,
-                result=_handle_play_beats_move(
-                    db,
-                    beat_id=beat_id,
-                    source_act_id=source_act_id,
-                    source_scene_id=source_scene_id,
-                    target_act_id=target_act_id,
-                    target_scene_id=target_scene_id,
-                ),
-            )
-
         if method == "play/kb/list":
             if not isinstance(params, dict):
                 raise RpcError(code=-32602, message="params must be an object")
             act_id = params.get("act_id")
             scene_id = params.get("scene_id")
-            beat_id = params.get("beat_id")
             if not isinstance(act_id, str) or not act_id:
                 raise RpcError(code=-32602, message="act_id is required")
-            for k, v in {"scene_id": scene_id, "beat_id": beat_id}.items():
-                if v is not None and not isinstance(v, str):
-                    raise RpcError(code=-32602, message=f"{k} must be a string or null")
+            if scene_id is not None and not isinstance(scene_id, str):
+                raise RpcError(code=-32602, message="scene_id must be a string or null")
             return _jsonrpc_result(
                 req_id=req_id,
-                result=_handle_play_kb_list(db, act_id=act_id, scene_id=scene_id, beat_id=beat_id),
+                result=_handle_play_kb_list(db, act_id=act_id, scene_id=scene_id),
             )
 
         if method == "play/kb/read":
@@ -1037,16 +923,15 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 raise RpcError(code=-32602, message="params must be an object")
             act_id = params.get("act_id")
             scene_id = params.get("scene_id")
-            beat_id = params.get("beat_id")
             path = params.get("path", "kb.md")
             if not isinstance(act_id, str) or not act_id:
                 raise RpcError(code=-32602, message="act_id is required")
-            for k, v in {"scene_id": scene_id, "beat_id": beat_id, "path": path}.items():
+            for k, v in {"scene_id": scene_id, "path": path}.items():
                 if v is not None and not isinstance(v, str):
                     raise RpcError(code=-32602, message=f"{k} must be a string")
             return _jsonrpc_result(
                 req_id=req_id,
-                result=_handle_play_kb_read(db, act_id=act_id, scene_id=scene_id, beat_id=beat_id, path=path),
+                result=_handle_play_kb_read(db, act_id=act_id, scene_id=scene_id, path=path),
             )
 
         if method == "play/kb/write_preview":
@@ -1054,7 +939,6 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 raise RpcError(code=-32602, message="params must be an object")
             act_id = params.get("act_id")
             scene_id = params.get("scene_id")
-            beat_id = params.get("beat_id")
             path = params.get("path")
             text = params.get("text")
             if not isinstance(act_id, str) or not act_id:
@@ -1063,9 +947,8 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 raise RpcError(code=-32602, message="path is required")
             if not isinstance(text, str):
                 raise RpcError(code=-32602, message="text is required")
-            for k, v in {"scene_id": scene_id, "beat_id": beat_id}.items():
-                if v is not None and not isinstance(v, str):
-                    raise RpcError(code=-32602, message=f"{k} must be a string or null")
+            if scene_id is not None and not isinstance(scene_id, str):
+                raise RpcError(code=-32602, message="scene_id must be a string or null")
             _debug_source = params.get("_debug_source")
             return _jsonrpc_result(
                 req_id=req_id,
@@ -1073,7 +956,6 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                     db,
                     act_id=act_id,
                     scene_id=scene_id,
-                    beat_id=beat_id,
                     path=path,
                     text=text,
                     _debug_source=_debug_source,
@@ -1085,7 +967,6 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 raise RpcError(code=-32602, message="params must be an object")
             act_id = params.get("act_id")
             scene_id = params.get("scene_id")
-            beat_id = params.get("beat_id")
             path = params.get("path")
             text = params.get("text")
             expected_sha256_current = params.get("expected_sha256_current")
@@ -1095,9 +976,8 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 raise RpcError(code=-32602, message="path is required")
             if not isinstance(text, str):
                 raise RpcError(code=-32602, message="text is required")
-            for k, v in {"scene_id": scene_id, "beat_id": beat_id}.items():
-                if v is not None and not isinstance(v, str):
-                    raise RpcError(code=-32602, message=f"{k} must be a string or null")
+            if scene_id is not None and not isinstance(scene_id, str):
+                raise RpcError(code=-32602, message="scene_id must be a string or null")
             if not isinstance(expected_sha256_current, str) or not expected_sha256_current:
                 raise RpcError(code=-32602, message="expected_sha256_current is required")
             _debug_source = params.get("_debug_source")
@@ -1107,7 +987,6 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                     db,
                     act_id=act_id,
                     scene_id=scene_id,
-                    beat_id=beat_id,
                     path=path,
                     text=text,
                     expected_sha256_current=expected_sha256_current,
@@ -1120,8 +999,7 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 raise RpcError(code=-32602, message="params must be an object")
             act_id = params.get("act_id")
             scene_id = params.get("scene_id")
-            beat_id = params.get("beat_id")
-            for k, v in {"act_id": act_id, "scene_id": scene_id, "beat_id": beat_id}.items():
+            for k, v in {"act_id": act_id, "scene_id": scene_id}.items():
                 if v is not None and not isinstance(v, str):
                     raise RpcError(code=-32602, message=f"{k} must be a string or null")
             return _jsonrpc_result(
@@ -1130,7 +1008,6 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                     db,
                     act_id=act_id,
                     scene_id=scene_id,
-                    beat_id=beat_id,
                 ),
             )
 
@@ -1139,12 +1016,11 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 raise RpcError(code=-32602, message="params must be an object")
             act_id = params.get("act_id")
             scene_id = params.get("scene_id")
-            beat_id = params.get("beat_id")
             file_path = params.get("file_path")
             file_name = params.get("file_name")
             if not isinstance(file_path, str) or not file_path:
                 raise RpcError(code=-32602, message="file_path is required")
-            for k, v in {"act_id": act_id, "scene_id": scene_id, "beat_id": beat_id, "file_name": file_name}.items():
+            for k, v in {"act_id": act_id, "scene_id": scene_id, "file_name": file_name}.items():
                 if v is not None and not isinstance(v, str):
                     raise RpcError(code=-32602, message=f"{k} must be a string or null")
             return _jsonrpc_result(
@@ -1153,7 +1029,6 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                     db,
                     act_id=act_id,
                     scene_id=scene_id,
-                    beat_id=beat_id,
                     file_path=file_path,
                     file_name=file_name,
                 ),
@@ -1164,11 +1039,10 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 raise RpcError(code=-32602, message="params must be an object")
             act_id = params.get("act_id")
             scene_id = params.get("scene_id")
-            beat_id = params.get("beat_id")
             attachment_id = params.get("attachment_id")
             if not isinstance(attachment_id, str) or not attachment_id:
                 raise RpcError(code=-32602, message="attachment_id is required")
-            for k, v in {"act_id": act_id, "scene_id": scene_id, "beat_id": beat_id}.items():
+            for k, v in {"act_id": act_id, "scene_id": scene_id}.items():
                 if v is not None and not isinstance(v, str):
                     raise RpcError(code=-32602, message=f"{k} must be a string or null")
             return _jsonrpc_result(
@@ -1177,7 +1051,6 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                     db,
                     act_id=act_id,
                     scene_id=scene_id,
-                    beat_id=beat_id,
                     attachment_id=attachment_id,
                 ),
             )

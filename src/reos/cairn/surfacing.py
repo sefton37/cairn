@@ -681,10 +681,6 @@ class CairnSurfacer:
             elif entity_type == "scene":
                 scene = self.play.get_scene(entity_id)
                 return scene.title if scene else entity_id
-            # Backward compatibility for old "beat" entity type
-            elif entity_type == "beat":
-                scene = self.play.get_scene(entity_id)
-                return scene.title if scene else entity_id
         except Exception as e:
             logger.debug("Failed to get entity title for %s/%s: %s", entity_type, entity_id, e)
 

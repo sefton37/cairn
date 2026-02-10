@@ -33,7 +33,7 @@ CONTEXT_SOURCES: tuple[ContextSourceDef, ...] = (
     ContextSourceDef(
         name="play_context",
         display_name="The Play",
-        description="Your story, goals, acts, scenes, and beats",
+        description="Your story, goals, acts, and scenes",
         can_disable=True,
     ),
     ContextSourceDef(

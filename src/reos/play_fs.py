@@ -293,12 +293,6 @@ def find_scene_location(scene_id: str) -> dict[str, str | None] | None:
     return play_db.find_scene_location(scene_id)
 
 
-def find_beat_location(beat_id: str) -> dict[str, str | None] | None:
-    """Backward compatibility wrapper - finds a scene by beat_id.
-
-    DEPRECATED: Use find_scene_location instead.
-    """
-    return find_scene_location(beat_id)
 
 
 def _validate_id(*, name: str, value: str) -> None:
@@ -376,7 +370,7 @@ def update_act(
 
 
 def delete_act(*, act_id: str) -> tuple[list[Act], str | None]:
-    """Delete an Act and all its Scenes and Beats.
+    """Delete an Act and all its Scenes.
 
     IMPORTANT: The "Your Story" act (act_id="your-story") cannot be deleted.
 
@@ -579,7 +573,7 @@ def update_scene(
 
 
 def delete_scene(*, act_id: str, scene_id: str) -> list[Scene]:
-    """Delete a Scene and all its Beats.
+    """Delete a Scene.
 
     IMPORTANT: Stage Direction scenes cannot be deleted.
 
@@ -637,164 +631,21 @@ def move_scene(
     )
 
 
-def create_beat(
-    *,
-    act_id: str,
-    scene_id: str,
-    title: str,
-    stage: str = "",
-    notes: str = "",
-    link: str | None = None,
-    calendar_event_id: str | None = None,
-    recurrence_rule: str | None = None,
-    thunderbird_event_id: str | None = None,
-) -> list[Beat]:
-    """Create a Beat under a Scene.
-
-    Args:
-        act_id: The Act containing the Scene.
-        scene_id: The Scene to add the Beat to.
-        title: Beat title.
-        stage: BeatStage value (planning, in_progress, awaiting_data, complete).
-        notes: Optional notes.
-        link: Optional external link.
-        calendar_event_id: Optional calendar event ID this Beat is linked to (inbound sync).
-        recurrence_rule: Optional RRULE string for recurring events.
-        thunderbird_event_id: Optional Thunderbird event ID created for this Beat (outbound sync).
-    """
-    _validate_id(name="act_id", value=act_id)
-    _validate_id(name="scene_id", value=scene_id)
-    if not isinstance(title, str) or not title.strip():
-        raise ValueError("title is required")
-    if not isinstance(stage, str):
-        raise ValueError("stage must be a string")
-    if not isinstance(notes, str):
-        raise ValueError("notes must be a string")
-    if link is not None and not isinstance(link, str):
-        raise ValueError("link must be a string or null")
-    if calendar_event_id is not None and not isinstance(calendar_event_id, str):
-        raise ValueError("calendar_event_id must be a string or null")
-    if recurrence_rule is not None and not isinstance(recurrence_rule, str):
-        raise ValueError("recurrence_rule must be a string or null")
-    if thunderbird_event_id is not None and not isinstance(thunderbird_event_id, str):
-        raise ValueError("thunderbird_event_id must be a string or null")
-
-    # Default stage to PLANNING if not specified
-    if not stage:
-        stage = BeatStage.PLANNING.value
-
-    from . import play_db
-    beats_data, _ = play_db.create_beat(
-        act_id=act_id, scene_id=scene_id, title=title.strip(),
-        stage=stage, notes=notes, link=link,
-        calendar_event_id=calendar_event_id, recurrence_rule=recurrence_rule,
-        thunderbird_event_id=thunderbird_event_id,
-    )
-    return [_dict_to_beat(d) for d in beats_data]
 
 
-def update_beat(
-    *,
-    act_id: str,
-    scene_id: str,
-    beat_id: str,
-    title: str | None = None,
-    stage: str | None = None,
-    notes: str | None = None,
-    link: str | None = None,
-) -> list[Beat]:
-    """Update a Beat's fields.
-
-    Args:
-        act_id: The Act containing the Beat.
-        scene_id: The Scene containing the Beat.
-        beat_id: The Beat to update.
-        title: New title (optional).
-        stage: New BeatStage value (optional).
-        notes: New notes (optional).
-        link: New external link (optional).
-    """
-    _validate_id(name="act_id", value=act_id)
-    _validate_id(name="scene_id", value=scene_id)
-    _validate_id(name="beat_id", value=beat_id)
-    if title is not None and (not isinstance(title, str) or not title.strip()):
-        raise ValueError("title must be a non-empty string")
-    if stage is not None and not isinstance(stage, str):
-        raise ValueError("stage must be a string")
-    if notes is not None and not isinstance(notes, str):
-        raise ValueError("notes must be a string")
-    if link is not None and not isinstance(link, str):
-        raise ValueError("link must be a string or null")
-
-    from . import play_db
-    beats_data = play_db.update_beat(
-        act_id=act_id, scene_id=scene_id, beat_id=beat_id,
-        title=title.strip() if title else None,
-        stage=stage, notes=notes, link=link
-    )
-    return [_dict_to_beat(d) for d in beats_data]
 
 
-def delete_beat(*, act_id: str, scene_id: str, beat_id: str) -> list[Beat]:
-    """Delete a Beat from a Scene.
-
-    Args:
-        act_id: The parent Act ID.
-        scene_id: The parent Scene ID.
-        beat_id: The Beat ID to delete.
-
-    Returns:
-        List of remaining Beat objects in the scene.
-
-    Raises:
-        ValueError: If beat not found.
-    """
-    _validate_id(name="act_id", value=act_id)
-    _validate_id(name="scene_id", value=scene_id)
-    _validate_id(name="beat_id", value=beat_id)
-
-    from . import play_db
-    beats_data = play_db.delete_beat(act_id, scene_id, beat_id)
-    return [_dict_to_beat(d) for d in beats_data]
 
 
-def move_beat(
-    *,
-    beat_id: str,
-    source_act_id: str,
-    source_scene_id: str,
-    target_act_id: str,
-    target_scene_id: str,
-) -> dict[str, Any]:
-    """Backward compatibility wrapper - moves a scene between acts.
-
-    DEPRECATED: Use move_scene instead. In the new 2-tier structure,
-    beats are now scenes. The source_scene_id and target_scene_id
-    parameters are ignored.
-    """
-    result = move_scene(
-        scene_id=beat_id,
-        source_act_id=source_act_id,
-        target_act_id=target_act_id,
-    )
-    return {
-        "beat_id": result["scene_id"],
-        "target_act_id": result["target_act_id"],
-        "target_scene_id": target_scene_id,  # Return for backward compat
-    }
 
 
-def _kb_root_for(*, act_id: str, scene_id: str | None = None, beat_id: str | None = None) -> Path:
+def _kb_root_for(*, act_id: str, scene_id: str | None = None) -> Path:
     _validate_id(name="act_id", value=act_id)
     base = play_root() / "kb" / "acts" / act_id
     if scene_id is None:
         return base
     _validate_id(name="scene_id", value=scene_id)
-    base = base / "scenes" / scene_id
-    if beat_id is None:
-        return base
-    _validate_id(name="beat_id", value=beat_id)
-    return base / "beats" / beat_id
+    return base / "scenes" / scene_id
 
 
 def _resolve_kb_file(*, kb_root: Path, rel_path: str) -> Path:
@@ -812,14 +663,14 @@ def _resolve_kb_file(*, kb_root: Path, rel_path: str) -> Path:
     return candidate
 
 
-def kb_list_files(*, act_id: str, scene_id: str | None = None, beat_id: str | None = None) -> list[str]:
+def kb_list_files(*, act_id: str, scene_id: str | None = None) -> list[str]:
     """List markdown/text files under an item's KB root.
 
     The default KB file is `kb.md` (created on demand).
     """
 
     ensure_play_skeleton()
-    kb_root = _kb_root_for(act_id=act_id, scene_id=scene_id, beat_id=beat_id)
+    kb_root = _kb_root_for(act_id=act_id, scene_id=scene_id)
     kb_root.mkdir(parents=True, exist_ok=True)
     default = kb_root / "kb.md"
     if not default.exists():
@@ -836,12 +687,12 @@ def kb_list_files(*, act_id: str, scene_id: str | None = None, beat_id: str | No
     return sorted(set(files))
 
 
-def kb_read(*, act_id: str, scene_id: str | None = None, beat_id: str | None = None, path: str = "kb.md") -> str:
+def kb_read(*, act_id: str, scene_id: str | None = None, path: str = "kb.md") -> str:
     import sys
     print(f"[kb_read] ========== READING ==========", file=sys.stderr, flush=True)
-    print(f"[kb_read] act_id={act_id}, scene_id={scene_id}, beat_id={beat_id}, path={path}", file=sys.stderr, flush=True)
+    print(f"[kb_read] act_id={act_id}, scene_id={scene_id}, path={path}", file=sys.stderr, flush=True)
     ensure_play_skeleton()
-    kb_root = _kb_root_for(act_id=act_id, scene_id=scene_id, beat_id=beat_id)
+    kb_root = _kb_root_for(act_id=act_id, scene_id=scene_id)
     print(f"[kb_read] kb_root={kb_root}", file=sys.stderr, flush=True)
     kb_root.mkdir(parents=True, exist_ok=True)
     target = _resolve_kb_file(kb_root=kb_root, rel_path=path)
@@ -886,7 +737,6 @@ def kb_write_preview(
     *,
     act_id: str,
     scene_id: str | None = None,
-    beat_id: str | None = None,
     path: str,
     text: str,
     _debug_source: str | None = None,
@@ -895,7 +745,7 @@ def kb_write_preview(
     print(f"[kb_write_preview] ========== PREVIEW (source={_debug_source}) ==========", file=sys.stderr, flush=True)
     print(f"[kb_write_preview] act_id={act_id}, path={path}, text_len={len(text)}", file=sys.stderr, flush=True)
     ensure_play_skeleton()
-    kb_root = _kb_root_for(act_id=act_id, scene_id=scene_id, beat_id=beat_id)
+    kb_root = _kb_root_for(act_id=act_id, scene_id=scene_id)
     kb_root.mkdir(parents=True, exist_ok=True)
     target = _resolve_kb_file(kb_root=kb_root, rel_path=path)
     print(f"[kb_write_preview] target={target}", file=sys.stderr, flush=True)
@@ -927,7 +777,6 @@ def kb_write_apply(
     *,
     act_id: str,
     scene_id: str | None = None,
-    beat_id: str | None = None,
     path: str,
     text: str,
     expected_sha256_current: str,
@@ -937,7 +786,7 @@ def kb_write_apply(
     print(f"[kb_write_apply] ========== APPLY (source={_debug_source}) ==========", file=sys.stderr, flush=True)
     print(f"[kb_write_apply] act_id={act_id}, path={path}, text_len={len(text)}, expected_sha={expected_sha256_current[:16]}...", file=sys.stderr, flush=True)
     ensure_play_skeleton()
-    kb_root = _kb_root_for(act_id=act_id, scene_id=scene_id, beat_id=beat_id)
+    kb_root = _kb_root_for(act_id=act_id, scene_id=scene_id)
     kb_root.mkdir(parents=True, exist_ok=True)
     target = _resolve_kb_file(kb_root=kb_root, rel_path=path)
     print(f"[kb_write_apply] target={target}", file=sys.stderr, flush=True)
@@ -964,12 +813,11 @@ def list_attachments(
     *,
     act_id: str | None = None,
     scene_id: str | None = None,
-    beat_id: str | None = None,
 ) -> list[FileAttachment]:
-    """List file attachments at the specified level (Play, Act, Scene, or Beat)."""
+    """List file attachments at the specified level (Play, Act, or Scene)."""
     from . import play_db
     attachments_data = play_db.list_attachments(
-        act_id=act_id, scene_id=scene_id, beat_id=beat_id
+        act_id=act_id, scene_id=scene_id
     )
     return [
         FileAttachment(
@@ -987,7 +835,6 @@ def add_attachment(
     *,
     act_id: str | None = None,
     scene_id: str | None = None,
-    beat_id: str | None = None,
     file_path: str,
     file_name: str | None = None,
 ) -> list[FileAttachment]:
@@ -999,8 +846,6 @@ def add_attachment(
         _validate_id(name="act_id", value=act_id)
     if scene_id is not None:
         _validate_id(name="scene_id", value=scene_id)
-    if beat_id is not None:
-        _validate_id(name="beat_id", value=beat_id)
 
     if not isinstance(file_path, str) or not file_path.strip():
         raise ValueError("file_path is required")
@@ -1018,17 +863,16 @@ def add_attachment(
 
     from . import play_db
     play_db.add_attachment(
-        act_id=act_id, scene_id=scene_id, beat_id=beat_id,
+        act_id=act_id, scene_id=scene_id,
         file_path=file_path, file_name=file_name
     )
-    return list_attachments(act_id=act_id, scene_id=scene_id, beat_id=beat_id)
+    return list_attachments(act_id=act_id, scene_id=scene_id)
 
 
 def remove_attachment(
     *,
     act_id: str | None = None,
     scene_id: str | None = None,
-    beat_id: str | None = None,
     attachment_id: str,
 ) -> list[FileAttachment]:
     """Remove a file attachment reference by ID.
@@ -1039,12 +883,10 @@ def remove_attachment(
         _validate_id(name="act_id", value=act_id)
     if scene_id is not None:
         _validate_id(name="scene_id", value=scene_id)
-    if beat_id is not None:
-        _validate_id(name="beat_id", value=beat_id)
     _validate_id(name="attachment_id", value=attachment_id)
 
     from . import play_db
     removed = play_db.remove_attachment(attachment_id)
     if not removed:
         raise ValueError("unknown attachment_id")
-    return list_attachments(act_id=act_id, scene_id=scene_id, beat_id=beat_id)
+    return list_attachments(act_id=act_id, scene_id=scene_id)

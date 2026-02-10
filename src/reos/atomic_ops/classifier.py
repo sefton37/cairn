@@ -267,7 +267,7 @@ class AtomicClassifier:
             domain = "contacts"
         elif words & {"cpu", "memory", "ram", "disk", "process", "system", "uptime", "docker"}:
             domain = "system"
-        elif words & {"act", "scene", "beat", "play"}:
+        elif words & {"act", "scene", "play"}:
             domain = "play"
         elif words & {"todo", "task", "reminder", "deadline"}:
             domain = "tasks"

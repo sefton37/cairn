@@ -258,22 +258,10 @@ class TestRecoveryAndClarification:
         )
         assert "rephrase" in response.lower()
 
-    def test_recovery_with_beats(self, rg: ResponseGenerator) -> None:
-        mock_execute = MagicMock(return_value={"beats": [{"title": "Beat A"}, {"title": "Beat B"}]})
+    def test_recovery_returns_none(self, rg: ResponseGenerator) -> None:
+        mock_execute = MagicMock(return_value={"scenes": [{"title": "Scene A"}, {"title": "Scene B"}]})
         result = rg.recover_with_clarification(
-            user_input="Move beat X to Career",
-            domain="play",
-            action="update",
-            rejection_reason="not found",
-            execute_tool=mock_execute,
-        )
-        assert result is not None
-        assert "Beat A" in result
-
-    def test_recovery_returns_none_when_no_beats(self, rg: ResponseGenerator) -> None:
-        mock_execute = MagicMock(return_value={"beats": []})
-        result = rg.recover_with_clarification(
-            user_input="Move beat X to Career",
+            user_input="Move Scene X to Career",
             domain="play",
             action="update",
             rejection_reason="not found",

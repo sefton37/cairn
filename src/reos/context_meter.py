@@ -191,7 +191,7 @@ def calculate_context_stats(
                 tokens=estimate_tokens(play_context),
                 percent=(estimate_tokens(play_context) / usable_context * 100) if usable_context > 0 else 0,
                 enabled="play_context" not in disabled_sources,
-                description="Your story, goals, acts, scenes, and beats",
+                description="Your story, goals, acts, and scenes",
             ),
             ContextSource(
                 name="learned_kb",

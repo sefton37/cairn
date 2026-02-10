@@ -444,16 +444,16 @@ class SharedToolHandler:
         title = args.get("title", content[:50] + "..." if len(content) > 50 else content)
         tags = args.get("tags", [])
 
-        # If we have a Play store, create a beat
+        # If we have a Play store, create a scene
         if self.play_store is not None:
             try:
-                # For now, save as a beat in a "Notes" act
+                # For now, save as a scene in a "Notes" act
                 # In production, this would be more sophisticated
-                from reos.play.play_fs import Beat
+                from reos.play.play_fs import Scene
 
-                beat_id = str(uuid.uuid4())
-                beat = Beat(
-                    id=beat_id,
+                scene_id = str(uuid.uuid4())
+                scene = Scene(
+                    id=scene_id,
                     content=f"[{category}] {title}\n\n{content}",
                     tags=tags,
                 )
@@ -461,7 +461,7 @@ class SharedToolHandler:
                 # Would need to find/create appropriate scene
                 return {
                     "saved": True,
-                    "id": beat_id,
+                    "id": scene_id,
                     "category": category,
                     "title": title,
                 }

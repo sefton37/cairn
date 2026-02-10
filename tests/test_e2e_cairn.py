@@ -1015,16 +1015,16 @@ class TestSurfacingAlgorithmE2E:
     ) -> None:
         """Test surfacing items due today."""
         # Item due today
-        cairn_store.get_or_create_metadata("beat", "due-today")
-        cairn_store.set_kanban_state("beat", "due-today", KanbanState.ACTIVE)
+        cairn_store.get_or_create_metadata("scene", "due-today")
+        cairn_store.set_kanban_state("scene", "due-today", KanbanState.ACTIVE)
         now = datetime.now()
         end_of_day = now.replace(hour=23, minute=59, second=59)
-        cairn_store.set_due_date("beat", "due-today", end_of_day)
+        cairn_store.set_due_date("scene", "due-today", end_of_day)
 
         # Item due next week
-        cairn_store.get_or_create_metadata("beat", "due-later")
-        cairn_store.set_kanban_state("beat", "due-later", KanbanState.ACTIVE)
-        cairn_store.set_due_date("beat", "due-later", now + timedelta(days=7))
+        cairn_store.get_or_create_metadata("scene", "due-later")
+        cairn_store.set_kanban_state("scene", "due-later", KanbanState.ACTIVE)
+        cairn_store.set_due_date("scene", "due-later", now + timedelta(days=7))
 
         results = surfacer.surface_today()
 
@@ -1059,9 +1059,9 @@ class TestSurfacingAlgorithmE2E:
         surfacer: CairnSurfacer,
     ) -> None:
         """Test surfacing items in WAITING state."""
-        cairn_store.get_or_create_metadata("beat", "waiting-item")
+        cairn_store.get_or_create_metadata("scene", "waiting-item")
         cairn_store.set_kanban_state(
-            "beat",
+            "scene",
             "waiting-item",
             KanbanState.WAITING,
             waiting_on="Client approval",
@@ -1148,13 +1148,13 @@ class TestFullCAIRNFlowE2E:
         cairn_store.set_kanban_state("act", "main-project", KanbanState.ACTIVE)
         cairn_store.set_priority("act", "main-project", 5)
 
-        cairn_store.get_or_create_metadata("beat", "urgent-task")
-        cairn_store.set_kanban_state("beat", "urgent-task", KanbanState.ACTIVE)
-        cairn_store.set_priority("beat", "urgent-task", 5)
-        cairn_store.set_due_date("beat", "urgent-task", datetime.now() + timedelta(hours=4))
+        cairn_store.get_or_create_metadata("scene", "urgent-task")
+        cairn_store.set_kanban_state("scene", "urgent-task", KanbanState.ACTIVE)
+        cairn_store.set_priority("scene", "urgent-task", 5)
+        cairn_store.set_due_date("scene", "urgent-task", datetime.now() + timedelta(hours=4))
 
-        cairn_store.get_or_create_metadata("beat", "someday-task")
-        cairn_store.set_kanban_state("beat", "someday-task", KanbanState.SOMEDAY)
+        cairn_store.get_or_create_metadata("scene", "someday-task")
+        cairn_store.set_kanban_state("scene", "someday-task", KanbanState.SOMEDAY)
 
         # Get today's focus
         today_items = surfacer.surface_today()
@@ -1182,10 +1182,10 @@ class TestFullCAIRNFlowE2E:
             ContactRelationship.COLLABORATOR,
         )
 
-        cairn_store.get_or_create_metadata("beat", "alice-task")
+        cairn_store.get_or_create_metadata("scene", "alice-task")
         cairn_store.link_contact(
             "contact-1",
-            "beat",
+            "scene",
             "alice-task",
             ContactRelationship.WAITING_ON,
             notes="Waiting for Alice's review",
@@ -1253,20 +1253,20 @@ class TestFullCAIRNFlowE2E:
     ) -> None:
         """Simulate: tracking activity over time."""
         # Create item
-        cairn_store.get_or_create_metadata("beat", "tracked-task")
-        cairn_store.set_kanban_state("beat", "tracked-task", KanbanState.ACTIVE)
+        cairn_store.get_or_create_metadata("scene", "tracked-task")
+        cairn_store.set_kanban_state("scene", "tracked-task", KanbanState.ACTIVE)
 
         # Touch it multiple times (simulating user interaction)
-        cairn_store.touch("beat", "tracked-task", ActivityType.VIEWED)
-        cairn_store.touch("beat", "tracked-task", ActivityType.EDITED)
-        cairn_store.touch("beat", "tracked-task", ActivityType.VIEWED)
+        cairn_store.touch("scene", "tracked-task", ActivityType.VIEWED)
+        cairn_store.touch("scene", "tracked-task", ActivityType.EDITED)
+        cairn_store.touch("scene", "tracked-task", ActivityType.VIEWED)
 
         # Check activity log
-        log = cairn_store.get_activity_log("beat", "tracked-task")
+        log = cairn_store.get_activity_log("scene", "tracked-task")
         assert len(log) >= 3
 
         # Check touch count
-        metadata = cairn_store.get_metadata("beat", "tracked-task")
+        metadata = cairn_store.get_metadata("scene", "tracked-task")
         assert metadata is not None
         assert metadata.touch_count >= 3
 
@@ -1277,16 +1277,16 @@ class TestFullCAIRNFlowE2E:
     ) -> None:
         """Simulate: deferring an item and having it resurface."""
         # Create active item
-        cairn_store.get_or_create_metadata("beat", "deferrable-task")
-        cairn_store.set_kanban_state("beat", "deferrable-task", KanbanState.ACTIVE)
-        cairn_store.set_priority("beat", "deferrable-task", 3)
+        cairn_store.get_or_create_metadata("scene", "deferrable-task")
+        cairn_store.set_kanban_state("scene", "deferrable-task", KanbanState.ACTIVE)
+        cairn_store.set_priority("scene", "deferrable-task", 3)
 
         # Defer for 1 day (in past for test)
         yesterday = datetime.now() - timedelta(days=1)
-        cairn_store.defer_until("beat", "deferrable-task", yesterday)
+        cairn_store.defer_until("scene", "deferrable-task", yesterday)
 
         # Check state changed to SOMEDAY
-        metadata = cairn_store.get_metadata("beat", "deferrable-task")
+        metadata = cairn_store.get_metadata("scene", "deferrable-task")
         assert metadata is not None
         assert metadata.kanban_state == KanbanState.SOMEDAY
 
@@ -1359,19 +1359,19 @@ class TestMCPToolsE2E:
     ) -> None:
         """Test store operations that MCP tools use."""
         # Create metadata (cairn_get_item uses this)
-        cairn_store.get_or_create_metadata("beat", "tool-test")
-        metadata = cairn_store.get_metadata("beat", "tool-test")
+        cairn_store.get_or_create_metadata("scene", "tool-test")
+        metadata = cairn_store.get_metadata("scene", "tool-test")
         assert metadata is not None
 
         # Set priority (cairn_set_priority uses this)
-        cairn_store.set_priority("beat", "tool-test", 4, reason="Testing")
-        updated = cairn_store.get_metadata("beat", "tool-test")
+        cairn_store.set_priority("scene", "tool-test", 4, reason="Testing")
+        updated = cairn_store.get_metadata("scene", "tool-test")
         assert updated is not None
         assert updated.priority == 4
 
         # Set kanban state (cairn_set_kanban_state uses this)
-        cairn_store.set_kanban_state("beat", "tool-test", KanbanState.ACTIVE)
-        updated = cairn_store.get_metadata("beat", "tool-test")
+        cairn_store.set_kanban_state("scene", "tool-test", KanbanState.ACTIVE)
+        updated = cairn_store.get_metadata("scene", "tool-test")
         assert updated is not None
         assert updated.kanban_state == KanbanState.ACTIVE
 

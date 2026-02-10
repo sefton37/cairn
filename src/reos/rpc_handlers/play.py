@@ -17,7 +17,6 @@ from reos.play_fs import (
     assign_repo_to_act as play_assign_repo_to_act,
     create_act as play_create_act,
     create_scene as play_create_scene,
-    delete_scene as play_delete_scene,
     kb_list_files as play_kb_list_files,
     kb_read as play_kb_read,
     kb_write_apply as play_kb_write_apply,
@@ -25,7 +24,6 @@ from reos.play_fs import (
     list_acts as play_list_acts,
     list_attachments as play_list_attachments,
     list_scenes as play_list_scenes,
-    move_scene as play_move_scene,
     play_root,
     read_me_markdown as play_read_me_markdown,
     remove_attachment as play_remove_attachment,
@@ -444,14 +442,13 @@ def handle_play_kb_write_preview(
     *,
     act_id: str,
     scene_id: str | None = None,
-    beat_id: str | None = None,
     path: str,
     text: str,
     _debug_source: str | None = None,
 ) -> dict[str, Any]:
     """Preview KB write (get current hash for conflict detection)."""
     try:
-        res = play_kb_write_preview(act_id=act_id, scene_id=scene_id, beat_id=beat_id, path=path, text=text, _debug_source=_debug_source)
+        res = play_kb_write_preview(act_id=act_id, scene_id=scene_id, path=path, text=text, _debug_source=_debug_source)
     except ValueError as exc:
         raise RpcError(code=-32602, message=str(exc)) from exc
     return {
@@ -466,7 +463,6 @@ def handle_play_kb_write_apply(
     *,
     act_id: str,
     scene_id: str | None = None,
-    beat_id: str | None = None,
     path: str,
     text: str,
     expected_sha256_current: str,
@@ -479,7 +475,6 @@ def handle_play_kb_write_apply(
         res = play_kb_write_apply(
             act_id=act_id,
             scene_id=scene_id,
-            beat_id=beat_id,
             path=path,
             text=text,
             expected_sha256_current=expected_sha256_current,
@@ -501,11 +496,10 @@ def handle_play_attachments_list(
     *,
     act_id: str | None = None,
     scene_id: str | None = None,
-    beat_id: str | None = None,
 ) -> dict[str, Any]:
     """List attachments."""
     try:
-        attachments = play_list_attachments(act_id=act_id, scene_id=scene_id, beat_id=beat_id)
+        attachments = play_list_attachments(act_id=act_id, scene_id=scene_id)
     except ValueError as exc:
         raise RpcError(code=-32602, message=str(exc)) from exc
     return {
@@ -527,7 +521,6 @@ def handle_play_attachments_add(
     *,
     act_id: str | None = None,
     scene_id: str | None = None,
-    beat_id: str | None = None,
     file_path: str,
     file_name: str | None = None,
 ) -> dict[str, Any]:
@@ -536,7 +529,6 @@ def handle_play_attachments_add(
         attachments = play_add_attachment(
             act_id=act_id,
             scene_id=scene_id,
-            beat_id=beat_id,
             file_path=file_path,
             file_name=file_name,
         )
@@ -561,7 +553,6 @@ def handle_play_attachments_remove(
     *,
     act_id: str | None = None,
     scene_id: str | None = None,
-    beat_id: str | None = None,
     attachment_id: str,
 ) -> dict[str, Any]:
     """Remove an attachment."""
@@ -569,7 +560,6 @@ def handle_play_attachments_remove(
         attachments = play_remove_attachment(
             act_id=act_id,
             scene_id=scene_id,
-            beat_id=beat_id,
             attachment_id=attachment_id,
         )
     except ValueError as exc:
