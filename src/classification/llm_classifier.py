@@ -19,7 +19,6 @@ from reos.atomic_ops.models import (
     DestinationType,
     ExecutionSemantics,
 )
-from reos.providers.base import LLMError
 
 logger = logging.getLogger(__name__)
 

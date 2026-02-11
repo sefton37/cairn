@@ -10,9 +10,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from reos import play_db
 from reos.atomic_ops.models import Classification
 from reos.cairn.store import CairnStore
-from reos import play_db
 from reos.providers.base import LLMProvider
 
 from .base_agent import AgentContext, AgentResponse, BaseAgent

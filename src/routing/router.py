@@ -12,12 +12,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
-
-from reos.atomic_ops.models import Classification
 
 from agents.base_agent import AgentResponse, BaseAgent
 from classification.llm_classifier import ClassificationResult, LLMClassifier
+from reos.atomic_ops.models import Classification
 
 logger = logging.getLogger(__name__)
 
