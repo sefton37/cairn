@@ -97,7 +97,7 @@ RIVA shows you exactly what it will change before doing it.
 - Set up The Play: `docs/the-play.md`
 - Understand ReOS safety: `docs/security.md`
 - Explore CAIRN: `docs/cairn_architecture.md`
-- Explore RIVA: `docs/code_mode_architecture.md`
+- Explore RIVA (frozen): `docs/archive/code_mode_architecture.md`
 
 ## Getting Help
 

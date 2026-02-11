@@ -134,7 +134,7 @@ RIVA generates operations like:
 - Code edits → `(file, machine, execute)`
 - Test runs → `(process, machine, interpret)`
 
-See [RIVA Architecture](./code_mode_architecture.md) for details.
+See [RIVA Architecture](./archive/code_mode_architecture.md) for details (frozen).
 
 ---
 
@@ -217,9 +217,8 @@ See [The Play](./the-play.md) for the complete organizational system.
 | [Atomic Operations](./atomic-operations.md) | 3x2x3 taxonomy and classification pipeline |
 | [Verification Layers](./verification-layers.md) | 5-layer verification system |
 | [RLHF Learning](./rlhf-learning.md) | Feedback collection and learning loop |
-| [Memory System](./memory-system.md) | Hybrid vector-graph memory for relational recall |
 | [Classification](./classification.md) | LLM-native classification with few-shot learning |
-| [Execution Engine](./execution-engine.md) | Safe execution with undo capability |
+| [Migration Guide](./migration-new-packages.md) | New top-level package structure |
 
 ## Agent Documentation
 
@@ -227,14 +226,13 @@ See [The Play](./the-play.md) for the complete organizational system.
 |----------|-------|
 | [CAIRN Architecture](./cairn_architecture.md) | Attention minder |
 | [Parse Gate](./parse-gate.md) | ReOS system helper |
-| [RIVA Architecture](./code_mode_architecture.md) | Code agent (frozen) |
+| [RIVA Architecture](./archive/code_mode_architecture.md) | Code agent (frozen) |
 | [The Play](./the-play.md) | Life organization |
 
 ## Reference Documentation
 
 | Document | Content |
 |----------|---------|
-| [Blocks API](./blocks-api.md) | Block-based content system |
 | [Security](./security.md) | Safety limits and protections |
 | [Testing Strategy](./testing-strategy.md) | Test approach |
 

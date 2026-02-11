@@ -596,7 +596,7 @@ class DocumentationLookup:
 | **Pattern Memory** | Learn and trust successful patterns | High |
 | **Trust Budget** | Dynamic verification cadence | Medium |
 
-See [RIVA Performance Strategy](./riva-performance-strategy.md) for full details.
+See [RIVA Performance Strategy](./archive/riva-performance-strategy.md) for full details (frozen).
 
 ### Tier 1: High Impact, Build Next
 

@@ -64,7 +64,7 @@ class LLMClassifier:
         if self.llm:
             try:
                 return self._classify_with_llm(request, corrections)
-            except Exception as e:
+            except (json.JSONDecodeError, ValueError, KeyError, OSError) as e:
                 logger.warning("LLM classification failed, using fallback: %s", e)
 
         return ClassificationResult(

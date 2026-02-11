@@ -101,7 +101,7 @@ class TestLLMClassifierWithLLM:
         assert result.raw_response is not None
 
     def test_llm_failure_falls_back(self):
-        llm = MockLLM(error=Exception("Connection refused"))
+        llm = MockLLM(error=OSError("Connection refused"))
 
         classifier = LLMClassifier(llm=llm)
         result = classifier.classify("hello")

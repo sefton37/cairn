@@ -111,6 +111,8 @@ class BaseAgent(ABC):
                 return 0.7
             case ExecutionSemantics.EXECUTE:
                 return 0.2
+            case _:
+                return 0.7
 
     def respond(
         self,

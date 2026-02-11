@@ -101,10 +101,10 @@ class LLMIntentVerifier:
         except (json.JSONDecodeError, LLMError) as e:
             logger.warning("Intent verification failed: %s", e)
             return IntentJudgment(
-                aligned=True,
-                alignment_score=0.5,
+                aligned=False,
+                alignment_score=0.0,
                 issues=[f"Verification unavailable: {e}"],
-                reasoning="LLM verification failed, defaulting to pass",
+                reasoning="LLM verification failed, defaulting to fail-closed",
             )
 
     def _build_user_prompt(

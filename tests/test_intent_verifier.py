@@ -99,18 +99,18 @@ class TestLLMIntentVerifier:
         # 0.7 is the threshold
         assert result.aligned is True
 
-    def test_llm_failure_defaults_to_pass(self):
+    def test_llm_failure_defaults_to_fail_closed(self):
         llm = MockLLM(error=LLMError("Connection refused"))
 
         verifier = LLMIntentVerifier(llm=llm)
         result = verifier.verify(request="test", response="test")
 
-        assert result.aligned is True
-        assert result.alignment_score == 0.5
+        assert result.aligned is False
+        assert result.alignment_score == 0.0
         assert len(result.issues) == 1
         assert "unavailable" in result.issues[0].lower()
 
-    def test_invalid_json_defaults_to_pass(self):
+    def test_invalid_json_defaults_to_fail_closed(self):
         llm = MockLLM()
         # Override to return invalid JSON
         llm.chat_json = lambda **kwargs: "not json"
@@ -118,8 +118,8 @@ class TestLLMIntentVerifier:
         verifier = LLMIntentVerifier(llm=llm)
         result = verifier.verify(request="test", response="test")
 
-        assert result.aligned is True
-        assert result.alignment_score == 0.5
+        assert result.aligned is False
+        assert result.alignment_score == 0.0
 
     def test_classification_context_included(self):
         llm = MockLLM(response={

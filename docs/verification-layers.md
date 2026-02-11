@@ -433,4 +433,3 @@ The addition of an explicit Safety layer makes dangerous operation blocking a fi
 - [Foundation](./FOUNDATION.md) — Core philosophy
 - [Atomic Operations](./atomic-operations.md) — Classification system
 - [RLHF Learning](./rlhf-learning.md) — Learning from verification failures
-- [Execution Engine](./execution-engine.md) — Post-verification execution

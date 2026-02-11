@@ -444,8 +444,5 @@ See `docs/cairn_architecture.md` for full tool documentation.
 
 - [Foundation](./FOUNDATION.md) - Core philosophy and architecture
 - [Atomic Operations](./atomic-operations.md) - Operation classification
-- [Blocks API](./blocks-api.md) - Detailed blocks API documentation
-- [Documents](./documents.md) - Document ingestion for RAG
-- [Memory System](./memory-system.md) - Semantic search and retrieval
 - [CAIRN Architecture](./cairn_architecture.md) - CAIRN attention minder design
 - [Testing Strategy](./testing-strategy.md) - Testing approach

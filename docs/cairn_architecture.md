@@ -56,7 +56,7 @@ Zero trust. Local only. Encrypted at rest. Never phones home. The only report go
 └─────────────────┘  └─────────────────┘  └─────────────────┘
 ```
 
-**Memory Retriever**: When CAIRN responds, it retrieves relevant past interactions, reasoning chains, and knowledge facts via semantic similarity and relationship traversal. See [Memory System](./memory-system.md) for details.
+**Memory Retriever**: When CAIRN responds, it retrieves relevant past interactions, reasoning chains, and knowledge facts via semantic similarity and relationship traversal.
 
 ## Data Model
 
@@ -563,7 +563,6 @@ src/reos/
 ## Related Documentation
 
 - [Foundation](./FOUNDATION.md) — Core philosophy and architecture overview
-- [Memory System](./memory-system.md) — Semantic search and relationship graph for context retrieval
 - [The Play](./the-play.md) — Life organization system (Acts/Scenes)
-- [Blocks API](./blocks-api.md) — Block editor system
+- [Classification](./classification.md) — LLM-native 3x2x3 taxonomy
 - [RLHF Learning](./rlhf-learning.md) — Feedback collection and learning

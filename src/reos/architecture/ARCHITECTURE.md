@@ -32,7 +32,7 @@ ReOS is a Linux desktop AI assistant with three core components:
 │                    Python Backend                             │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐   │
 │  │   Agent     │  │  MCP Tools  │  │  Intent Engine      │   │
-│  │   Router    │  │  (40+ tools)│  │  (4-stage pipeline) │   │
+│  │   Router    │  │  (62 tools) │  │  (4-stage pipeline) │   │
 │  └──────┬──────┘  └──────┬──────┘  └──────────┬──────────┘   │
 │         │                │                     │               │
 │         ▼                ▼                     ▼               │
@@ -375,28 +375,29 @@ from reos.atomic_ops.classifier import AtomicClassifier
 ### Package Files
 
 **llm/**
-- `base.py` - `LLMProvider` interface
-- `ollama.py` - `OllamaProvider` implementation
-- `factory.py` - `get_provider()` singleton
+- `__init__.py` - Re-exports from `reos.providers` + `OllamaInference`
+- `inference.py` - `OllamaInference` wrapper (generate, classify, stream)
 
 **classification/**
-- `base.py` - `Classifier` interface
-- `llm_classifier.py` - `LLMClassifier` (wraps atomic ops)
+- `__init__.py` - Re-exports `Classification`, `LLMClassifier`, enum types
+- `llm_classifier.py` - `LLMClassifier` with keyword fallback
 
 **agents/**
-- `base.py` - `BaseAgent` interface
-- `cairn.py` - `CAIRNAgent`
-- `reos.py` - `ReOSAgent`
+- `__init__.py` - Re-exports all agents + legacy `ChatAgent`
+- `base_agent.py` - `BaseAgent` ABC, `AgentContext`, `AgentResponse`
+- `cairn_agent.py` - `CAIRNAgent` (Play data, knowledge, calendar)
+- `reos_agent.py` - `ReOSAgent` (system info, command proposals)
 
 **routing/**
-- `router.py` - `RequestRouter` (wraps atomic ops processor)
+- `__init__.py` - Re-exports `RequestRouter` + legacy `AtomicOpsProcessor`
+- `router.py` - `RequestRouter` (classify → route → respond)
 
 **verification/**
-- `verifier.py` - `LLMIntentVerifier` (LLM-as-judge)
-- `pipeline.py` - Verification pipeline orchestration
+- `__init__.py` - Re-exports all verifiers from `reos.atomic_ops.verifiers`
+- `intent_verifier.py` - `LLMIntentVerifier` (LLM-as-judge, fail-closed)
 
 **search/**
-- `semantic.py` - Semantic search (wraps embeddings)
+- `__init__.py` - Re-exports `EmbeddingService` from `reos.memory.embeddings`
 
 ---
 

@@ -20,7 +20,7 @@
 Read these first when working on the project:
 - **[ARCHITECTURE.md](src/reos/architecture/ARCHITECTURE.md)** - System overview, data models, component architecture
 - **[README.md](README.md)** - Mission statement, agent descriptions, development priorities
-- **[CAIRN_SIMPLIFICATION_PLAN.md](docs/CAIRN_SIMPLIFICATION_PLAN.md)** - Recent optimization work
+- **[CAIRN_SIMPLIFICATION_PLAN.md](docs/archive/CAIRN_SIMPLIFICATION_PLAN.md)** - Recent optimization work (archived)
 
 ### Key Architectural Patterns
 
@@ -137,7 +137,7 @@ strict_equality = true
 
 **Result:** Personal questions now ~6 layers instead of 11, preserving full verification for mutations.
 
-See [CAIRN_SIMPLIFICATION_PLAN.md](docs/CAIRN_SIMPLIFICATION_PLAN.md)
+See [CAIRN_SIMPLIFICATION_PLAN.md](docs/archive/CAIRN_SIMPLIFICATION_PLAN.md)
 
 ### 2. Ollama-Only Provider Strategy
 **Decision:** ReOS uses Ollama exclusively for local inference. No cloud providers.

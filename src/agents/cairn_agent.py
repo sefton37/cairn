@@ -163,9 +163,13 @@ class CAIRNAgent(BaseAgent):
             entries = self._cairn_store.get_activity_log(limit=10)
             return [
                 {
-                    "title": e.get("action", ""),
-                    "content": e.get("details", ""),
-                    "category": e.get("entity_type", ""),
+                    "title": (
+                        e.activity_type.value
+                        if hasattr(e.activity_type, "value")
+                        else str(e.activity_type)
+                    ),
+                    "content": str(e.details) if e.details else "",
+                    "category": e.entity_type,
                 }
                 for e in entries
             ]

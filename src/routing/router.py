@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 from agents.base_agent import AgentResponse, BaseAgent
 from classification.llm_classifier import ClassificationResult, LLMClassifier
-from reos.atomic_ops.models import Classification
+from reos.atomic_ops.models import Classification, ExecutionSemantics
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ class RequestRouter:
             return "cairn"
 
         # Unknown domain — default to CAIRN for interpret, ReOS for execute
-        if classification.semantics.value == "execute":
+        if classification.semantics == ExecutionSemantics.EXECUTE:
             return "reos"
 
         return "cairn"

@@ -8,6 +8,7 @@ Designed for 1-3B models with structured prompts.
 from __future__ import annotations
 
 import logging
+import os
 import platform
 import shutil
 from typing import Any
@@ -124,8 +125,6 @@ class ReOSAgent(BaseAgent):
                 break
 
         # Detect shell
-        import os
-
         info["shell"] = os.environ.get("SHELL", "/bin/bash")
 
         return info

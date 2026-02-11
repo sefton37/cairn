@@ -74,31 +74,35 @@ category = inference.classify("Show me system logs", ["SYSTEM", "CALENDAR", "PLA
 ```
 
 ### `agents.BaseAgent` / `agents.CAIRNAgent` / `agents.ReOSAgent`
-New agent abstractions with standardized interfaces:
+New agent abstractions with standardized lifecycle (gather_context → build_prompts → LLM → format):
 ```python
-from agents import CAIRNAgent, AgentContext
+from agents import CAIRNAgent
+from llm import get_provider
 
-agent = CAIRNAgent()
-context = AgentContext(user_id="alice", session_id="s123")
-response = await agent.handle("What's next today?", context)
+llm = get_provider(db)
+agent = CAIRNAgent(llm=llm, use_play_db=True)
+response = agent.respond("What's next today?")  # AgentResponse
+print(response.text)
 ```
 
 ### `routing.RequestRouter`
 New classify-and-dispatch router:
 ```python
 from routing import RequestRouter
+from classification import LLMClassifier
 
-router = RequestRouter(classifier, agents)
-result = await router.route("Install nginx")  # RoutingResult with agent, confidence
+router = RequestRouter(classifier=LLMClassifier(llm), agents={"cairn": cairn_agent})
+result = router.handle("Install nginx")  # RoutingResult with agent_name, response
 ```
 
 ### `verification.LLMIntentVerifier`
-LLM-as-judge verifier (experimental):
+LLM-as-judge verifier (fail-closed — rejects on LLM failure):
 ```python
 from verification import LLMIntentVerifier
 
-verifier = LLMIntentVerifier(inference)
-judgment = await verifier.verify(user_input, command, context)
+verifier = LLMIntentVerifier(llm)
+judgment = verifier.verify(request="show logs", response="Here are the logs...")
+print(judgment.aligned, judgment.alignment_score)
 ```
 
 ### `classification.ClassificationResult`

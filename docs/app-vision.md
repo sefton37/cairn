@@ -261,7 +261,7 @@ Talking Rock doesn't try to beat big tech on speed. We beat them on **reliabilit
 
 **Value proposition:** All you need is patience.
 
-See [RIVA Performance Strategy](./riva-performance-strategy.md) for detailed optimization strategies.
+See [RIVA Performance Strategy](./archive/riva-performance-strategy.md) for detailed optimization strategies (frozen).
 
 ---
 

@@ -476,15 +476,15 @@ Talking Rock is for you if:
 
 - [CAIRN Architecture](docs/cairn_architecture.md) — Attention minder (generates atomic operations for life management)
 - [Parse Gate](docs/parse-gate.md) — ReOS system helper (generates atomic operations for shell commands)
-- [RIVA Architecture](docs/code_mode_architecture.md) — Code agent (generates atomic operations for development, frozen)
+- [RIVA Architecture](docs/archive/code_mode_architecture.md) — Code agent (frozen)
 - [The Play](docs/the-play.md) — Life organization system
 
 ### Reference
 
 - [Security Design](docs/security.md) — How we protect your system
-- [Blocks API](docs/blocks-api.md) — Block-based content system
-- [Documents](docs/documents.md) — Document ingestion and RAG
-- [Memory System](docs/memory-system.md) — Semantic search and retrieval
+- [Verification Layers](docs/verification-layers.md) — 5-layer verification pipeline
+- [Classification](docs/classification.md) — LLM-native 3x2x3 taxonomy
+- [Migration Guide](docs/migration-new-packages.md) — New package structure
 - [Technical Roadmap](docs/tech-roadmap.md) — Development plans
 
 ---
