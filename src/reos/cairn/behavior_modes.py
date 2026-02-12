@@ -415,11 +415,29 @@ KNOWLEDGE_QUERY_MODE = BehaviorMode(
     verification_mode="FAST",
 )
 
+def _health_tool_selector(ctx: BehaviorModeContext) -> str | None:
+    """Select health tool based on user input keywords."""
+    user_lower = ctx.user_input.lower()
+    history_keywords = ["history", "trend", "trends", "over time", "snapshot"]
+    if any(kw in user_lower for kw in history_keywords):
+        return "cairn_health_history"
+    return "cairn_health_report"
+
+
+def _health_arg_extractor(ctx: BehaviorModeContext) -> dict[str, Any]:
+    """Extract args for health tools (days param for history)."""
+    user_lower = ctx.user_input.lower()
+    for token in user_lower.split():
+        if token.isdigit():
+            return {"days": int(token)}
+    return {}
+
+
 HEALTH_QUERY_MODE = BehaviorMode(
     name="health_query",
     needs_tool=True,
-    tool_selector=_static_tool("cairn_health_report"),
-    arg_extractor=_no_args,
+    tool_selector=_health_tool_selector,
+    arg_extractor=_health_arg_extractor,
     system_prompt_template=(
         "You are CAIRN, the Attention Minder. "
         "Present the health report findings clearly and helpfully.\n"

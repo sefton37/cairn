@@ -280,7 +280,10 @@ class AtomicClassifier:
             domain = "tasks"
         elif words & {"undo", "revert", "reverse"}:
             domain = "undo"
-        elif words & {"health", "checkup", "wellness", "vitality", "freshness", "integrity"}:
+        elif words & {
+            "health", "checkup", "wellness", "vitality",
+            "freshness", "integrity", "snapshot",
+        }:
             domain = "health"
         elif words & {"hi", "hello", "hey", "morning", "afternoon", "evening", "thanks", "bye"}:
             domain = "conversation"

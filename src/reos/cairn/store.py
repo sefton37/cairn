@@ -217,9 +217,13 @@ class CairnStore:
             """)
 
             # Health Pulse tables (Anti-Nag Protocol + Snapshots)
-            from reos.cairn.health.anti_nag import init_health_tables
+            from reos.cairn.health.anti_nag import (
+                init_health_check_defaults,
+                init_health_tables,
+            )
             from reos.cairn.health.snapshot import init_snapshot_tables
             init_health_tables(conn)
+            init_health_check_defaults(conn)
             init_snapshot_tables(conn)
 
             # Migrations for existing databases

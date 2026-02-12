@@ -1067,6 +1067,23 @@ def list_tools() -> list[Tool]:
                 "required": ["log_id"],
             },
         ),
+        Tool(
+            name="cairn_health_history",
+            description=(
+                "Show health trends over time from daily snapshots. "
+                "Use when user asks about health history, trends, "
+                "or how things have changed."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "days": {
+                        "type": "integer",
+                        "description": "Number of days of history (default 30)",
+                    },
+                },
+            },
+        ),
     ]
 
 
@@ -1332,6 +1349,9 @@ class CairnToolHandler:
 
         if name == "cairn_acknowledge_health":
             return self._acknowledge_health(args)
+
+        if name == "cairn_health_history":
+            return self._health_history(args)
 
         raise CairnToolError(
             code="unknown_tool",
@@ -3412,3 +3432,27 @@ class CairnToolHandler:
         anti_nag = AntiNagProtocol(conn)
         success = anti_nag.acknowledge(log_id)
         return {"success": success}
+
+    def _health_history(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Show health trends from daily snapshots."""
+        from reos.cairn.health.snapshot import get_snapshots
+
+        days = args.get("days", 30)
+        conn = self.store._get_connection()
+        snapshots = get_snapshots(conn, days=days)
+
+        if not snapshots:
+            return {
+                "snapshots": [],
+                "message": (
+                    "No health snapshots yet. Snapshots are created "
+                    "daily at first interaction."
+                ),
+            }
+
+        return {
+            "snapshots": snapshots,
+            "count": len(snapshots),
+            "earliest": snapshots[0]["date"],
+            "latest": snapshots[-1]["date"],
+        }
