@@ -385,14 +385,38 @@ class TestComputeEffectiveStage:
         }
         assert compute_effective_stage(scene) == "planning"
 
-    def test_overdue_goes_to_need_attention(self) -> None:
-        """Overdue items go to 'need_attention' column."""
+    def test_overdue_non_recurring_auto_completes(self) -> None:
+        """Overdue non-recurring items auto-complete to 'complete' column."""
         past_date = (datetime.now() - timedelta(days=2)).isoformat()
         scene: dict = {
             "scene_id": "test-1",
             "title": "Test Scene",
             "stage": "in_progress",
             "calendar_event_start": past_date,
+        }
+        assert compute_effective_stage(scene) == "complete"
+
+    def test_overdue_recurring_goes_to_need_attention(self) -> None:
+        """Overdue recurring items go to 'need_attention' column."""
+        past_date = (datetime.now() - timedelta(days=2)).isoformat()
+        scene: dict = {
+            "scene_id": "test-1",
+            "title": "Recurring Scene",
+            "stage": "in_progress",
+            "calendar_event_start": past_date,
+            "recurrence_rule": "RRULE:FREQ=WEEKLY;BYDAY=MO",
+        }
+        assert compute_effective_stage(scene) == "need_attention"
+
+    def test_overdue_disable_auto_complete_goes_to_need_attention(self) -> None:
+        """Overdue items with disable_auto_complete go to 'need_attention'."""
+        past_date = (datetime.now() - timedelta(days=2)).isoformat()
+        scene: dict = {
+            "scene_id": "test-1",
+            "title": "Important Scene",
+            "stage": "in_progress",
+            "calendar_event_start": past_date,
+            "disable_auto_complete": True,
         }
         assert compute_effective_stage(scene) == "need_attention"
 
@@ -557,13 +581,29 @@ class TestEnrichSceneForDisplay:
         assert enriched["effective_stage"] == "in_progress"
 
     def test_computed_values_correct_for_overdue_scene(self) -> None:
-        """Computed values are correct for an overdue scene."""
+        """Computed values are correct for an overdue non-recurring scene (auto-completes)."""
         past_date = (datetime.now() - timedelta(days=2)).isoformat()
         scene: dict = {
             "scene_id": "test-1",
             "title": "Test Scene",
             "stage": "in_progress",
             "calendar_event_start": past_date,
+        }
+        enriched = enrich_scene_for_display(scene)
+
+        assert enriched["is_unscheduled"] is False
+        assert enriched["is_overdue"] is True
+        assert enriched["effective_stage"] == "complete"
+
+    def test_computed_values_correct_for_overdue_recurring_scene(self) -> None:
+        """Overdue recurring scene gets 'need_attention'."""
+        past_date = (datetime.now() - timedelta(days=2)).isoformat()
+        scene: dict = {
+            "scene_id": "test-1",
+            "title": "Recurring Scene",
+            "stage": "in_progress",
+            "calendar_event_start": past_date,
+            "recurrence_rule": "RRULE:FREQ=WEEKLY;BYDAY=MO",
         }
         enriched = enrich_scene_for_display(scene)
 

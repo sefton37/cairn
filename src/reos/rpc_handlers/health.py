@@ -81,7 +81,7 @@ def _get_health_components(db: Database) -> tuple:
     except ImportError:
         pass
 
-    # Anti-nag needs a connection
+    # Anti-nag needs a connection — use transaction for proper commit
     conn = store._get_connection()
     anti_nag = AntiNagProtocol(conn)
 

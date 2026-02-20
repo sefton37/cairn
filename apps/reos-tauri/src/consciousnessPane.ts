@@ -11,6 +11,7 @@
  * - Response generation
  */
 
+import { escapeHtml } from "./dom";
 import type { ConsciousnessEvent } from "./types";
 
 // Event type to CSS class mapping
@@ -189,7 +190,7 @@ export function createConsciousnessPane(
           .replace(/\n/g, "<br>");
         contentHtml = `<div class="consciousness-content">${escapedContent}</div>`;
       } catch {
-        contentHtml = `<div class="consciousness-content">${event.content}</div>`;
+        contentHtml = `<div class="consciousness-content">${escapeHtml(event.content)}</div>`;
       }
     }
 
@@ -197,7 +198,7 @@ export function createConsciousnessPane(
       <div class="consciousness-event ${typeClass}" data-index="${index}">
         <div class="consciousness-event-header">
           <span class="consciousness-icon">${icon}</span>
-          <span class="consciousness-title">${event.title}</span>
+          <span class="consciousness-title">${escapeHtml(event.title)}</span>
           <span class="consciousness-timestamp">${formatTimestamp(event.timestamp)}</span>
           ${hasContent ? `<button class="consciousness-expand-btn">${isExpanded ? "−" : "+"}</button>` : ""}
         </div>

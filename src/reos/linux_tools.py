@@ -35,6 +35,7 @@ from .types import (
 )
 from .security import (
     is_command_dangerous as security_is_command_dangerous,
+    verify_command_safety_llm,
     audit_log,
     AuditEventType,
     RateLimiter,
@@ -337,6 +338,8 @@ def execute_command(
     env: dict[str, str] | None = None,
     rate_limit_category: str | None = None,
     interactive: bool = False,
+    llm_provider: Any = None,
+    user_intent: str = "",
 ) -> CommandResult:
     """Execute a shell command safely.
 
@@ -393,6 +396,20 @@ def execute_command(
             stderr=warning or "Command blocked for safety",
             success=False,
         )
+
+    # LLM safety verification (supplementary, fails open)
+    if llm_provider is not None:
+        llm_safe, llm_reason = verify_command_safety_llm(
+            command, user_intent or command, llm_provider
+        )
+        if not llm_safe:
+            return CommandResult(
+                command=command,
+                returncode=-1,
+                stdout="",
+                stderr=f"LLM safety check: {llm_reason or 'Command deemed unsafe'}",
+                success=False,
+            )
 
     # Check if we're running in terminal mode (from shell_cli)
     # In terminal mode, commands run with full terminal access so users can interact

@@ -5,7 +5,7 @@
  */
 
 import { kernelRequest } from './kernel';
-import { el } from './dom';
+import { el, escapeHtml } from './dom';
 import type { ContextStatsResult, ContextSource, ContextToggleResult } from './types';
 
 interface ContextOverlay {
@@ -120,7 +120,7 @@ export function createContextOverlay(onClose?: () => void): ContextOverlay {
       }) as ContextStatsResult;
       render();
     } catch (e) {
-      content.innerHTML = `<div style="color: #ef4444;">Failed to load context stats: ${e instanceof Error ? e.message : 'Unknown error'}</div>`;
+      content.innerHTML = `<div style="color: #ef4444;">Failed to load context stats: ${escapeHtml(e instanceof Error ? e.message : 'Unknown error')}</div>`;
     }
   }
 
@@ -250,8 +250,8 @@ export function createContextOverlay(onClose?: () => void): ContextOverlay {
 
     const nameSection = el('div');
     nameSection.innerHTML = `
-      <div style="font-size: 14px; font-weight: 500; color: #fff;">${source.display_name}</div>
-      <div style="font-size: 11px; color: rgba(255,255,255,0.5);">${source.description}</div>
+      <div style="font-size: 14px; font-weight: 500; color: #fff;">${escapeHtml(source.display_name)}</div>
+      <div style="font-size: 11px; color: rgba(255,255,255,0.5);">${escapeHtml(source.description)}</div>
     `;
 
     // Toggle switch

@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 from uuid import uuid4
 
-from reos.security import is_command_safe
+from reos.security import is_command_safe, verify_command_safety_llm
 
 logger = logging.getLogger(__name__)
 
@@ -269,17 +269,20 @@ class OperationExecutor:
         self,
         store: Optional[AtomicOpsStore] = None,
         config: Optional[ExecutionConfig] = None,
+        llm_provider: Any = None,
     ):
         """Initialize executor.
 
         Args:
             store: Optional store for persisting execution records.
             config: Execution configuration.
+            llm_provider: Optional LLM provider for command safety verification.
         """
         self.store = store
         self.config = config or ExecutionConfig()
         self.state_capture = StateCapture(self.config.backup_dir)
         self._spawned_processes: dict[str, subprocess.Popen] = {}
+        self._llm_provider = llm_provider
 
     def execute(
         self,
@@ -452,6 +455,17 @@ class OperationExecutor:
                 success=False,
                 stderr=warning or "Command blocked for safety",
             )
+
+        # LLM safety verification (supplementary, fails open)
+        if self._llm_provider is not None:
+            llm_safe, llm_reason = verify_command_safety_llm(
+                command, operation.user_request, self._llm_provider
+            )
+            if not llm_safe:
+                return ExecutionResult(
+                    success=False,
+                    stderr=f"LLM safety check: {llm_reason or 'Command deemed unsafe'}",
+                )
 
         try:
             # Run process

@@ -12,11 +12,11 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable
+from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
-from reos.security import is_command_safe
+from reos.security import is_command_safe, verify_command_safety_llm
 
 
 @dataclass
@@ -62,8 +62,9 @@ class StreamingExecutor:
         result = executor.get_result(exec_id)
     """
 
-    def __init__(self) -> None:
+    def __init__(self, llm_provider: Any = None) -> None:
         self._executions: dict[str, StreamingExecution] = {}
+        self._llm_provider = llm_provider
         self._lock = threading.Lock()
 
     def start(
@@ -100,10 +101,22 @@ class StreamingExecutor:
                 execution.is_complete = True
                 execution.error = warning or "Command blocked for safety"
                 execution.completed_at = datetime.now()
-                # Store the blocked execution before returning
                 with self._lock:
                     self._executions[execution_id] = execution
                 return execution_id
+
+            # LLM safety verification (supplementary, fails open)
+            if self._llm_provider is not None:
+                llm_safe, llm_reason = verify_command_safety_llm(
+                    command, command, self._llm_provider
+                )
+                if not llm_safe:
+                    execution.is_complete = True
+                    execution.error = f"LLM safety check: {llm_reason or 'Command deemed unsafe'}"
+                    execution.completed_at = datetime.now()
+                    with self._lock:
+                        self._executions[execution_id] = execution
+                    return execution_id
 
             process = subprocess.Popen(
                 command,

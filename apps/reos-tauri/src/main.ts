@@ -20,7 +20,7 @@ import {
   getSessionUsername,
 } from './kernel';
 import { checkSessionOrLogin, showLockOverlay } from './lockScreen';
-import { el, rowHeader, label, textInput, textArea, smallButton } from './dom';
+import { el, escapeHtml, rowHeader, label, textInput, textArea, smallButton } from './dom';
 import { createPlayOverlay } from './playOverlay';
 import { createSettingsOverlay } from './settingsOverlay';
 import { createContextOverlay } from './contextOverlay';
@@ -1920,7 +1920,11 @@ function buildUi() {
 
         // Main explanation
         const mainExplain = el('div');
-        mainExplain.innerHTML = `<pre style="margin: 0; white-space: pre-wrap;">${result.detailed_explanation}</pre>`;
+        const pre = el('pre');
+        pre.style.margin = '0';
+        pre.style.whiteSpace = 'pre-wrap';
+        pre.textContent = result.detailed_explanation;
+        mainExplain.appendChild(pre);
         explainBox.appendChild(mainExplain);
 
         // Warnings (if any)
@@ -2474,7 +2478,8 @@ function buildUi() {
         abortBtn.textContent = 'Abort';
         abortBtn.disabled = false;
         console.error('Abort error:', e);
-        statusLine.innerHTML = `<span style="color: #ef4444;">Failed to abort: ${e instanceof Error ? e.message : String(e)}</span>`;
+        statusLine.textContent = `Failed to abort: ${e instanceof Error ? e.message : String(e)}`;
+        statusLine.style.color = '#ef4444';
       }
     });
 
@@ -2927,10 +2932,10 @@ function buildUi() {
       const loadAvg = info.load_avg ?? [0, 0, 0];
 
       systemStatus.innerHTML = `
-        <div style="margin-bottom: 6px"><strong>${info.hostname ?? 'Unknown'}</strong></div>
-        <div style="opacity: 0.8; margin-bottom: 4px">${info.distro ?? 'Linux'}</div>
-        <div style="margin-bottom: 4px">Kernel: ${info.kernel ?? 'N/A'}</div>
-        <div style="margin-bottom: 4px">Uptime: ${info.uptime ?? 'N/A'}</div>
+        <div style="margin-bottom: 6px"><strong>${escapeHtml(info.hostname ?? 'Unknown')}</strong></div>
+        <div style="opacity: 0.8; margin-bottom: 4px">${escapeHtml(info.distro ?? 'Linux')}</div>
+        <div style="margin-bottom: 4px">Kernel: ${escapeHtml(info.kernel ?? 'N/A')}</div>
+        <div style="margin-bottom: 4px">Uptime: ${escapeHtml(info.uptime ?? 'N/A')}</div>
         <div style="margin-bottom: 6px">
           <div style="display: flex; justify-content: space-between;">
             <span>Memory</span>
@@ -3465,11 +3470,11 @@ async function buildDashboardWindow() {
           name.style.cssText = 'font-weight: 500; min-width: 80px; color: rgba(255,255,255,0.9);';
 
           const rx = el('span');
-          rx.innerHTML = `<span style="color: #22c55e;">↓</span> ${iface.rx_formatted}`;
+          rx.innerHTML = `<span style="color: #22c55e;">↓</span> ${escapeHtml(iface.rx_formatted)}`;
           rx.style.cssText = 'flex: 1; font-family: monospace; font-size: 12px;';
 
           const tx = el('span');
-          tx.innerHTML = `<span style="color: #3b82f6;">↑</span> ${iface.tx_formatted}`;
+          tx.innerHTML = `<span style="color: #3b82f6;">↑</span> ${escapeHtml(iface.tx_formatted)}`;
           tx.style.cssText = 'flex: 1; font-family: monospace; font-size: 12px;';
 
           row.appendChild(name);

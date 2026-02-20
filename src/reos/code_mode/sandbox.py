@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from reos.security import is_command_safe
+from reos.security import is_command_safe, verify_command_safety_llm
 
 
 class CodeSandboxError(RuntimeError):
@@ -97,11 +97,12 @@ class CodeSandbox:
     File modifications create backups before changes.
     """
 
-    def __init__(self, repo_path: Path | str) -> None:
+    def __init__(self, repo_path: Path | str, llm_provider: Any = None) -> None:
         """Initialize sandbox with repository root path.
 
         Args:
             repo_path: Absolute path to the git repository root.
+            llm_provider: Optional LLM provider for command safety verification.
 
         Raises:
             CodeSandboxError: If path doesn't exist or isn't a git repo.
@@ -109,6 +110,7 @@ class CodeSandbox:
         self.repo_path = Path(repo_path).resolve()
         self._validate_is_git_repo()
         self._backup_dir = self.repo_path / ".reos_backups"
+        self._llm_provider = llm_provider
 
     def _validate_is_git_repo(self) -> None:
         """Verify the path is a valid git repository."""
@@ -718,6 +720,14 @@ class CodeSandbox:
         is_safe, warning = is_command_safe(command)
         if not is_safe:
             return -1, "", warning or "Command blocked for safety"
+
+        # LLM safety verification (supplementary, fails open)
+        if self._llm_provider is not None:
+            llm_safe, llm_reason = verify_command_safety_llm(
+                command, command, self._llm_provider
+            )
+            if not llm_safe:
+                return -1, "", f"LLM safety check: {llm_reason or 'Command deemed unsafe'}"
 
         try:
             result = subprocess.run(

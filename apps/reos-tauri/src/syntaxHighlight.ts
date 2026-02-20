@@ -5,6 +5,8 @@
  * Uses regex-based tokenization for simplicity without external dependencies.
  */
 
+import { escapeHtml } from './dom';
+
 // Token types
 type TokenType =
   | 'keyword'
@@ -109,15 +111,7 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   golang: 'go',
 };
 
-// Escape HTML
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
+// escapeHtml imported from './dom'
 
 // Simple tokenizer
 function highlightCode(code: string, language: string): string {

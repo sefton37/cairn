@@ -1416,7 +1416,7 @@ class TestPlayKanbanWorkflowE2E:
         assert scene["stage"] == "complete"
 
     def test_overdue_detection_workflow(self, play_db_setup) -> None:
-        """Test overdue detection for Kanban 'Need Attention' column."""
+        """Test overdue detection — non-recurring scenes auto-complete."""
         from reos.play_computed import is_overdue, compute_effective_stage
 
         play_db = play_db_setup
@@ -1430,9 +1430,9 @@ class TestPlayKanbanWorkflowE2E:
 
         scene = play_db.get_scene(scene_id)
 
-        # Verify overdue detection
+        # Non-recurring overdue scenes auto-complete per docs
         assert is_overdue(scene) is True
-        assert compute_effective_stage(scene) == "need_attention"
+        assert compute_effective_stage(scene) == "complete"
 
     def test_calendar_sync_to_kanban_update(self, play_db_setup) -> None:
         """Test calendar sync updates reflect in Kanban."""
@@ -1652,9 +1652,9 @@ class TestUIRPCIntegrationE2E:
         past_date = (datetime.now() - timedelta(days=2)).isoformat()
         play_db.update_scene_calendar_data(scene_id, calendar_event_start=past_date)
 
-        # Now: overdue, effective_stage = need_attention
+        # Now: overdue non-recurring, effective_stage = complete (auto-complete)
         scene = play_db.get_scene(scene_id)
-        assert compute_effective_stage(scene) == "need_attention"
+        assert compute_effective_stage(scene) == "complete"
 
         # Complete it
         play_db.update_scene(act_id=act_id, scene_id=scene_id, stage="complete")

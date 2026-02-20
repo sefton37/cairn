@@ -570,7 +570,7 @@ class CairnSurfacer:
         if (
             self._identity_model is not None
             and self._identity_model_time is not None
-            and (now - self._identity_model_time).seconds < 300
+            and (now - self._identity_model_time).total_seconds() < 300
         ):
             return self._identity_model
 

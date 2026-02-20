@@ -19,16 +19,16 @@ from datetime import datetime, timedelta
 from typing import Any
 
 
-def _is_placeholder_date(date: datetime) -> bool:
+def _is_placeholder_date(date: datetime, now: datetime | None = None) -> bool:
     """Check if a date is the placeholder date (December 31 of current year).
 
     The placeholder is used for manually created scenes that haven't been scheduled.
     """
-    current_year = datetime.now().year
+    current_year = (now or datetime.now()).year
     return date.month == 12 and date.day == 31 and date.year == current_year
 
 
-def is_unscheduled(scene: dict[str, Any]) -> bool:
+def is_unscheduled(scene: dict[str, Any], now: datetime | None = None) -> bool:
     """Determine if a scene is "unscheduled" (belongs in Planning column).
 
     A scene is unscheduled if:
@@ -37,6 +37,7 @@ def is_unscheduled(scene: dict[str, Any]) -> bool:
 
     Args:
         scene: Scene dict with calendar fields.
+        now: Optional datetime for testability. Defaults to datetime.now().
 
     Returns:
         True if unscheduled, False otherwise.
@@ -62,7 +63,7 @@ def is_unscheduled(scene: dict[str, Any]) -> bool:
             else:
                 return True  # Invalid date type
 
-            if _is_placeholder_date(date):
+            if _is_placeholder_date(date, now=now):
                 return True
         except (ValueError, TypeError):
             # Invalid date, treat as unscheduled
@@ -71,7 +72,7 @@ def is_unscheduled(scene: dict[str, Any]) -> bool:
     return False
 
 
-def is_overdue(scene: dict[str, Any]) -> bool:
+def is_overdue(scene: dict[str, Any], now: datetime | None = None) -> bool:
     """Determine if a scene is overdue (date has passed but not complete).
 
     A scene is overdue if:
@@ -81,6 +82,7 @@ def is_overdue(scene: dict[str, Any]) -> bool:
 
     Args:
         scene: Scene dict with stage and calendar fields.
+        now: Optional datetime for testability. Defaults to datetime.now().
 
     Returns:
         True if overdue, False otherwise.
@@ -107,9 +109,9 @@ def is_overdue(scene: dict[str, Any]) -> bool:
         else:
             return False  # Invalid date type
 
-        now = datetime.now()
+        effective_now = now or datetime.now()
         # Consider overdue if more than 1 hour in the past
-        one_hour_ago = now - timedelta(hours=1)
+        one_hour_ago = effective_now - timedelta(hours=1)
         return date < one_hour_ago
     except (ValueError, TypeError):
         return False
@@ -139,7 +141,7 @@ def should_auto_complete(scene: dict[str, Any]) -> bool:
     return True
 
 
-def compute_effective_stage(scene: dict[str, Any]) -> str:
+def compute_effective_stage(scene: dict[str, Any], now: datetime | None = None) -> str:
     """Get the effective Kanban column for a scene.
 
     Priority order:
@@ -151,6 +153,7 @@ def compute_effective_stage(scene: dict[str, Any]) -> str:
 
     Args:
         scene: Scene dict with stage and calendar fields.
+        now: Optional datetime for testability. Defaults to datetime.now().
 
     Returns:
         The effective stage string: 'planning', 'in_progress', 'awaiting_data',
@@ -163,11 +166,11 @@ def compute_effective_stage(scene: dict[str, Any]) -> str:
         return "complete"
 
     # Unscheduled items always go to Planning
-    if is_unscheduled(scene):
+    if is_unscheduled(scene, now=now):
         return "planning"
 
     # Overdue items - either auto-complete or need attention
-    if is_overdue(scene):
+    if is_overdue(scene, now=now):
         if should_auto_complete(scene):
             # Auto-complete: non-recurring scenes without disable_auto_complete
             return "complete"
@@ -184,7 +187,9 @@ def compute_effective_stage(scene: dict[str, Any]) -> str:
     return raw_stage or "in_progress"
 
 
-def enrich_scene_for_display(scene: dict[str, Any]) -> dict[str, Any]:
+def enrich_scene_for_display(
+    scene: dict[str, Any], now: datetime | None = None
+) -> dict[str, Any]:
     """Enrich a scene dict with computed fields for UI display.
 
     Adds:
@@ -194,14 +199,15 @@ def enrich_scene_for_display(scene: dict[str, Any]) -> dict[str, Any]:
 
     Args:
         scene: Scene dict from the database.
+        now: Optional datetime for testability. Defaults to datetime.now().
 
     Returns:
         Enriched scene dict with computed fields added.
     """
     enriched = dict(scene)  # Copy to avoid mutating original
 
-    enriched["is_unscheduled"] = is_unscheduled(scene)
-    enriched["is_overdue"] = is_overdue(scene)
-    enriched["effective_stage"] = compute_effective_stage(scene)
+    enriched["is_unscheduled"] = is_unscheduled(scene, now=now)
+    enriched["is_overdue"] = is_overdue(scene, now=now)
+    enriched["effective_stage"] = compute_effective_stage(scene, now=now)
 
     return enriched

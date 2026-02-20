@@ -6,6 +6,7 @@ without requiring database integration.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 
 import pytest
@@ -390,6 +391,20 @@ class TestPatternTrackerIntegration:
         assert (trust > 0.9) == skip
 
 
+class MockCursor:
+    """Mock cursor returned by MockDatabase.execute()."""
+
+    def __init__(self, result: dict | None = None, results: list | None = None) -> None:
+        self._result = result
+        self._results = results or []
+
+    def fetchone(self) -> dict | None:
+        return self._result
+
+    def fetchall(self) -> list:
+        return self._results
+
+
 class MockDatabase:
     """Mock database for testing without real SQLite."""
 
@@ -397,13 +412,11 @@ class MockDatabase:
         self.tables: dict[str, list[dict]] = {}
         self._data: dict[str, dict] = {}
 
-    def execute(self, sql: str, params: tuple = ()) -> None:
-        """Execute SQL (store in memory)."""
+    def execute(self, sql: str, params: tuple = ()) -> MockCursor:
+        """Execute SQL (store in memory), return cursor-like object."""
         if "CREATE TABLE" in sql:
-            # Table creation - no-op
-            pass
+            return MockCursor()
         elif "INSERT OR REPLACE" in sql:
-            # Store in memory by pattern_hash
             if len(params) >= 2:
                 key = f"{params[0]}:{params[1]}"  # pattern_hash:repo_path
                 self._data[key] = {
@@ -417,14 +430,27 @@ class MockDatabase:
                     "last_success": params[7] if len(params) > 7 else None,
                     "last_failure": params[8] if len(params) > 8 else None,
                 }
+            return MockCursor()
+        elif "SELECT" in sql:
+            if len(params) >= 2:
+                key = f"{params[0]}:{params[1]}"
+                result = self._data.get(key)
+                return MockCursor(result=result, results=[result] if result else [])
+            return MockCursor(results=list(self._data.values()))
+        return MockCursor()
 
     def fetchone(self, sql: str, params: tuple = ()) -> dict | None:
-        """Fetch one row."""
+        """Fetch one row (legacy interface)."""
         if len(params) >= 2:
             key = f"{params[0]}:{params[1]}"
             return self._data.get(key)
         return None
 
+    @contextmanager
+    def transaction(self):
+        """Mock transaction context manager."""
+        yield self
+
     def fetchall(self, sql: str, params: tuple = ()) -> list:
-        """Fetch all matching rows."""
+        """Fetch all matching rows (legacy interface)."""
         return list(self._data.values())

@@ -8,7 +8,10 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import threading
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -39,13 +42,47 @@ class CairnStore:
         """
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._local = threading.local()
         self._init_schema()
 
     def _get_connection(self) -> sqlite3.Connection:
-        """Get a database connection."""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+        """Get a thread-local database connection with proper PRAGMAs."""
+        conn = getattr(self._local, "conn", None)
+        if conn is not None:
+            # Detect closed connections (e.g. from explicit conn.close() in tests)
+            try:
+                conn.execute("SELECT 1")
+            except sqlite3.ProgrammingError:
+                conn = None
+                self._local.conn = None
+
+        if conn is None:
+            self._local.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+            self._local.conn.row_factory = sqlite3.Row
+            self._local.conn.execute("PRAGMA foreign_keys = ON")
+            self._local.conn.execute("PRAGMA journal_mode = WAL")
+            self._local.conn.execute("PRAGMA busy_timeout = 5000")
+        return self._local.conn
+
+    @contextmanager
+    def transaction(self) -> Iterator[sqlite3.Connection]:
+        """Context manager for database transactions."""
+        conn = self._get_connection()
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+    def close_connection(self) -> None:
+        """Close the thread-local database connection (for test cleanup)."""
+        if hasattr(self._local, "conn") and self._local.conn is not None:
+            try:
+                self._local.conn.close()
+            except Exception as e:
+                logger.debug("Error closing CairnStore connection (non-critical): %s", e)
+            self._local.conn = None
 
     def _init_schema(self) -> None:
         """Initialize database schema."""

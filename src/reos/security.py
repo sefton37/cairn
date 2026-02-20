@@ -10,6 +10,7 @@ Provides centralized security functions for:
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import shlex
@@ -242,6 +243,78 @@ def is_command_safe(command: str) -> tuple[bool, str | None]:
         return False, reason
 
     return True, None
+
+
+# =============================================================================
+# LLM-Based Command Safety Verification
+# =============================================================================
+
+_SAFETY_SYSTEM_PROMPT = """You are a command safety classifier for a Linux system assistant.
+Analyze the given shell command and determine if it is safe to execute.
+
+Check for these categories of danger:
+- Data destruction: rm -rf, dd, mkfs, shred, overwriting important files
+- Privilege escalation: sudo without clear purpose, chmod 777, setuid
+- Network exfiltration: curl/wget piping data out, netcat listeners, reverse shells
+- Resource exhaustion: fork bombs, infinite loops, filling disk
+- Path escape: accessing /etc/shadow, /proc, SSH keys, other sensitive system files
+- Credential theft: reading/copying passwords, tokens, private keys
+
+Respond with ONLY a JSON object (no markdown, no backticks):
+{"safe": true} if the command is safe
+{"safe": false, "reason": "brief explanation"} if the command is dangerous"""
+
+_SAFETY_TIMEOUT = 10.0  # Seconds — fast local inference
+
+
+def verify_command_safety_llm(
+    command: str,
+    user_intent: str,
+    provider: Any,
+) -> tuple[bool, str | None]:
+    """Verify command safety using local LLM inference.
+
+    This is a second layer of defense after regex-based is_command_safe().
+    Only called for commands that pass the regex check.
+
+    Args:
+        command: The shell command to verify.
+        user_intent: What the user asked for (provides context).
+        provider: An LLMProvider instance for inference.
+
+    Returns:
+        Tuple of (is_safe, reason_if_unsafe).
+        Falls OPEN (returns safe) if LLM is unavailable.
+    """
+    try:
+        user_msg = f"Command: {command}\nUser intent: {user_intent}"
+        response = provider.chat_json(
+            system=_SAFETY_SYSTEM_PROMPT,
+            user=user_msg,
+            timeout_seconds=_SAFETY_TIMEOUT,
+            temperature=0.0,
+        )
+
+        if not response or not isinstance(response, str):
+            return True, None
+
+        result = json.loads(response)
+        is_safe = result.get("safe", True)
+        reason = result.get("reason")
+
+        if not is_safe:
+            logger.warning(
+                "LLM safety check blocked command: %s — reason: %s",
+                command[:100],
+                reason,
+            )
+
+        return is_safe, reason
+
+    except Exception as e:
+        # Fail OPEN — regex layer already passed, LLM is supplementary
+        logger.debug("LLM safety check unavailable, falling through: %s", e)
+        return True, None
 
 
 # =============================================================================

@@ -3398,21 +3398,21 @@ class CairnToolHandler:
         status = runner.get_status_summary()
 
         # Filter through anti-nag
-        conn = self.store._get_connection()
-        anti_nag = AntiNagProtocol(conn)
-        surfaced = []
-        for finding in findings:
-            if anti_nag.should_surface(
-                finding.check_name, finding.severity.value, finding.finding_key
-            ):
-                log_id = anti_nag.log_surfaced(
-                    finding.check_name,
-                    finding.severity.value,
-                    finding.finding_key,
-                    finding.title,
-                    finding.details,
-                )
-                surfaced.append({**finding.to_dict(), "log_id": log_id})
+        with self.store.transaction() as conn:
+            anti_nag = AntiNagProtocol(conn)
+            surfaced = []
+            for finding in findings:
+                if anti_nag.should_surface(
+                    finding.check_name, finding.severity.value, finding.finding_key
+                ):
+                    log_id = anti_nag.log_surfaced(
+                        finding.check_name,
+                        finding.severity.value,
+                        finding.finding_key,
+                        finding.title,
+                        finding.details,
+                    )
+                    surfaced.append({**finding.to_dict(), "log_id": log_id})
 
         return {
             "full_results": [r.to_dict() for r in results],
@@ -3428,9 +3428,9 @@ class CairnToolHandler:
         if not log_id:
             raise CairnToolError(code="missing_param", message="log_id is required")
 
-        conn = self.store._get_connection()
-        anti_nag = AntiNagProtocol(conn)
-        success = anti_nag.acknowledge(log_id)
+        with self.store.transaction() as conn:
+            anti_nag = AntiNagProtocol(conn)
+            success = anti_nag.acknowledge(log_id)
         return {"success": success}
 
     def _health_history(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -3438,8 +3438,8 @@ class CairnToolHandler:
         from reos.cairn.health.snapshot import get_snapshots
 
         days = args.get("days", 30)
-        conn = self.store._get_connection()
-        snapshots = get_snapshots(conn, days=days)
+        with self.store.transaction() as conn:
+            snapshots = get_snapshots(conn, days=days)
 
         if not snapshots:
             return {

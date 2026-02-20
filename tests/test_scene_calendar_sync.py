@@ -102,15 +102,15 @@ class TestGetNextOccurrence:
         """Compute next occurrence for weekly event."""
         from reos.cairn.scene_calendar_sync import get_next_occurrence
 
-        dtstart = datetime(2026, 1, 1, 10, 0)  # Wednesday
+        dtstart = datetime(2026, 1, 1, 10, 0)  # Thursday
         rrule = "RRULE:FREQ=WEEKLY;BYDAY=WE"
 
-        # After Jan 1, next occurrence should be Jan 8
+        # After Jan 2 (Fri), next Wednesday is Jan 7
         after = datetime(2026, 1, 2)
         next_occ = get_next_occurrence(rrule, dtstart, after)
 
         assert next_occ is not None
-        assert next_occ.date() == datetime(2026, 1, 8).date()
+        assert next_occ.date() == datetime(2026, 1, 7).date()
 
     @pytest.mark.skipif(not HAS_DATEUTIL, reason="dateutil not installed")
     def test_monthly_recurrence(self) -> None:

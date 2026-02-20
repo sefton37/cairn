@@ -8,7 +8,7 @@
  * - Gentle nudges, never guilt-trips
  */
 
-import { el } from './dom';
+import { el, escapeHtml } from './dom';
 import type { ChatRespondResult, ExtendedThinkingTrace, ThinkingNode, FacetCheck, Tension, ConsciousnessEvent } from './types';
 import { highlight, injectSyntaxHighlightStyles } from './syntaxHighlight';
 import { createConsciousnessPane } from './consciousnessPane';
@@ -391,7 +391,7 @@ export function createCairnView(
               Thunderbird isn't installed yet. I can help you track appointments and know who you're working with.
             </div>
             <div style="font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 12px; font-family: monospace; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px;">
-              ${status.install_suggestion || 'Install Thunderbird from your package manager'}
+              ${escapeHtml(status.install_suggestion || 'Install Thunderbird from your package manager')}
             </div>
             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
               <button class="tb-dismiss" style="padding: 8px 16px; background: rgba(255,255,255,0.1); border: none; border-radius: 6px; color: rgba(255,255,255,0.7); cursor: pointer; font-size: 12px;">Not now</button>
@@ -1212,12 +1212,6 @@ export function createCairnView(
     panel.appendChild(content);
 
     return panel;
-  }
-
-  function escapeHtml(text: string): string {
-    const div = el('div');
-    div.textContent = text;
-    return div.innerHTML;
   }
 
   /**
