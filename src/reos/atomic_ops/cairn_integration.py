@@ -80,6 +80,53 @@ _ACTION_TO_INTENT_ACTION = {
 }
 
 
+_SEVERITY_PREFIX = {
+    "critical": "[CRITICAL]",
+    "warning": "[WARNING]",
+}
+
+
+def _format_health_report(tool_result: dict[str, Any]) -> str:
+    """Format a cairn_health_report tool result without calling an LLM.
+
+    Small models hallucinate hardware reports when given health data.
+    This formatter presents the actual findings deterministically.
+
+    Expected tool_result shape:
+        full_results: list[{check_name, severity, title, details, finding_key}]
+        surfaced_messages: list[{...same keys + log_id}]
+        summary: {overall_severity, finding_count, checks_run}
+    """
+
+    surfaced = tool_result.get("surfaced_messages", [])
+    full_results = tool_result.get("full_results", [])
+    summary = tool_result.get("summary", {})
+
+    # Prefer surfaced_messages; fall back to non-healthy items from full_results
+    findings = surfaced if surfaced else [r for r in full_results if r.get("severity") != "healthy"]
+
+    checks_run = summary.get("checks_run", len(full_results))
+    finding_count = summary.get("finding_count", len(findings))
+
+    if not findings:
+        header = "All Clear — No Findings"
+    else:
+        header = f"Health Check — {finding_count} finding(s)"
+
+    lines = [header]
+    for finding in findings:
+        severity = finding.get("severity", "warning")
+        prefix = _SEVERITY_PREFIX.get(severity, "[WARNING]")
+        title = finding.get("title", "Unknown issue")
+        details = finding.get("details", "")
+        lines.append(f"\n{prefix} {title}")
+        if details:
+            lines.append(f"  {details}")
+
+    lines.append(f"\n{checks_run} checks run, {finding_count} findings")
+    return "\n".join(lines)
+
+
 class CairnAtomicBridge:
     """Bridge between CAIRN and the atomic operations pipeline.
 
@@ -524,6 +571,10 @@ class CairnAtomicBridge:
                 mode.system_prompt_template,
             )
             return response
+
+        # Handle health report deterministically — small LLMs hallucinate hardware info
+        if mode.name == "health_query" and tool_result is not None:
+            return _format_health_report(tool_result)
 
         # Handle tool-based responses
         if tool_result is not None:

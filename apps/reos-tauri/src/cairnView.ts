@@ -914,12 +914,8 @@ export function createCairnView(
         : 'background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.9);'
       }
     `;
-    // Render content with syntax highlighting for code blocks
-    if (content.includes('```')) {
-      msgEl.innerHTML = renderContentWithCodeBlocks(content);
-    } else {
-      msgEl.textContent = content;
-    }
+    // Render content with markdown and code block support
+    msgEl.innerHTML = renderContentWithCodeBlocks(content);
     msgWrapper.appendChild(msgEl);
 
     // Expandable details for assistant messages
@@ -1225,7 +1221,54 @@ export function createCairnView(
   }
 
   /**
-   * Parse content and render code blocks with syntax highlighting.
+   * Render a plain-text segment with basic markdown support.
+   * Escapes HTML, applies inline and block-level markdown transforms,
+   * then converts remaining newlines to <br>.
+   *
+   * Supported:
+   *   **text**       → <strong>text</strong>
+   *   ### heading    → bold heading (h3-ish)
+   *   ## heading     → bold heading (h2-ish)
+   *   - item / * item → indented bullet
+   *   1. item        → indented numbered item
+   */
+  function renderMarkdownSegment(text: string): string {
+    // SAFETY: HTML escaping MUST happen first — the regex transforms below
+    // inject safe HTML tags and assume all user content is already escaped.
+    let escaped = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+    // Inline: **bold**
+    escaped = escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+    // Block-level: process line by line
+    const lines = escaped.split('\n');
+    const rendered = lines.map((line) => {
+      if (/^### (.+)$/.test(line)) {
+        return `<strong style="font-size: 15px;">${line.replace(/^### /, '')}</strong>`;
+      }
+      if (/^## (.+)$/.test(line)) {
+        return `<strong style="font-size: 16px;">${line.replace(/^## /, '')}</strong>`;
+      }
+      if (/^[*-] (.+)$/.test(line)) {
+        return `&nbsp;&nbsp;&bull;&nbsp;${line.replace(/^[*-] /, '')}`;
+      }
+      if (/^\d+\. (.+)$/.test(line)) {
+        const num = line.match(/^(\d+)\. /)![1];
+        return `&nbsp;&nbsp;${num}.&nbsp;${line.replace(/^\d+\. /, '')}`;
+      }
+      return line;
+    });
+
+    return rendered.join('<br>');
+  }
+
+  /**
+   * Parse content and render code blocks with syntax highlighting,
+   * plus basic markdown in all non-code segments.
    * Handles markdown-style ``` code blocks.
    */
   function renderContentWithCodeBlocks(content: string): string {
@@ -1238,13 +1281,14 @@ export function createCairnView(
       const [fullMatch, language, code] = match;
       const index = match.index!;
 
-      // Add text before the code block
+      // Add text before the code block with markdown rendering
       if (index > lastIndex) {
-        result += escapeHtml(content.slice(lastIndex, index));
+        result += renderMarkdownSegment(content.slice(lastIndex, index));
       }
 
       // Add the highlighted code block
       const lang = language || 'text';
+      const safeLang = escapeHtml(lang);
       const highlightedCode = highlight(code.trimEnd(), lang);
       result += `
         <div style="
@@ -1262,7 +1306,7 @@ export function createCairnView(
             font-size: 11px;
             color: rgba(255,255,255,0.5);
           ">
-            <span>${lang}</span>
+            <span>${safeLang}</span>
           </div>
           <pre style="
             margin: 0;
@@ -1282,11 +1326,8 @@ export function createCairnView(
 
     // Add any remaining text after the last code block
     if (lastIndex < content.length) {
-      result += escapeHtml(content.slice(lastIndex));
+      result += renderMarkdownSegment(content.slice(lastIndex));
     }
-
-    // Replace newlines with <br> in non-code content
-    result = result.replace(/\n/g, '<br>');
 
     return result;
   }
