@@ -345,7 +345,30 @@ function buildUi() {
     healthIndicator.style.background = 'rgba(0, 0, 0, 0.2)';
   });
   healthIndicator.addEventListener('click', () => {
-    void handleCairnMessage('health report');
+    void (async () => {
+      try {
+        const data = (await kernelRequest('health/findings', {})) as {
+          findings: Array<{ severity: string; title: string; details: string }>;
+          finding_count: number;
+          overall_severity: string;
+        };
+        const findings = data.findings || [];
+        if (findings.length === 0) {
+          cairnView.addChatMessage('assistant', 'All Clear — No health findings.');
+          return;
+        }
+        const prefix: Record<string, string> = { critical: '[CRITICAL]', warning: '[WARNING]' };
+        const lines = [`**Health Check — ${findings.length} finding(s)**\n`];
+        for (const f of findings) {
+          lines.push(`${prefix[f.severity] || '[WARNING]'} **${f.title}**`);
+          if (f.details) lines.push(`  ${f.details}`);
+          lines.push('');
+        }
+        cairnView.addChatMessage('assistant', lines.join('\n').trim());
+      } catch (err) {
+        cairnView.addChatMessage('assistant', `Error loading health findings: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
+    })();
   });
 
   const healthDot = el('span');
