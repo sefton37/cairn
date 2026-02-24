@@ -5,19 +5,25 @@ Implements three-stage retrieval:
 2. Graph expansion: Traverse relationships from semantic matches
 3. Rank and merge: Combine results with scoring
 
+Also provides conversation memory retrieval with:
+- Status filtering (only approved memories enter reasoning)
+- Signal weighting: log2(signal_count + 1)
+- Recency decay: configurable half-life
+
 This provides relevant memory context for CAIRN's reasoning.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
-from .embeddings import EmbeddingService, get_embedding_service, content_hash
-from .graph_store import MemoryGraphStore, GraphEdge
+from .embeddings import EmbeddingService, content_hash, get_embedding_service
+from .graph_store import GraphEdge, MemoryGraphStore
 from .relationships import (
-    RelationshipType,
     LOGICAL_RELATIONSHIPS,
     SEMANTIC_RELATIONSHIPS,
 )
@@ -96,6 +102,91 @@ class MemoryContext:
             "total_semantic_matches": self.total_semantic_matches,
             "total_graph_expansions": self.total_graph_expansions,
         }
+
+
+@dataclass
+class ConversationMemoryMatch:
+    """A matched conversation memory with signal and recency info."""
+
+    memory_id: str
+    block_id: str
+    narrative: str
+    score: float  # Final weighted score
+    semantic_similarity: float
+    signal_count: int
+    signal_weight: float
+    recency_weight: float
+    created_at: str
+    conversation_id: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "memory_id": self.memory_id,
+            "block_id": self.block_id,
+            "narrative": self.narrative,
+            "score": self.score,
+            "semantic_similarity": self.semantic_similarity,
+            "signal_count": self.signal_count,
+            "signal_weight": self.signal_weight,
+            "recency_weight": self.recency_weight,
+            "created_at": self.created_at,
+            "conversation_id": self.conversation_id,
+        }
+
+    def to_prompt_line(self) -> str:
+        """Format for injection into LLM prompts."""
+        date_part = self.created_at[:10] if self.created_at else "unknown"
+        return f"[Memory from {date_part} | signal: {self.signal_count}x]: {self.narrative}"
+
+
+@dataclass
+class ConversationMemoryContext:
+    """Result of conversation memory retrieval."""
+
+    query: str
+    matches: list[ConversationMemoryMatch] = field(default_factory=list)
+
+    def to_prompt_block(self) -> str:
+        """Format all memories as a prompt block for CAIRN."""
+        if not self.matches:
+            return ""
+
+        lines = ["## Prior Memories\n"]
+        for match in self.matches:
+            lines.append(f"- {match.to_prompt_line()}")
+        return "\n".join(lines)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "query": self.query,
+            "matches": [m.to_dict() for m in self.matches],
+        }
+
+
+# Recency decay parameters
+_RECENCY_HALF_LIFE_DAYS = 30.0  # Score halves every 30 days
+
+
+def _compute_recency_weight(
+    created_at: str, half_life_days: float = _RECENCY_HALF_LIFE_DAYS
+) -> float:
+    """Compute recency decay weight. Returns 1.0 for now, 0.5 after half_life_days."""
+    try:
+        created = datetime.fromisoformat(created_at)
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=UTC)
+        now = datetime.now(UTC)
+        age_days = (now - created).total_seconds() / 86400.0
+        if age_days <= 0:
+            return 1.0
+        return math.pow(0.5, age_days / half_life_days)
+    except (ValueError, TypeError):
+        return 0.5  # Default for unparseable dates
+
+
+def _compute_signal_weight(signal_count: int) -> float:
+    """Compute signal weight: log2(signal_count + 1). Returns >= 1.0."""
+    return math.log2(signal_count + 1)
 
 
 class MemoryRetriever:
@@ -208,6 +299,130 @@ class MemoryRetriever:
             list(results.values()),
             max_results=max_results,
         )
+
+        return context
+
+    def retrieve_conversation_memories(
+        self,
+        query: str,
+        *,
+        act_id: str | None = None,
+        max_results: int = 10,
+        semantic_threshold: float = 0.5,
+        status: str = "approved",
+        recency_half_life_days: float = _RECENCY_HALF_LIFE_DAYS,
+    ) -> ConversationMemoryContext:
+        """Retrieve conversation memories with signal weighting and recency decay.
+
+        Searches the memories table (not general blocks). Only returns memories
+        matching the specified status (default: approved).
+
+        Final score = semantic_similarity * recency_decay * signal_weight
+
+        Args:
+            query: The user's query/message.
+            act_id: Optional act ID to scope the search.
+            max_results: Maximum number of results.
+            semantic_threshold: Minimum similarity for semantic matches.
+            status: Memory status filter (default: 'approved').
+            recency_half_life_days: Half-life for recency decay.
+
+        Returns:
+            ConversationMemoryContext with matched memories.
+        """
+        context = ConversationMemoryContext(query=query)
+
+        if not self._embedding_service.is_available:
+            return context
+
+        query_embedding = self._embedding_service.embed(query)
+        if query_embedding is None:
+            return context
+
+        # Get candidate memories from the memories table
+        try:
+            from reos.play_db import _get_connection
+
+            conn = _get_connection()
+
+            conditions = [
+                "m.narrative_embedding IS NOT NULL",
+                "m.status = ?",
+                "m.status != 'superseded'",  # Never return superseded
+            ]
+            params: list[Any] = [status]
+
+            if act_id:
+                conditions.append(
+                    "(m.destination_act_id = ? OR "
+                    "(m.destination_act_id IS NULL AND m.is_your_story = 1))"
+                )
+                params.append(act_id)
+
+            where = " AND ".join(conditions)
+            cursor = conn.execute(
+                f"""SELECT m.id, m.block_id, m.narrative, m.narrative_embedding,
+                       m.signal_count, m.created_at, m.conversation_id
+                   FROM memories m
+                   WHERE {where}""",
+                params,
+            )
+
+            candidate_embeddings: list[tuple[str, bytes]] = []
+            memory_info: dict[str, dict[str, Any]] = {}
+
+            for row in cursor.fetchall():
+                mid = row["id"]
+                candidate_embeddings.append((mid, row["narrative_embedding"]))
+                memory_info[mid] = {
+                    "block_id": row["block_id"],
+                    "narrative": row["narrative"],
+                    "signal_count": row["signal_count"],
+                    "created_at": row["created_at"],
+                    "conversation_id": row["conversation_id"],
+                }
+
+            if not candidate_embeddings:
+                return context
+
+            # Find semantically similar
+            similar = self._embedding_service.find_similar(
+                query_embedding,
+                candidate_embeddings,
+                threshold=semantic_threshold,
+                top_k=max_results * 2,  # Over-fetch to allow re-ranking
+            )
+
+            # Build matches with signal weighting and recency decay
+            matches: list[ConversationMemoryMatch] = []
+            for memory_id, similarity in similar:
+                info = memory_info[memory_id]
+                signal_count = info["signal_count"]
+                created_at = info["created_at"] or ""
+
+                signal_w = _compute_signal_weight(signal_count)
+                recency_w = _compute_recency_weight(created_at, recency_half_life_days)
+                final_score = similarity * recency_w * signal_w
+
+                matches.append(ConversationMemoryMatch(
+                    memory_id=memory_id,
+                    block_id=info["block_id"],
+                    narrative=info["narrative"],
+                    score=final_score,
+                    semantic_similarity=similarity,
+                    signal_count=signal_count,
+                    signal_weight=signal_w,
+                    recency_weight=recency_w,
+                    created_at=created_at,
+                    conversation_id=info["conversation_id"],
+                ))
+
+            # Sort by final score descending, take top results
+            matches.sort(key=lambda m: m.score, reverse=True)
+            context.matches = matches[:max_results]
+
+        except Exception as e:
+            logger.warning("Failed to retrieve conversation memories: %s", e)
 
         return context
 

@@ -12,10 +12,15 @@ how ideas connect is how Talking Rock becomes truly personal."
 
 from __future__ import annotations
 
-from .relationships import RelationshipType, RelationshipSource
 from .embeddings import EmbeddingService, get_embedding_service
-from .graph_store import MemoryGraphStore, GraphEdge, TraversalResult
-from .retriever import MemoryRetriever, MemoryContext
+from .graph_store import GraphEdge, MemoryGraphStore, TraversalResult
+from .relationships import RelationshipSource, RelationshipType
+from .retriever import (
+    ConversationMemoryContext,
+    ConversationMemoryMatch,
+    MemoryContext,
+    MemoryRetriever,
+)
 
 __all__ = [
     # Relationship types
@@ -31,4 +36,6 @@ __all__ = [
     # Retriever
     "MemoryRetriever",
     "MemoryContext",
+    "ConversationMemoryContext",
+    "ConversationMemoryMatch",
 ]

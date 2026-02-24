@@ -183,6 +183,7 @@ class CairnAtomicBridge:
         persona_context: str = "",
         safety_level: str = "standard",
         conversation_context: str = "",
+        memory_context: str = "",
     ) -> CairnOperationResult:
         """Process a user request through the full atomic ops pipeline.
 
@@ -195,6 +196,7 @@ class CairnAtomicBridge:
             persona_context: Context about the user (from THE_PLAY).
             safety_level: Safety level (permissive, standard, strict).
             conversation_context: Recent conversation for context.
+            memory_context: Relevant memories from prior conversations.
 
         Returns:
             CairnOperationResult with operation, verification, and response.
@@ -218,6 +220,7 @@ class CairnAtomicBridge:
             request=user_input,
             user_id=user_id,
             source_agent="cairn",
+            memory_context=memory_context,
         )
 
         if not proc_result.success or not proc_result.operations:
@@ -305,13 +308,20 @@ class CairnAtomicBridge:
         else:
             self.verifier.set_mode(VerificationMode.STANDARD)
 
-        # Step 5: Build verification context
+        # Step 5: Build verification context (includes memory for informed decisions)
+        combined_context_parts = []
+        if conversation_context:
+            combined_context_parts.append(conversation_context)
+        if memory_context:
+            combined_context_parts.append(memory_context)
+        additional = "\n\n".join(combined_context_parts) if combined_context_parts else None
+
         context = VerificationContext(
             user_id=user_id,
             source_agent="cairn",
             safety_level=safety_level,
             llm_available=self.intent_engine is not None,
-            additional_context=conversation_context if conversation_context else None,
+            additional_context=additional,
         )
 
         verification = self.verifier.verify(operation, context)
@@ -346,6 +356,7 @@ class CairnAtomicBridge:
                     play_data=self.intent_engine.play_data if self.intent_engine else {},
                     persona_context=persona_context,
                     conversation_context=conversation_context,
+                    memory_context=memory_context,
                     llm=self.intent_engine.llm if self.intent_engine else None,
                     execute_tool=execute_tool,
                 )

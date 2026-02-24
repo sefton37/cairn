@@ -109,10 +109,16 @@ class ResponseGenerator:
 
         persona_section = ""
         if persona_context:
-            persona_section = f"\nABOUT THE USER:\n{persona_context}\n"
+            persona_section = (
+                "\nKNOWLEDGE ABOUT THE USER (the human talking to you — NOT about you):\n"
+                f"{persona_context}\n"
+            )
 
         system = (
             "You are CAIRN, a friendly local AI assistant. "
+            "You are an AI — the user is a separate human being. "
+            "Never confuse your identity with the user's identity. "
+            "Never call the user 'CAIRN'. Always refer to the user as 'you' or by their name. "
             "The user is making casual conversation — a greeting, acknowledgment, "
             "or social nicety. Respond warmly and briefly (1-2 sentences). "
             "You can offer to help but don't be pushy. "
@@ -161,7 +167,8 @@ class ResponseGenerator:
             conversation_section = f"\nRECENT CONVERSATION:\n{conversation_context}\n"
 
         system = system_prompt or (
-            "You are CAIRN, the Attention Minder. "
+            "You are CAIRN, the Attention Minder — an AI assistant. "
+            "You are NOT the user. Never confuse your identity with theirs. "
             "Generate a response based STRICTLY on the data provided.\n"
             "Do NOT make up information. Do NOT mention tools or APIs.\n"
             "This is a Linux desktop application."
@@ -193,15 +200,18 @@ class ResponseGenerator:
             return "I don't have information about you yet."
 
         system = system_prompt or (
-            "You are CAIRN, the Attention Minder. "
+            "You are CAIRN, the Attention Minder — an AI assistant. "
+            "You are NOT the user. The user is a separate human being. "
+            "Never refer to the user as 'CAIRN'. "
             "Answer using ONLY the knowledge provided about the user."
         )
         ctx = persona_context or "No personal information available yet."
         user = (
             f"USER QUESTION: {user_input}\n\n"
-            f"YOUR KNOWLEDGE ABOUT THIS USER:\n"
+            f"KNOWLEDGE ABOUT THE USER (the human you serve — NOT about you):\n"
             f"{ctx}\n\n"
-            "Generate a helpful response using ONLY the knowledge above."
+            "Generate a helpful response using ONLY the knowledge above. "
+            "Address the user as 'you' or by name. Never confuse their identity with yours."
         )
 
         try:

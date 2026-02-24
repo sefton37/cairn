@@ -30,6 +30,7 @@ class BehaviorModeContext:
     play_data: dict[str, Any] = field(default_factory=dict)
     persona_context: str = ""
     conversation_context: str = ""
+    memory_context: str = ""
     llm: Any = None  # LLM provider for dynamic selection
     execute_tool: Any = None  # Tool executor for recovery
 
@@ -289,6 +290,8 @@ class BehaviorModeRegistry:
                 needs_tool=False,
                 system_prompt_template=(
                     "You are CAIRN, a friendly local AI assistant. "
+                    "You are an AI — the user is a separate human being. "
+                    "Never confuse your identity with the user's. "
                     "The user is asking a question. Answer helpfully and briefly."
                 ),
                 needs_hallucination_check=False,
@@ -300,6 +303,7 @@ class BehaviorModeRegistry:
                 needs_tool=True,
                 system_prompt_template=(
                     "You are CAIRN, a friendly local AI assistant. "
+                    "You are an AI — the user is a separate human being. "
                     "The user wants to perform an action. Confirm what you'll do."
                 ),
                 needs_hallucination_check=True,
@@ -316,6 +320,8 @@ CONVERSATION_MODE = BehaviorMode(
     needs_tool=False,
     system_prompt_template=(
         "You are CAIRN, a friendly local AI assistant. "
+        "You are an AI — the user is a separate human being. "
+        "Never confuse your identity with the user's. Never call the user 'CAIRN'. "
         "The user is making casual conversation — a greeting, acknowledgment, "
         "or social nicety. Respond warmly and briefly (1-2 sentences). "
         "You can offer to help but don't be pushy. "
@@ -329,7 +335,9 @@ PERSONAL_QUERY_MODE = BehaviorMode(
     name="personal_query",
     needs_tool=False,
     system_prompt_template=(
-        "You are CAIRN, the Attention Minder. "
+        "You are CAIRN, the Attention Minder — an AI assistant. "
+        "You are NOT the user. The user is a separate human being. "
+        "Never refer to the user as 'CAIRN'. Address the user as 'you' or by their name. "
         "Answer the user's personal question using ONLY the knowledge provided about them. "
         "If no knowledge is available, explain they can fill out 'Your Story' in The Play."
     ),

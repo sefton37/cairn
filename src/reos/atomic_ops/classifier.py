@@ -150,19 +150,21 @@ class AtomicClassifier:
         self,
         request: str,
         corrections: list[dict] | None = None,
+        memory_context: str = "",
     ) -> ClassificationResult:
         """Classify a user request into the 3x2x3 taxonomy.
 
         Args:
             request: User's natural language request.
             corrections: Optional list of past corrections for few-shot context.
+            memory_context: Relevant memories from prior conversations.
 
         Returns:
             ClassificationResult with classification and model info.
         """
         if self.llm:
             try:
-                return self._classify_with_llm(request, corrections)
+                return self._classify_with_llm(request, corrections, memory_context)
             except Exception as e:
                 logger.warning("LLM classification failed, using fallback: %s", e)
 
@@ -175,6 +177,7 @@ class AtomicClassifier:
         self,
         request: str,
         corrections: list[dict] | None = None,
+        memory_context: str = "",
     ) -> ClassificationResult:
         """Classify using the LLM."""
         # Build corrections block for few-shot learning
@@ -197,7 +200,15 @@ class AtomicClassifier:
         system = CLASSIFICATION_SYSTEM_PROMPT.replace(
             "{corrections_block}", corrections_block
         )
-        user = f'Classify this request: "{request}"'
+
+        # Inject memory context if available
+        user_parts = [f'Classify this request: "{request}"']
+        if memory_context:
+            user_parts.append(
+                f"\nRelevant prior context (use for domain/intent clues):\n"
+                f"{memory_context}"
+            )
+        user = "\n".join(user_parts)
 
         raw = self.llm.chat_json(system=system, user=user, temperature=0.1, top_p=0.9)
         data = json.loads(raw)

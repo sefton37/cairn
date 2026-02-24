@@ -97,6 +97,7 @@ class AtomicOpsProcessor:
         source_agent: str,
         context: Optional[dict] = None,
         force_decomposition: bool = False,
+        memory_context: str = "",
     ) -> ProcessingResult:
         """Process a user request into atomic operations.
 
@@ -111,6 +112,7 @@ class AtomicOpsProcessor:
             source_agent: Source agent (cairn, reos, riva).
             context: Optional context for classification.
             force_decomposition: Force decomposition even if not needed.
+            memory_context: Relevant memories from prior conversations.
 
         Returns:
             ProcessingResult with all created operations.
@@ -146,7 +148,11 @@ class AtomicOpsProcessor:
                 # a more accurate classification for execution.
                 # This intentionally overwrites the decomposer's classification.
                 if corrections and op.classification:
-                    result = self.classifier.classify(op.user_request, corrections=corrections)
+                    result = self.classifier.classify(
+                        op.user_request,
+                        corrections=corrections,
+                        memory_context=memory_context,
+                    )
                     op.classification = result.classification
 
                 # Store operation

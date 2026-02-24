@@ -1206,6 +1206,7 @@ class ChatAgent:
                     execute_tool=execute_tool,
                     persona_context=ctx.play_context,
                     conversation_context=conversation_context,
+                    memory_context=ctx.memory_context,
                 )
 
             # Extract result from bridge
@@ -1674,7 +1675,8 @@ class ChatAgent:
                 if len(me) > cap:
                     me = me[:cap] + "\n…"
                 ctx_parts.append(
-                    f"THE_PLAY (About the USER - the person you serve, NOT the computer):\n"
+                    f"THE_PLAY (About the USER — the human you serve, NOT about you the AI):\n"
+                    f"The user is a separate person from you. Never confuse their identity with yours.\n"
                     f"Use this to answer questions about 'me', 'myself', 'my goals', etc.\n"
                     f"{me}"
                 )
@@ -1825,15 +1827,14 @@ class ChatAgent:
             return ""
 
     def _get_memory_context(self, user_text: str, act_id: str | None = None) -> str:
-        """Get relevant memory context via semantic search and graph expansion.
+        """Get relevant memory context from conversation memories and block graph.
 
-        Uses the hybrid vector-graph memory system to retrieve:
-        1. Semantically similar blocks (via embeddings)
-        2. Related blocks (via relationship graph)
-        3. Past reasoning chains that may be relevant
+        Two retrieval paths:
+        1. Conversation memories: Approved memories from the compression pipeline,
+           with signal weighting (log2(signal_count+1)) and recency decay.
+        2. Block graph: Semantically similar blocks via embeddings + graph expansion.
 
-        This enables CAIRN to recall relevant past interactions, knowledge,
-        and reasoning patterns when responding to the user.
+        Conversation memories are prioritized (they represent compressed meaning).
 
         Args:
             user_text: The user's message to find relevant memory for.
@@ -1843,26 +1844,36 @@ class ChatAgent:
             Formatted memory context as markdown, or empty string.
         """
         try:
-            # Only retrieve if we have meaningful input
             if not user_text or len(user_text.strip()) < 10:
                 return ""
 
-            # Retrieve relevant memory
-            memory_result = self._memory_retriever.retrieve(
+            parts: list[str] = []
+
+            # Retrieve conversation memories (approved, signal-weighted)
+            conv_memories = self._memory_retriever.retrieve_conversation_memories(
                 query=user_text,
                 act_id=act_id,
                 max_results=10,
                 semantic_threshold=0.5,
+            )
+            conv_md = conv_memories.to_prompt_block()
+            if conv_md.strip():
+                parts.append(conv_md)
+
+            # Also retrieve from general block graph
+            block_result = self._memory_retriever.retrieve(
+                query=user_text,
+                act_id=act_id,
+                max_results=5,
+                semantic_threshold=0.5,
                 graph_depth=1,
                 include_graph_expansion=True,
             )
+            block_md = block_result.to_markdown()
+            if block_md.strip():
+                parts.append(block_md)
 
-            # Convert to markdown for the prompt
-            memory_md = memory_result.to_markdown()
-            if memory_md.strip():
-                return memory_md
-
-            return ""
+            return "\n\n".join(parts)
         except Exception as e:
             logger.debug("Could not retrieve memory context: %s", e)
             return ""
