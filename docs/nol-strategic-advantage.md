@@ -209,6 +209,7 @@ That's the advantage. Not faster. Not smarter. More honest about what it knows a
 
 ## Related Documentation
 
+- [The Reduction Hypothesis](./the-reduction-hypothesis.md) — Canonical form + local compute as parallel reductions: the hypothesis behind the design
 - [Foundation](./FOUNDATION.md) — Core philosophy: "If you can't verify it, decompose it"
 - [Verification Layers](./verification-layers.md) — 5-layer verification pipeline, including NOL_STRUCTURAL
 - [RIVA Architecture](./archive/code_mode_architecture.md) — Code agent design and NOL backend

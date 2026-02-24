@@ -255,6 +255,7 @@ See [The Play](./the-play.md) for the complete organizational system.
 
 | Document | Content |
 |----------|---------|
+| [The Reduction Hypothesis](./the-reduction-hypothesis.md) | Canonical form + local compute as parallel reductions of noise |
 | [Atomic Operations](./atomic-operations.md) | 3x2x3 taxonomy and classification pipeline |
 | [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) | Conversation lifecycle, memory extraction, and reasoning integration |
 | [Verification Layers](./verification-layers.md) | 5-layer verification system |
