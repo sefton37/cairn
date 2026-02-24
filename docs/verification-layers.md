@@ -54,6 +54,45 @@ Atomic Operation
 
 ---
 
+## Layer 0: NOL Structural (when use_nol=True)
+
+> **Note:** RIVA development is currently frozen. This layer is implemented and tested (73 integration tests) but not active in production code paths. It will activate when RIVA unfreezes and `CodeExecutor(use_nol=True)` is used.
+
+**Purpose:** When RIVA operates in NOL mode, verify the generated NoLang assembly is mechanically correct before any semantic checks.
+
+**Runs before all other layers.** If NOL structural verification fails, no further layers execute.
+
+### Checks Performed
+
+The `nolang verify` command checks:
+- Type safety (all operations type-correct)
+- Stack balance (no underflow, exactly 1 value at HALT)
+- Exhaustive pattern matching (all CASE branches covered)
+- Hash integrity (blake3 hashes match function bodies)
+- Contract validity (PRE/POST produce BOOL)
+- No effectful opcodes in contracts
+- Reachability (no dead code)
+
+### Implementation
+
+```python
+async def _verify_nol_structural(action, work_context):
+    """NOL structural verification via nolang CLI."""
+    if not action.nol_assembly or not work_context.nol_bridge:
+        return VerificationResult(passed=True, layer="nol_structural")
+
+    result = work_context.nol_bridge.assemble_verify_run(action.nol_assembly)
+    # ... check result ...
+```
+
+### When Active
+
+Only when `CodeExecutor(use_nol=True)` and the action has `nol_assembly` set. For non-NOL actions, this layer passes through automatically.
+
+The layer numbering below assumes NOL_STRUCTURAL has already run when `use_nol=True`. For standard (non-NOL) operations, Layer 1 remains the first check.
+
+---
+
 ## Layer 1: Syntax Verification
 
 **Purpose:** Ensure the command or code is structurally valid before attempting execution.
@@ -296,6 +335,7 @@ def _verify_safety(content: str, destination: str, consumer: str, semantics: str
 | Classification confidence | ML classifier output | > 0.7 |
 | Semantic similarity | Embedding cosine distance | > 0.8 |
 | User feedback history | Historical corrections | Pattern match |
+| Memory context alignment | Relevant memories from past conversations | Pattern match |
 | Coherence with identity | CAIRN coherence kernel | > 0.0 |
 
 ### Implementation
@@ -320,6 +360,13 @@ def _verify_intent(operation_id: str, content: str, context: dict) -> Verificati
     user_id = context.get('user_id')
     if _matches_correction_pattern(user_id, classification):
         issues.append("Similar classifications were corrected by user")
+
+    # Check against conversation memories for intent alignment
+    relevant_memories = _search_memories_for_intent(user_id, original_request)
+    if relevant_memories:
+        memory_alignment = _check_memory_alignment(relevant_memories, classification)
+        if memory_alignment.conflicts:
+            issues.append(f"Conflicts with memory context: {memory_alignment.reasoning}")
 
     # Compute confidence based on similarity and classification confidence
     confidence = similarity if classification.confident else similarity * 0.5
@@ -428,8 +475,19 @@ The addition of an explicit Safety layer makes dangerous operation blocking a fi
 
 ---
 
+### Memory-Augmented Intent Verification
+
+Intent verification is enhanced by conversation memories. When verifying whether an operation matches user intent, the system retrieves relevant memories to check for alignment with established patterns and prior decisions.
+
+For example: if the user previously decided "recurring events before Scene UI" (captured as a memory), and a new request attempts to work on Scene UI, intent verification can surface the conflict and suggest clarification.
+
+Memory references used during verification are stored in `classification_memory_references` for transparency. See [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) for the complete memory-as-reasoning-context architecture.
+
+---
+
 ## Related Documentation
 
 - [Foundation](./FOUNDATION.md) — Core philosophy
+- [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) — Memory architecture and reasoning integration
 - [Atomic Operations](./atomic-operations.md) — Classification system
 - [RLHF Learning](./rlhf-learning.md) — Learning from verification failures

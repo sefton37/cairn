@@ -711,3 +711,76 @@ src/reos/code_mode/
 2. **Human Checkpoint UI**: Surface checkpoint decisions to user via observer/RPC
 3. **Training Data Export**: Export sessions in format suitable for fine-tuning
 4. **Continuous Improvement**: Use session data to improve LLM prompts
+
+---
+
+## NOL as RIVA's Code Generation Backend
+
+> Added 2026-02. See the [NoLang project](https://github.com/sefton37/nol) for the instruction set specification.
+>
+> **Status:** RIVA development is frozen. The infrastructure described below is implemented and tested (73 integration tests passing) but not wired into production code paths. `CodeExecutor.use_nol` is never set to True, and `_generate_nol_assembly()` is a stub. This section documents the architecture that will activate when RIVA unfreezes.
+
+### The Problem
+
+RIVA's original design had the LLM generate Python/JavaScript code, then verify it through syntax parsing, semantic analysis, and behavioral testing. This approach requires 7-8B+ parameter models because:
+- Variable naming creates exponential style variance
+- Implicit behavior requires deep language understanding
+- Multiple valid representations for any computation
+
+### The Solution: NoLang
+
+NoLang is a programming language designed for LLM generation with exactly one canonical form per computation:
+- Fixed-width 64-bit instructions (no parsing ambiguity)
+- De Bruijn indices instead of variable names (no naming decisions)
+- Structural verification built into the format (hash integrity, exhaustive matching, type safety)
+- PRE/POST contracts as part of the instruction stream
+
+### Integration Architecture
+
+```
+User Intent
+    ↓
+RIVA Intent Discovery
+    ↓
+IntentToNolTranslator
+    ↓
+LLM generates NoLang assembly (temperature=0.1)
+    ↓
+┌─────────────────────────────────────┐
+│ NolBridge (subprocess calls)         │
+│  1. nolang assemble → binary         │
+│  2. nolang verify → structural check │
+│  3. nolang run --sandbox → execute   │
+└─────────────────────────────────────┘
+    ↓
+RESULT feeds into RIVA Judgment system
+```
+
+### Verification Layer Mapping
+
+| RIVA Layer | NOL Layer | How |
+|-----------|-----------|-----|
+| NOL_STRUCTURAL (new) | Mechanical | `nolang verify` passes — types, stack, hashes, exhaustion |
+| SYNTAX | N/A | Superseded by NOL_STRUCTURAL for NOL programs |
+| SEMANTIC | Contractual | PRE/POST conditions satisfied at runtime |
+| BEHAVIORAL | Empirical | Witnesses pass (NoLang Layer 3) |
+| INTENT | Reflective | Assembly → description matches intent |
+| SAFETY | RIVA-owned | Sandbox prefix enforcement, command allowlisting |
+
+### Hash Memoization
+
+NoLang function blocks include HASH instructions — 48-bit truncated blake3 hashes of the function body. The `NolMemoCache` uses these as content-addressable keys:
+
+- First verification of a function: full `nolang verify` pipeline
+- Subsequent encounters with same hash: cached result, skip re-verification
+- Hash change (any instruction modified): cache miss, full re-verification
+
+This makes iterative development fast — unchanged helper functions skip verification entirely.
+
+### Key Files
+
+- `src/reos/code_mode/nol_bridge.py` — `NolBridge` class wrapping `nolang` CLI
+- `src/reos/code_mode/intent_to_nol.py` — `IntentToNolTranslator`, `NolMemoCache`
+- `src/reos/code_mode/executor.py` — `CodeExecutor` with `use_nol` flag
+- `src/reos/code_mode/intention.py` — `Action.nol_assembly`, `WorkContext.nol_bridge`
+- `src/reos/code_mode/optimization/verification_layers.py` — `NOL_STRUCTURAL` layer

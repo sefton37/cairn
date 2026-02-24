@@ -57,6 +57,17 @@ User Request
      │
      ▼
 ┌─────────────────────────────────────────────────────────────────┐
+│                    MEMORY RETRIEVAL (pre-classification)          │
+├─────────────────────────────────────────────────────────────────┤
+│  • Semantic search across memory embeddings (top-k relevant)    │
+│  • Retrieve active entities (open threads, waiting-ons)         │
+│  • Memories disambiguate intent and resolve references          │
+│  • Without memory: "fix the calendar thing" → ambiguous         │
+│  • With memory: → specific task from recent conversation        │
+└─────────────────────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────────────────────┐
 │                    CLASSIFICATION PIPELINE                       │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
@@ -277,11 +288,28 @@ CREATE TABLE classification_reasoning (
 | Run tests | `(process, machine, interpret)` |
 | Generate code | `(file, machine, execute)` |
 
+> **Code Generation as Atomic Operations (RIVA infrastructure — currently frozen):** When RIVA generates NOL programs, the classification will be `(file, machine, execute)` — output goes to a file, consumed by the NOL VM, with execute semantics. The NOL_STRUCTURAL verification layer is implemented to run before the standard verification pipeline for these operations. This infrastructure is complete and tested but not active while RIVA development is paused.
+
+---
+
+## Memory-Augmented Pipeline
+
+The classification and decomposition pipeline is memory-augmented. Before classifying a request, relevant memories from past conversations are retrieved via semantic search. These memories inform every stage:
+
+- **Classification:** Memories disambiguate intent. "Fix the calendar thing" resolves to a specific task when memories recall which calendar issue was recently discussed.
+- **Decomposition:** Memories recall how similar tasks were handled before, known blockers, and established patterns — producing better sub-task breakdowns.
+- **Verification:** Memories serve as ground truth for intent verification, checking whether the proposed operation matches the user's established patterns and stated preferences.
+
+Each classification records which memories influenced it (`classification_memory_references` table), enabling full transparency: "Why did you interpret it that way?" is always answerable.
+
+See [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) for the complete memory-as-reasoning-context architecture.
+
 ---
 
 ## Related Documentation
 
 - [Foundation](./FOUNDATION.md) — Core philosophy
+- [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) — Memory architecture and reasoning integration
 - [Verification Layers](./verification-layers.md) — How operations are verified
 - [RLHF Learning](./rlhf-learning.md) — Learning from feedback
 - [Classification](./classification.md) — LLM-native classification approach

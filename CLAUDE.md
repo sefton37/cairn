@@ -9,7 +9,7 @@
 **Talking Rock** is a local-first AI assistant with three specialized agents:
 - **CAIRN** (Priority 1) - Attention minder and life organizer (1B models)
 - **ReOS** (Priority 2) - Natural language Linux system control (1-3B models)
-- **RIVA** (Frozen) - Code verification engine (7-8B+ models, future work)
+- **RIVA** (Frozen — NOL backend ready) - Code verification engine (7-8B+ models, NOL infrastructure complete)
 
 **Core philosophy:** Local inference is essentially free, enabling verification and analysis at scale that cloud services can't afford. Zero trust, local only, encrypted at rest, never phones home.
 
@@ -20,6 +20,7 @@
 Read these first when working on the project:
 - **[ARCHITECTURE.md](src/reos/architecture/ARCHITECTURE.md)** - System overview, data models, component architecture
 - **[README.md](README.md)** - Mission statement, agent descriptions, development priorities
+- **[CONVERSATION_LIFECYCLE_SPEC.md](docs/CONVERSATION_LIFECYCLE_SPEC.md)** - Conversation lifecycle, memory extraction, reasoning integration
 - **[CAIRN_SIMPLIFICATION_PLAN.md](docs/archive/CAIRN_SIMPLIFICATION_PLAN.md)** - Recent optimization work (archived)
 
 ### Key Architectural Patterns
@@ -73,8 +74,40 @@ Stage 4: Generate Response → Strictly from tool results (no hallucination)
 - `cairn_*` - The Play CRUD, calendar, contacts, knowledge (CairnToolHandler)
 - `linux_*` - System operations (linux_tools.py)
 - `reos_*` - Git/repo operations (git_tools.py)
+- `memory_*` - Conversation lifecycle, memory search, reasoning context (planned)
 
 **Location:** `src/reos/mcp_tools.py`, `src/reos/cairn/mcp_tools.py`
+
+#### 5. Conversation Lifecycle & Memory Architecture
+
+```
+Conversation States: active → ready-to-close → compressing → archived
+
+Compression Pipeline (4-stage local inference):
+  1. Entity Extraction    → People, tasks, decisions, waiting-ons
+  2. Narrative Compression → Meaning synthesis (not transcript summary)
+  3. State Delta           → Changes to knowledge graph
+  4. Embedding Generation  → Semantic search via sentence transformers
+```
+
+- **Singleton constraint:** One active conversation at a time
+- **Your Story:** Permanent Act, default memory destination, identity context
+- **Memory as reasoning context:** Memories inform classification, decomposition, and verification at every pipeline stage
+- **13 new MCP tools** for memory management (search, routing, explanation)
+
+**Spec:** [CONVERSATION_LIFECYCLE_SPEC.md](docs/CONVERSATION_LIFECYCLE_SPEC.md)
+
+**New database tables:**
+- `conversations` — Conversation lifecycle tracking
+- `messages` — Message storage within conversations
+- `memories` — Compressed meaning blocks with embeddings
+- `memory_entities` — Extracted entities (people, tasks, decisions)
+- `memory_state_deltas` — Knowledge graph changes from conversations
+- `classification_memory_references` — Transparency: which memories influenced reasoning
+
+**New block types:** `conversation`, `message`, `memory`
+
+> `memory_entity` is stored in the `memory_entities` relational table (not as blocks). See the spec's Block Integration section for details.
 
 ---
 
@@ -146,12 +179,28 @@ See [CAIRN_SIMPLIFICATION_PLAN.md](docs/archive/CAIRN_SIMPLIFICATION_PLAN.md)
 
 **Implementation:** `src/reos/providers/factory.py` creates Ollama provider only. Anthropic provider removed.
 
-### 3. RIVA Development Frozen
-**Decision:** Code agent development paused until CAIRN and ReOS prove small-model (1-3B) viability.
+### 3. RIVA NOL Integration (2026-02) — Infrastructure Only
+**Decision:** When RIVA unfreezes, it will use NoLang as its code generation backend. The infrastructure is built but RIVA itself remains frozen.
 
-**Rationale:** Code generation with verification requires 7-8B+ models. Focus on what can ship on 8GB RAM today.
+**Rationale:** RIVA was frozen because LLM-generated code is ambiguous and unverifiable. NoLang solves this — one canonical form per computation, structural verification before execution, 65 opcodes with no naming decisions. The infrastructure is ready so that when RIVA unfreezes, the LLM generates fixed-width instructions instead of Python/JS, and the verifier confirms correctness before any byte executes.
 
-**Status:** Infrastructure complete (3-layer verification, pattern learning, fast paths), but intent verification layer incomplete.
+**Key components (implemented, not wired to production):**
+- `NolBridge` (`src/reos/code_mode/nol_bridge.py`) — Python subprocess wrapper around `nolang` CLI
+- `IntentToNolTranslator` (`src/reos/code_mode/intent_to_nol.py`) — Converts intentions to NOL function signatures
+- `NOL_STRUCTURAL` verification layer in `verification_layers.py` — Runs before SYNTAX
+
+**Status:** Infrastructure complete, 73 integration tests passing. `CodeExecutor.use_nol` exists but is never set to True in production. `_generate_nol_assembly()` is a stub. RIVA development remains frozen while CAIRN and ReOS prove small-model viability.
+
+### 4. Conversation Lifecycle & Memory Architecture (2026-02)
+**Decision:** Conversations are units of meaning with a deliberate lifecycle. Memories are active reasoning context, not passive storage.
+
+**Key choices:**
+- Singleton constraint (one conversation at a time) — depth over breadth
+- 4-stage local compression pipeline (entity extraction, narrative, state deltas, embeddings)
+- Your Story as permanent, un-archivable Act for cross-cutting identity context
+- Memories augment classification, decomposition, and verification at every pipeline stage
+
+**Spec:** [CONVERSATION_LIFECYCLE_SPEC.md](docs/CONVERSATION_LIFECYCLE_SPEC.md)
 
 ---
 
@@ -165,6 +214,15 @@ src/reos/cairn/mcp_tools.py        # CAIRN tool implementations
 src/reos/cairn/store.py            # Knowledge storage (SQLite)
 src/reos/cairn/thunderbird.py      # Calendar/contacts bridge
 src/reos/atomic_ops/cairn_integration.py  # Bridge to atomic ops system
+```
+
+### Working on Conversation Lifecycle & Memory
+```
+docs/CONVERSATION_LIFECYCLE_SPEC.md  # Complete specification and schema
+# Implementation files (planned, not yet created):
+# src/reos/cairn/memory.py           # Memory extraction, storage, search
+# src/reos/cairn/compression.py      # 4-stage compression pipeline
+# src/reos/rpc_handlers/conversations.py  # Conversation lifecycle RPC
 ```
 
 ### Working on The Play (Life Organization)
@@ -195,6 +253,19 @@ src/reos/atomic_ops/classification_context.py  # Few-shot learning for LLM class
 src/reos/providers/factory.py      # Provider creation (Ollama only)
 src/reos/providers/base.py         # Provider interface
 src/reos/providers/secrets.py      # Keyring integration
+```
+
+### Working on RIVA / NOL Integration
+```
+src/reos/code_mode/nol_bridge.py          # NolBridge: assemble, verify, run via subprocess
+src/reos/code_mode/intent_to_nol.py       # IntentToNolTranslator, NolMemoCache
+src/reos/code_mode/executor.py            # CodeExecutor with use_nol flag
+src/reos/code_mode/intention.py           # Action.nol_assembly, WorkContext.nol_bridge
+src/reos/code_mode/optimization/verification_layers.py  # NOL_STRUCTURAL layer
+src/reos/config.py                        # NOL_BINARY_PATH configuration
+tests/test_nol_bridge.py                  # Bridge tests (37)
+tests/test_riva_nol_integration.py        # Integration tests (22)
+tests/test_intent_to_nol.py              # Translator tests (14)
 ```
 
 ### Working on Frontend
@@ -321,7 +392,7 @@ When working with the 12-agent orchestration system from `~/.claude/CLAUDE.md`:
 This CLAUDE.md provides project context that agents need but shouldn't spend tokens discovering:
 - Architecture patterns (atomic ops, The Play, intent engine)
 - Code quality standards (Python 3.12+, ruff, mypy, 45% coverage)
-- Recent design decisions (CAIRN simplification, Ollama-only, RIVA frozen)
+- Recent design decisions (CAIRN simplification, Ollama-only, RIVA NOL integration)
 - Key file locations by use case
 - Commit conventions
 

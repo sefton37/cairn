@@ -45,7 +45,7 @@ True democratization means running on hardware people actually have. A 70B model
 |----------|-------|-------------------|--------|
 | **1** | CAIRN | 1B parameters | Active development |
 | **2** | ReOS | 1-3B parameters | Active development |
-| **3** | RIVA | 7-8B+ parameters | Frozen (future work) |
+| **3** | RIVA | 7-8B+ parameters | Frozen (NOL backend ready) |
 
 **Why this order:**
 
@@ -53,7 +53,7 @@ True democratization means running on hardware people actually have. A 70B model
 
 2. **ReOS (System Helper)** — Natural language to shell commands is more constrained than open-ended coding. The Parse Gate provides structure, and most system commands follow predictable patterns. Targeting 1-3B parameters.
 
-3. **RIVA (Code Agent)** — Multi-layer verification with LLM judges, code generation, and intent alignment genuinely requires more capable reasoning. We're freezing RIVA at its current state until CAIRN and ReOS prove the 1B thesis. Future work, likely requiring 7-8B+ models.
+3. **RIVA (Code Agent)** — Multi-layer verification with LLM judges, code generation, and intent alignment genuinely requires more capable reasoning. RIVA's NOL integration infrastructure is complete (bridge, translator, verification layer, 73 tests), but development is frozen while CAIRN and ReOS prove small-model viability. 7-8B+ models when active.
 
 **The honest reality:** Not everything can be democratized immediately. Code generation with verification is harder than attention management. We're prioritizing what we can ship on accessible hardware today, not what sounds impressive in a README.
 
@@ -67,12 +67,12 @@ Talking Rock is three specialized agents working together:
 |-------|---------|--------------|--------|
 | **CAIRN** | Manages your attention and life | 1B | Active |
 | **ReOS** | Controls your Linux system | 1-3B | Active |
-| **RIVA** | Writes and verifies code | 7-8B+ | Frozen |
+| **RIVA** | Writes and verifies code | 7-8B+ | Frozen (NOL ready) |
 
 You talk to CAIRN by default. It routes to the right agent when needed:
 - Life/planning → CAIRN handles it directly
 - System question → Routes to ReOS (with your approval)
-- Code question → Routes to RIVA (with your approval, when unfrozen)
+- Code question → Routes to RIVA (with your approval)
 
 **Why local matters here:** Because routing and verification happen locally, every request can be analyzed, checked, and validated without cost concerns. Cloud services charge per token—we don't.
 
@@ -154,6 +154,9 @@ This structure lets CAIRN understand context. When you say "what's next?", it kn
 - **Document knowledge base** — Import PDFs, Word docs, and more for semantic search
 - **Coherence Kernel** — Filters distractions based on your stated identity and goals
 - **Health Pulse** — Monitors data freshness, calibration alignment, and system health across three axes; surfaces findings through chat ("how are you doing?") and a passive UI indicator without intrusive nagging
+- **Conversation Lifecycle** — One conversation at a time with deliberate closure; meaning is extracted and woven into your ongoing narrative
+- **Memory Architecture** — Compressed meaning from conversations becomes active reasoning context for all future interactions
+- **Your Story** — A permanent Act representing who you are across all other Acts, built from accumulated conversation memories
 
 ### Conclusion
 
@@ -253,13 +256,13 @@ ReOS makes Linux approachable through conversation while respecting how Linux ac
 
 ---
 
-## RIVA: The Code Verification Engine (Frozen)
+## RIVA: The Code Verification Engine (Frozen — NOL Backend Ready)
 
-> **Status: Development frozen.** RIVA requires 7-8B+ parameter models for reliable code generation and verification. We're focusing on CAIRN and ReOS first to prove the small-model thesis. RIVA will resume development after those agents ship successfully on 1-3B models.
+> **Status: Frozen (NOL backend ready).** RIVA's infrastructure for generating code as NoLang assembly is complete and tested (73 integration tests). The NOL bridge, intent-to-NOL translator, and structural verification layer are implemented but not wired into production code paths. Development is paused while CAIRN and ReOS prove small-model viability on 1-3B parameter models. When RIVA unfreezes, the LLM will generate fixed-width NoLang instructions and the verifier will confirm correctness before execution.
 
 **Thesis:** RIVA trades compute time for correctness. Because local inference is cheap, it can verify every line of code through multiple layers before you see it—catching errors that cloud-based assistants can't afford to check for.
 
-### What's Built (Frozen State)
+### What's Built
 
 RIVA has significant infrastructure already built:
 
@@ -271,19 +274,33 @@ RIVA has significant infrastructure already built:
 - **Test-first development** — Contract system with test generation
 - **Self-debugging loop** — Decomposition and reflection
 
-### Why Frozen
+### NOL Integration
 
-Code generation with verification genuinely requires more capable reasoning than attention management or shell commands. A 1B model can understand "what should I work on today?" but struggles with "implement OAuth2 with PKCE flow and write comprehensive tests."
+RIVA now uses [NoLang](https://github.com/sefton37/nol) as its code generation backend:
 
-We could ship RIVA today with 7-8B models, but that defeats the mission. True democratization means waiting until we can run this on accessible hardware—or proving that CAIRN and ReOS deliver enough value on their own.
+1. **LLM generates NoLang assembly** — Canonical form means low variance (temperature=0.1)
+2. **`nolang verify`** — Structural verification (types, stack balance, exhaustion, hashes) before execution
+3. **`nolang run --sandbox`** — Sandboxed execution restricts file I/O to the target directory
+4. **Hash memoization** — Previously-verified programs with matching content hashes skip re-verification
 
-### Future Work
+Key components:
+- `NolBridge` — Python wrapper around the `nolang` CLI binary
+- `IntentToNolTranslator` — Converts RIVA intentions into NOL function signatures with PRE/POST contracts
+- `NOL_STRUCTURAL` — New verification layer that runs before SYNTAX in the multi-layer pipeline
 
-When RIVA resumes:
-1. Complete Intent verification layer (LLM judge integration)
-2. Add FIX_IMPORT fast path handler
-3. Explore whether fine-tuned smaller models can handle constrained code tasks
-4. Consider hybrid approaches (small model for routing, larger for generation)
+### Current State & Next Steps
+
+Completed:
+1. NOL bridge with assemble/verify/run pipeline
+2. NOL_STRUCTURAL verification layer
+3. Intent-to-NOL translation with contract generation
+4. Hash memoization for verified programs
+
+Next steps:
+1. End-to-end LLM → NOL generation (currently template-based)
+2. LoRA fine-tuning on NOL I/O corpus (see nolang-ml Phase 9)
+3. Explore whether fine-tuned 3-5B models can generate valid NOL
+4. Witness-based testing integration (NoLang Layer 3)
 
 ---
 
@@ -401,10 +418,11 @@ Talking Rock is for you if:
 - 16GB RAM
 - GPU optional (faster inference)
 
-**Future (RIVA):**
+**RIVA (frozen — NOL backend ready):**
 - 16GB+ RAM
 - GPU recommended
-- 7-8B parameter models
+- 7-8B parameter models (LLM generation phase)
+- `nolang` binary in PATH (see [NoLang](https://github.com/sefton37/nol))
 
 ### How It Compares
 
@@ -416,6 +434,7 @@ Talking Rock is for you if:
 | Open source | No | No | **Yes** |
 | Runs on 8GB RAM | N/A | N/A | **Yes (CAIRN)** |
 | Life organization | No | No | **Yes** |
+| Learns from conversations | No | No | **Yes** |
 | Linux system control | No | No | **Yes** |
 
 ---
@@ -430,6 +449,9 @@ Talking Rock is for you if:
 - [x] Document knowledge base (PDF, DOCX, TXT, MD, CSV, XLSX)
 - [x] Coherence Kernel for distraction filtering
 - [x] 45 MCP tools
+- [ ] Conversation lifecycle (singleton constraint, closure, compression pipeline)
+- [ ] Memory architecture (extraction, routing, Your Story, semantic search)
+- [ ] Memory-augmented reasoning (memories inform classification, decomposition, verification)
 - [ ] 1B model optimization and testing
 
 ### ReOS (System Agent) — Active Development
@@ -440,7 +462,7 @@ Talking Rock is for you if:
 - [x] Safety layer with command blocking, rate limiting, audit logging
 - [ ] 1-3B model optimization and testing
 
-### RIVA (Code Agent) — Frozen
+### RIVA (Code Agent) — Frozen (NOL Backend Ready)
 - [x] 3-layer verification (syntax → semantic → behavioral)
 - [ ] Intent verification layer (framework ready, paused)
 - [x] Tree-sitter parsing for Python, JavaScript/TypeScript
@@ -451,6 +473,10 @@ Talking Rock is for you if:
 - [x] Test-first development with contract building
 - [x] Self-debugging loop
 - [x] Git integration
+- [x] NOL bridge (subprocess wrapper for `nolang` CLI)
+- [x] NOL structural verification layer (pre-SYNTAX)
+- [x] Intent-to-NOL translator with hash memoization
+- [x] 73 NOL integration tests passing
 
 ### Infrastructure
 - [x] Seamless agent handoffs with approval
@@ -476,8 +502,9 @@ Talking Rock is for you if:
 ### Agent Architecture
 
 - [CAIRN Architecture](docs/cairn_architecture.md) — Attention minder (generates atomic operations for life management)
+- [Conversation Lifecycle](docs/CONVERSATION_LIFECYCLE_SPEC.md) — Conversation lifecycle, memory extraction, and Your Story
 - [Parse Gate](docs/parse-gate.md) — ReOS system helper (generates atomic operations for shell commands)
-- [RIVA Architecture](docs/archive/code_mode_architecture.md) — Code agent (frozen)
+- [RIVA Architecture](docs/archive/code_mode_architecture.md) — Code agent (frozen, NOL backend ready)
 - [The Play](docs/the-play.md) — Life organization system
 
 ### Reference

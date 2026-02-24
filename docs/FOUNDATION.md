@@ -95,6 +95,13 @@ User Request
 ┌──────────────────────────────────────────────────────┐
 │              Execution + RLHF Feedback               │
 └──────────────────────────────────────────────────────┘
+                        │
+                        ▼
+┌──────────────────────────────────────────────────────┐
+│         Conversation Lifecycle & Memory               │
+│  Conversation → Compression → Memory → Reasoning     │
+│  (Memories feed back into Classification pipeline)   │
+└──────────────────────────────────────────────────────┘
 ```
 
 ### CAIRN: The Attention Minder
@@ -124,17 +131,19 @@ ReOS generates operations like:
 
 See [Parse Gate Architecture](./parse-gate.md) for details.
 
-### RIVA: The Code Agent (Frozen)
+### RIVA: The Code Agent (Frozen — NOL Backend Ready)
 
-**Target: 7-8B+ parameters.** Code generation with verification requires more capable reasoning.
+**Target: 7-8B+ parameters.** Code generation with verification requires more capable reasoning. Development is frozen while CAIRN and ReOS prove small-model viability.
 
-RIVA provides test-first, contract-based development with multi-layer verification.
+RIVA provides test-first, contract-based development with multi-layer verification. The NOL integration infrastructure is complete: [NoLang](https://github.com/sefton37/nol) will serve as the code generation backend when RIVA unfreezes — the LLM will generate fixed-width NoLang assembly instead of Python/JS, and the `nolang verify` step will confirm structural correctness before execution. The bridge, translator, and verification layer are implemented with 73 passing tests.
+
+> **RIVA × NOL Alignment:** RIVA's kernel principle ("If you can't verify it, decompose it") maps naturally to NoLang's architecture. NOL function blocks are content-addressable (HASH), individually verifiable, and composable. When RIVA decomposes an intention into sub-intentions, each becomes a NoLang function with its own PRE/POST contracts and hash. The decomposition tree is a verified function hierarchy.
 
 RIVA generates operations like:
 - Code edits → `(file, machine, execute)`
 - Test runs → `(process, machine, interpret)`
 
-See [RIVA Architecture](./archive/code_mode_architecture.md) for details (frozen).
+See [RIVA Architecture](./archive/code_mode_architecture.md) for details.
 
 ---
 
@@ -151,6 +160,36 @@ Every atomic operation passes through five verification layers:
 | **Intent** | Matches user's goal? | ML intent verification |
 
 See [Verification Layers](./verification-layers.md) for the complete verification system.
+
+---
+
+## Conversation Lifecycle & Memory Architecture
+
+Every AI chat interface treats conversations as disposable infinities. Talking Rock rejects this. A conversation is a unit of meaning with a beginning, a middle, and a deliberate end.
+
+### Conversation Lifecycle
+
+One conversation at a time. When it ends, the meaning is extracted, compressed, and woven into the user's ongoing narrative:
+
+```
+active → ready-to-close → compressing → archived
+```
+
+The compression pipeline runs multiple local LLM passes — entity extraction, narrative synthesis, state delta computation, embedding generation — all at zero marginal cost because inference is local.
+
+### Memories as Reasoning Context
+
+Memories are not passive records. They are the reference corpus for all reasoning. Every time Talking Rock processes a request — classifying intent, decomposing into atomic operations, verifying understanding — it searches the memory database. This is the feedback loop that makes the system compound in value:
+
+```
+Conversation → Memory → Reasoning Context → Better Understanding → Better Conversation → Richer Memory
+```
+
+### Your Story
+
+Your Story is the permanent, un-archivable Act that represents *you* across all other Acts. It is the default destination for memories that don't belong to a specific project. Over time, Your Story becomes the primary source Talking Rock uses to understand who you are — distinct from what you're doing.
+
+See [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) for the complete memory architecture.
 
 ---
 
@@ -204,6 +243,8 @@ The Play uses a deliberately simple two-tier structure:
 | **Acts** | Months to years | Life narratives |
 | **Scenes** | Calendar events | When you're doing things |
 
+**Your Story** is a special permanent Act that cannot be archived. It represents *you* — not what you're working on, but who you are. It is the default destination for conversation memories that don't belong to a specific Act.
+
 **Why just two levels?** To remove the temptation to obscure responsibility in complexity.
 
 See [The Play](./the-play.md) for the complete organizational system.
@@ -215,6 +256,7 @@ See [The Play](./the-play.md) for the complete organizational system.
 | Document | Content |
 |----------|---------|
 | [Atomic Operations](./atomic-operations.md) | 3x2x3 taxonomy and classification pipeline |
+| [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) | Conversation lifecycle, memory extraction, and reasoning integration |
 | [Verification Layers](./verification-layers.md) | 5-layer verification system |
 | [RLHF Learning](./rlhf-learning.md) | Feedback collection and learning loop |
 | [Classification](./classification.md) | LLM-native classification with few-shot learning |
@@ -226,7 +268,7 @@ See [The Play](./the-play.md) for the complete organizational system.
 |----------|-------|
 | [CAIRN Architecture](./cairn_architecture.md) | Attention minder |
 | [Parse Gate](./parse-gate.md) | ReOS system helper |
-| [RIVA Architecture](./archive/code_mode_architecture.md) | Code agent (frozen) |
+| [RIVA Architecture](./archive/code_mode_architecture.md) | Code agent (frozen, NOL backend ready) |
 | [The Play](./the-play.md) | Life organization |
 
 ## Reference Documentation
