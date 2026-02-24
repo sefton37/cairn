@@ -17,6 +17,7 @@ import os
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any, Generator, NamedTuple
 
 
@@ -286,6 +287,17 @@ class ModelDefaults:
 
 
 MODELS = ModelDefaults()
+
+
+# =============================================================================
+# NOL Integration
+# =============================================================================
+
+# Path to the nolang binary.
+# Defaults to the standard release build location in the NOL project.
+# Override by setting the NOL_BINARY_PATH environment variable.
+_nol_default = str(Path.home() / "dev" / "nol" / "target" / "release" / "nolang")
+NOL_BINARY_PATH: Path = Path(os.environ.get("NOL_BINARY_PATH", _nol_default))
 
 
 # =============================================================================

@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 class VerificationLayer(Enum):
     """Verification layers in order of increasing cost/confidence."""
 
+    NOL_STRUCTURAL = "nol_structural"  # Pre-syntax: NOL assemble + verify
     SYNTAX = "syntax"  # Fast: Is it valid code?
     SEMANTIC = "semantic"  # Medium: Does it make sense?
     BEHAVIORAL = "behavioral"  # Slow: Does it work?
@@ -155,6 +156,23 @@ STRATEGY_LAYERS = {
 }
 
 
+def get_nol_strategy_layers(strategy: VerificationStrategy) -> list[VerificationLayer]:
+    """Get layers for a strategy, prepending NOL_STRUCTURAL when NOL is in use.
+
+    Use this instead of STRATEGY_LAYERS directly when the action carries
+    NOL assembly (i.e. nol_assembly is set on the Action).  The NOL_STRUCTURAL
+    layer runs before SYNTAX and catches assembler/verifier errors statically.
+
+    Args:
+        strategy: The base verification strategy.
+
+    Returns:
+        Layer list with NOL_STRUCTURAL prepended to the base set.
+    """
+    base = STRATEGY_LAYERS[strategy]
+    return [VerificationLayer.NOL_STRUCTURAL] + base
+
+
 def get_strategy_for_risk(risk_level: str) -> VerificationStrategy:
     """Determine verification strategy based on risk level.
 
@@ -244,7 +262,9 @@ async def verify_action_multilayer(
             )
 
         # Execute layer verification
-        if layer == VerificationLayer.SYNTAX:
+        if layer == VerificationLayer.NOL_STRUCTURAL:
+            result = await _verify_nol_structural(action, ctx)
+        elif layer == VerificationLayer.SYNTAX:
             result = await _verify_syntax_layer(action, ctx)
         elif layer == VerificationLayer.SEMANTIC:
             result = await _verify_semantic_layer(action, ctx)
@@ -406,6 +426,87 @@ async def verify_action_multilayer(
 
 
 # Layer implementations
+
+
+async def _verify_nol_structural(
+    action: "Action",
+    ctx: "WorkContext",
+) -> LayerResult:
+    """Layer 0: Verify NOL assembly via the nol_bridge.
+
+    This layer runs before SYNTAX and catches assembly/verification errors
+    that the NOL toolchain can detect statically.  When the action does not
+    carry NOL assembly (non-NOL actions) the layer passes transparently with
+    low confidence so it does not block existing verification flows.
+
+    Args:
+        action: The action to verify (must have nol_assembly set for real check).
+        ctx: Work context — must have nol_bridge set for real check.
+
+    Returns:
+        LayerResult indicating whether NOL structural verification passed.
+    """
+    import time
+
+    start = time.perf_counter()
+
+    if not action.nol_assembly:
+        return LayerResult(
+            layer=VerificationLayer.NOL_STRUCTURAL,
+            passed=True,
+            confidence=0.5,
+            reason="No NOL assembly to verify (non-NOL action)",
+        )
+
+    if not ctx.nol_bridge:
+        return LayerResult(
+            layer=VerificationLayer.NOL_STRUCTURAL,
+            passed=False,
+            confidence=0.0,
+            reason="NOL bridge not configured",
+        )
+
+    # Assemble the NOL source text to a temporary binary.
+    asm_result = ctx.nol_bridge.assemble(action.nol_assembly)
+    if not asm_result.success:
+        elapsed = int((time.perf_counter() - start) * 1000)
+        return LayerResult(
+            layer=VerificationLayer.NOL_STRUCTURAL,
+            passed=False,
+            confidence=1.0,
+            reason=f"NOL assembly failed: {asm_result.error}",
+            duration_ms=elapsed,
+        )
+
+    # Verify the assembled binary via static analysis.
+    verify_result = ctx.nol_bridge.verify(asm_result.binary_path)
+
+    # Clean up the temporary binary now that verification is done.
+    if asm_result.binary_path:
+        asm_result.binary_path.unlink(missing_ok=True)
+
+    elapsed = int((time.perf_counter() - start) * 1000)
+
+    if verify_result.success:
+        return LayerResult(
+            layer=VerificationLayer.NOL_STRUCTURAL,
+            passed=True,
+            confidence=1.0,
+            reason=(
+                f"NOL structural verification passed "
+                f"({verify_result.instruction_count} instructions)"
+            ),
+            duration_ms=elapsed,
+            details={"instruction_count": verify_result.instruction_count},
+        )
+    else:
+        return LayerResult(
+            layer=VerificationLayer.NOL_STRUCTURAL,
+            passed=False,
+            confidence=1.0,
+            reason=f"NOL verification failed: {verify_result.error}",
+            duration_ms=elapsed,
+        )
 
 
 async def _verify_syntax_layer(action: "Action", ctx: "WorkContext") -> LayerResult:

@@ -51,10 +51,12 @@ from reos.code_mode.session_logger import SessionLogger
 from reos.config import TIMEOUTS, EXECUTION
 
 if TYPE_CHECKING:
+    from reos.code_mode.intent_to_nol import NolMemoCache
+    from reos.code_mode.nol_bridge import NolBridge
     from reos.code_mode.planner import CodeTaskPlan
     from reos.code_mode.project_memory import ProjectMemoryStore
-    from reos.providers import LLMProvider
     from reos.play_fs import Act
+    from reos.providers import LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -174,12 +176,22 @@ class CodeExecutor:
         llm: "LLMProvider | None" = None,
         project_memory: "ProjectMemoryStore | None" = None,
         observer: ExecutionObserver | None = None,
+        use_nol: bool = False,
     ) -> None:
         self.sandbox = sandbox
         self._llm = llm
         self._project_memory = project_memory
         self._observer = observer
+        self._use_nol = use_nol
         self._perspectives = PerspectiveManager(llm)
+        # Hash-based memoization cache for NOL function signatures.
+        # Initialized only when NOL mode is active to avoid importing
+        # intent_to_nol when NOL is not in use.
+        if self._use_nol:
+            from reos.code_mode.intent_to_nol import NolMemoCache as _NolMemoCache
+            self._nol_cache: "NolMemoCache | None" = _NolMemoCache()
+        else:
+            self._nol_cache = None
         self._intent_discoverer = IntentDiscoverer(
             sandbox, llm, project_memory=project_memory, observer=observer
         )
@@ -1008,6 +1020,80 @@ class CodeExecutor:
             output=stdout[:1000] if stdout else stderr[:1000],
             error=stderr if returncode != 0 else None,
         )
+
+    async def _generate_nol_assembly(self, step_description: str, repo_path: Path) -> str | None:
+        """Ask the LLM to generate NOL assembly for a step.
+
+        Only called when use_nol=True.  Returns the raw assembly text or None
+        if generation fails (LLM unavailable or empty response).
+
+        Args:
+            step_description: Natural-language description of what the step does.
+            repo_path: Working directory for context.
+
+        Returns:
+            Assembly text string, or None if generation failed.
+        """
+        if not self._llm:
+            return None
+
+        prompt = (
+            "Generate NOL assembly code for the following task.\n"
+            "Output ONLY the assembly instructions, no explanation.\n"
+            f"Working directory: {repo_path}\n\n"
+            f"Task: {step_description}\n"
+        )
+
+        try:
+            response = await self._llm.complete(prompt, temperature=0.1)
+            assembly = response.strip()
+            if not assembly:
+                return None
+            return assembly
+        except Exception as e:
+            logger.warning("NOL assembly generation failed: %s", e)
+            return None
+
+    async def _execute_step_nol(
+        self,
+        step_description: str,
+        repo_path: Path,
+        nol_bridge: "NolBridge",
+    ) -> dict[str, Any]:
+        """Execute a step via NOL assembly generation + verification + execution.
+
+        Generates NOL assembly from the LLM, then runs it through
+        assemble_verify_run on the provided nol_bridge.
+
+        Args:
+            step_description: Natural-language description of the step.
+            repo_path: Repository root for context passed to the LLM.
+            nol_bridge: Configured NolBridge to use for assembly/verify/run.
+
+        Returns:
+            dict with keys:
+              success (bool), output (str | None), nol_assembly (str | None),
+              error (str | None), error_type (str | None).
+        """
+        assembly = await self._generate_nol_assembly(step_description, repo_path)
+        if not assembly:
+            return {
+                "success": False,
+                "error": "Failed to generate NOL assembly",
+                "nol_assembly": None,
+                "output": None,
+                "error_type": None,
+            }
+
+        result = nol_bridge.assemble_verify_run(assembly)
+
+        return {
+            "success": result.success,
+            "output": str(result.value) if result.success else None,
+            "nol_assembly": assembly,
+            "error": result.error if not result.success else None,
+            "error_type": result.error_type if not result.success else None,
+        }
 
     def _generate_file_content(
         self,

@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from reos.code_mode.optimization.risk import ActionRisk
     from reos.code_mode.optimization.trust import TrustBudget
     from reos.code_mode.optimization.verification import VerificationBatcher
+    from reos.code_mode.nol_bridge import NolBridge
     from reos.code_mode.optimization.pattern_success import PatternSuccessTracker
     from reos.code_mode.optimization.verification_layers import VerificationResult
     from reos.code_mode.project_memory import ProjectMemoryStore
@@ -118,16 +119,22 @@ class Action:
         type: The type of action (command, edit, create, delete, query)
         content: The actual command/code/query
         target: File path or system target if applicable
+        nol_assembly: NOL assembly text (when use_nol=True)
+        nol_binary: NOL compiled binary bytes (after assembly; not serialized)
     """
     type: ActionType
     content: str
     target: str | None = None
+    nol_assembly: str | None = None
+    nol_binary: bytes | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "type": self.type.value,
             "content": self.content,
             "target": self.target,
+            "nol_assembly": self.nol_assembly,
+            # nol_binary is excluded from serialization (ephemeral runtime data)
         }
 
     @classmethod
@@ -136,6 +143,7 @@ class Action:
             type=ActionType(data["type"]),
             content=data["content"],
             target=data.get("target"),
+            nol_assembly=data.get("nol_assembly"),
         )
 
 
@@ -462,6 +470,7 @@ class WorkContext:
     verification_batcher: "VerificationBatcher | None" = None  # Batch low-risk verifications
     pattern_success_tracker: "PatternSuccessTracker | None" = None  # Learn from execution history
     project_memory: "ProjectMemoryStore | None" = None  # Project decisions, patterns, learned corrections
+    nol_bridge: "NolBridge | None" = None  # NOL bridge for assembly/verify/run
     max_cycles_per_intention: int = 5
     max_depth: int = 10
 
