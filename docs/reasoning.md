@@ -320,6 +320,8 @@ ReOS remembers what works on your specific system:
 
 This data is stored locally at `~/.config/reos/knowledge.db`.
 
+In addition to ReOS-specific learning, all agents benefit from **conversation memories** — a cross-system feature where meaning is compressed from closed conversations into memories that inform future reasoning. These memories are not ReOS-specific; they feed into classification, decomposition, and verification across CAIRN, ReOS, and RIVA alike. See [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) for the complete memory architecture.
+
 ```
 You: why did you update apt first?
 

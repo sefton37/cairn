@@ -10,6 +10,8 @@ CAIRN embodies "No One" - calm, non-coercive, makes room rather than demands att
 - Time and calendar aware
 - Never gamifies, never guilt-trips
 - **Identity-first**: Filters attention through coherence with your stated values
+- **Memory-aware**: Retrieves relevant memories from past conversations to inform every interaction
+- **One conversation at a time**: Conversations are units of meaning with deliberate closure, not disposable threads
 
 ### A Mirror, Not a Manager
 
@@ -56,7 +58,20 @@ Zero trust. Local only. Encrypted at rest. Never phones home. The only report go
 └─────────────────┘  └─────────────────┘  └─────────────────┘
 ```
 
-**Memory Retriever**: When CAIRN responds, it retrieves relevant past interactions, reasoning chains, and knowledge facts via semantic similarity and relationship traversal.
+**Memory Retriever**: When CAIRN responds, it retrieves relevant memories from past conversations via semantic similarity and relationship traversal. Memories are not passive records — they are the reference corpus for all reasoning. See [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) for the complete memory architecture.
+
+### Conversation Lifecycle Integration
+
+CAIRN manages the conversation lifecycle. Only one conversation can be active at any time:
+
+- **Startup (no active conversation):** CAIRN builds a greeting from accumulated memories — open threads, waiting-ons, recent decisions, upcoming deadlines, stale items. All sourced from memory entities.
+- **Startup (active conversation exists):** CAIRN resumes the existing conversation. No "new chat" button.
+- **During conversation:** CAIRN retrieves relevant memories via semantic search to inform context. The compounding effect: each conversation makes the next one better.
+- **Conversation closure:** CAIRN initiates the 4-stage compression pipeline (entity extraction → narrative compression → state deltas → embeddings), presents the extracted memory for user review, and routes it to the appropriate Act or Your Story.
+
+### Your Story as Identity Context
+
+Your Story is the permanent, un-archivable Act that represents *who you are* across all other Acts. When CAIRN needs to understand the user as a person (not just what they're working on), it queries Your Story. Over time, Your Story becomes the primary source for identity-aware responses — distinct from Act-level project context.
 
 ## Data Model
 
@@ -263,6 +278,26 @@ cairn_activity_summary  - Activity patterns (when user is most active)
 cairn_project_health    - Which projects are getting attention, which are stale
 cairn_completion_rate   - How often items get completed vs abandoned
 ```
+
+### Conversation Lifecycle & Memory (planned)
+
+```
+get_active_conversation     - Get the currently active conversation
+close_conversation          - Initiate conversation closure and compression
+get_memory_preview          - Get compression preview before user confirms
+confirm_memory              - Confirm memory extraction and archive conversation
+resume_conversation         - Cancel closure and resume conversation
+search_memories             - Semantic search across all memories
+get_open_threads            - Get active/unresolved entities across memories
+get_your_story              - Get recent memories from Your Story
+get_conversation_archive    - Retrieve archived conversation transcript
+edit_memory                 - Edit a memory narrative or entities
+get_reasoning_context       - Retrieve memory-augmented reasoning context
+explain_classification      - Show which memories influenced a classification
+get_memory_influence_chain  - Trace how a memory has influenced reasoning
+```
+
+See [Conversation Lifecycle Spec](./CONVERSATION_LIFECYCLE_SPEC.md) for full tool definitions.
 
 ## Surfacing Algorithm
 
@@ -563,6 +598,7 @@ src/reos/
 ## Related Documentation
 
 - [Foundation](./FOUNDATION.md) — Core philosophy and architecture overview
+- [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) — Conversation lifecycle, memory extraction, and reasoning integration
 - [The Play](./the-play.md) — Life organization system (Acts/Scenes)
 - [Classification](./classification.md) — LLM-native 3x2x3 taxonomy
 - [RLHF Learning](./rlhf-learning.md) — Feedback collection and learning

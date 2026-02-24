@@ -245,6 +245,22 @@ def wrap_response(
     )
 ```
 
+## Memory State Deltas
+
+The conversation lifecycle generates **state deltas** that update the knowledge graph maintained by system state. When a conversation closes, the compression pipeline computes what changed:
+
+- **New waiting-ons** — Someone owes the user something
+- **Resolved waiting-ons** — A dependency was fulfilled
+- **New open threads** — A question or task was opened
+- **Resolved threads** — A question was answered or task completed
+- **Priority changes** — Something moved up or down in importance
+
+These deltas are applied to the knowledge graph so that steady state context stays current with the user's evolving situation. CAIRN's startup greeting draws from this data to surface what needs attention.
+
+See [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) for the complete state delta architecture.
+
+---
+
 ## 4. Integration Points
 
 ### ChatAgent Changes (Actual Implementation)

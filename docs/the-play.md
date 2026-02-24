@@ -23,15 +23,33 @@ That's it. Two levels. No more.
 
 ```
 The Play
+├── Your Story (permanent Act — who you are across all narratives)
+│   └── Memories (compressed meaning from conversations)
 ├── Acts (life narratives: Career, Health, Home, Learning)
 │   ├── Pages (block-based knowledge documents)
 │   │   └── Blocks (paragraphs, headings, lists, todos, code, etc.)
+│   ├── Memories (conversation memories routed to this Act)
 │   ├── Scenes (calendar events within an Act)
 │   └── Notebook (legacy markdown notes for the Act)
 └── Contacts (people linked to Acts/Scenes)
 ```
 
 ## Concepts
+
+### Your Story
+
+Your Story is the permanent, un-archivable Act that represents *you* across all other Acts. It cannot be deleted or archived. It is the default destination for conversation memories that don't belong to a specific project or life chapter.
+
+Your Acts tell Talking Rock what you're working on. **Your Story tells Talking Rock who you are.**
+
+Over time, Your Story accumulates:
+- Memories from conversations that aren't project-specific
+- Personal insights and reflections
+- Cross-cutting decisions that affect multiple Acts
+- Patterns that CAIRN notices across your behavior
+- Your evolving priorities and values
+
+See [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) for how memories flow from conversations into Your Story and Acts.
 
 ### Acts
 Life narratives that span months to years. These are the major chapters of your story.
@@ -279,6 +297,18 @@ apps/reos-tauri/src/
 └── playWindow.ts             # Window frame
 ```
 
+## Conversations and Memory
+
+Conversations are the bridge between you and The Play. Each conversation is a unit of meaning with a deliberate lifecycle — one active at a time, with closure that extracts and preserves what mattered.
+
+When a conversation ends, its meaning is compressed into **memories** — not transcript summaries, but meaning extractions. Each memory is routed to Your Story or a specific Act, becoming first-class knowledge in The Play hierarchy.
+
+**Memory routing:** By default, memories go to Your Story. The user can redirect them to a specific Act, or split a single conversation's meaning across multiple Acts. Talking Rock suggests routing based on Act context, but the user always confirms.
+
+**Memories as reasoning context:** Memories are not passive storage. They are retrieved at every reasoning step — classification, decomposition, verification. This is the compounding loop that makes Talking Rock grow more useful over time.
+
+See [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) for the complete architecture.
+
 ## CAIRN's Role
 
 CAIRN is the attention minder for The Play:
@@ -287,7 +317,8 @@ CAIRN is the attention minder for The Play:
 2. **Tracks activity** - Knows when you last touched each item
 3. **Manages calendar sync** - Bidirectional sync with Thunderbird
 4. **Filters through identity** - Uses the Coherence Kernel to reject distractions
-5. **Never guilt-trips** - Surfaces options, doesn't judge
+5. **Manages conversation lifecycle** - One conversation at a time, deliberate closure, memory extraction
+6. **Never guilt-trips** - Surfaces options, doesn't judge
 
 ## Storage
 
@@ -443,6 +474,7 @@ See `docs/cairn_architecture.md` for full tool documentation.
 ## Related Documentation
 
 - [Foundation](./FOUNDATION.md) - Core philosophy and architecture
+- [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) - Conversation lifecycle, memory extraction, and Your Story
 - [Atomic Operations](./atomic-operations.md) - Operation classification
 - [CAIRN Architecture](./cairn_architecture.md) - CAIRN attention minder design
 - [Testing Strategy](./testing-strategy.md) - Testing approach

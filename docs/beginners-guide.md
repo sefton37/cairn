@@ -73,8 +73,13 @@ CAIRN: Based on your Play:
 CAIRN helps you organize without guilt-tripping. The Play uses just two levels:
 - **Acts** = Life narratives (months to years)
 - **Scenes** = Calendar events that make up the moments
+- **Your Story** = A permanent record of who you are, built from conversation memories
 
-### With RIVA (Coding Agent)
+When you finish a conversation with CAIRN, it extracts the meaning — what was decided, what changed, what's open — and shows you before saving. Over time, CAIRN learns your patterns and gets better at understanding what you need.
+
+### With RIVA (Coding Agent) — *development frozen*
+
+> RIVA's development is paused while CAIRN and ReOS prove small-model viability. The examples below show planned functionality.
 
 ```
 You: Add input validation to the login endpoint
@@ -95,6 +100,7 @@ RIVA shows you exactly what it will change before doing it.
 ## Next Steps
 
 - Set up The Play: `docs/the-play.md`
+- Understand conversations & memory: `docs/CONVERSATION_LIFECYCLE_SPEC.md`
 - Understand ReOS safety: `docs/security.md`
 - Explore CAIRN: `docs/cairn_architecture.md`
 - Explore RIVA (frozen): `docs/archive/code_mode_architecture.md`

@@ -174,7 +174,7 @@ We don't compete on speed. We compete on **reliability and trust**.
 - [x] Conversation persistence across sessions
 - [x] Extended reasoning system with adaptive recovery
 
-### RIVA - Coding Agent (Sprint 3 Complete)
+### RIVA - Coding Agent (Sprint 3 Complete, Development Frozen)
 - [x] Repository assignment to Acts in The Play
 - [x] Automatic code vs sysadmin request routing
 - [x] Multi-source intent discovery (prompt + Play + codebase)
@@ -395,7 +395,9 @@ interface InspectorProps {
 ---
 
 ### Phase 4: Intelligence & Memory
-**Goal: Get smarter about YOUR projects over time**
+**Goal: Get smarter about YOU over time**
+
+> **Note:** The conversation lifecycle and memory architecture (see [CONVERSATION_LIFECYCLE_SPEC.md](./CONVERSATION_LIFECYCLE_SPEC.md)) supersedes the project-specific memory design below. The lifecycle spec defines a unified memory system where conversations produce memories that feed into all reasoning — not just per-project recall, but cross-cutting identity context via Your Story.
 
 #### 4.1 Long-term Project Memory
 
@@ -809,7 +811,16 @@ Applied to RIVA (Code Mode):
 - [ ] Pluggable model backends
 - [ ] Model selection by task complexity
 
-**2026: Ecosystem**
+**2026: Conversation Lifecycle & Memory**
+- [ ] Phase 1: Conversation singleton & messages (active, close, archive)
+- [ ] Phase 2: Compression pipeline (entity extraction, narrative, state deltas, embeddings)
+- [ ] Phase 3: Memory storage & routing (Your Story, Act-directed, split routing)
+- [ ] Phase 4: Memory as reasoning context (augment classification, decomposition, verification)
+- [ ] Phase 5: Compounding loop (cross-conversation thread resolution, pattern learning)
+
+See [Conversation Lifecycle Spec](./CONVERSATION_LIFECYCLE_SPEC.md) for full implementation phases.
+
+**2026+: Ecosystem**
 - [ ] Browser automation
 - [ ] More language support
 - [ ] Plugin system

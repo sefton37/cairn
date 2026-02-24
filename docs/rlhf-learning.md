@@ -327,6 +327,21 @@ Lower-quality but still useful:
 
 ---
 
+## Conversation Lifecycle as Feedback
+
+The conversation lifecycle creates a powerful feedback channel beyond individual operation approvals. When a conversation closes, the compression pipeline extracts:
+
+- **Decisions** — What was decided and why (high-value feedback for future classification)
+- **Corrections** — Any time the user corrected Talking Rock's interpretation during the conversation
+- **Patterns** — Recurring language and intent patterns that inform disambiguation
+- **Questions resolved/opened** — State changes that update the knowledge graph
+
+This conversation-level feedback is richer than per-operation feedback because it captures the *arc* of interaction — not just individual moments, but how understanding evolved. Memories from this extraction feed back into classification, decomposition, and verification at every future pipeline stage.
+
+See [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) for the complete architecture.
+
+---
+
 ## Privacy Considerations
 
 All learning happens **locally**:
@@ -334,12 +349,14 @@ All learning happens **locally**:
 - No aggregation across users
 - User can delete all feedback data
 - Models trained on user's own data only
+- Conversation memories are user-reviewed before storage — the user sees and can edit exactly what the system learned
 
 ---
 
 ## Related Documentation
 
 - [Foundation](./FOUNDATION.md) — Core philosophy (privacy by architecture)
+- [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) — Conversation-level feedback through memory extraction
 - [Atomic Operations](./atomic-operations.md) — What gets classified
 - [Classification](./classification.md) — LLM-native classification approach
 - [Verification Layers](./verification-layers.md) — Verification that produces feedback opportunities

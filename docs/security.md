@@ -508,6 +508,67 @@ def test_ignore_instructions_detected():
 - [ ] Error messages don't leak sensitive info
 - [ ] New RPC methods have input validation
 
+## Memory & Conversation Security
+
+The conversation lifecycle and memory architecture introduces additional security considerations. See [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) for the complete architecture.
+
+### Memory Privacy
+- All memories are stored locally in SQLite — encrypted at rest alongside all other data
+- Memories never leave the machine — no cloud sync, no telemetry
+- User reviews every memory before it is stored (the review step)
+- User can edit or delete any memory at any time
+
+### Memory Sovereignty
+- The user sees exactly what the system learned from each conversation
+- Memories can be redirected, split, or rejected during the review step
+- Full transparency: which memories influenced which reasoning decisions is traceable via `classification_memory_references`
+
+### Conversation Singleton
+- Only one conversation can be active at a time, reducing the attack surface for context confusion
+- Conversation state transitions are enforced at application level
+
+### Compression Pipeline Threat Model
+
+The 4-stage compression pipeline (entity extraction → narrative compression → state delta → embedding) runs local LLM inference on conversation transcripts. Threat vectors:
+
+| Threat | Vector | Mitigation |
+|--------|--------|------------|
+| **Entity injection** | Adversarial content in conversation tricks entity extraction into recording false entities (fake people, decisions, tasks) | Memory review step: user sees and confirms all extracted entities before storage. Extraction runs on local LLM only — no external input beyond the user's own conversation |
+| **Narrative manipulation** | Crafted messages bias narrative compression to misrepresent what was discussed | Memory review step acts as a mandatory gate — the user reads the compressed narrative and can edit or reject it |
+| **State delta poisoning** | False state deltas update the knowledge graph with incorrect waiting-ons, priorities, or resolved items | State deltas are derived from the same reviewed memory — if the narrative is approved, deltas are consistent with it. Future: validate deltas against existing graph for contradictions |
+| **Embedding drift** | Corrupted embeddings cause semantic search to return irrelevant memories | Embeddings are computed deterministically from approved memory text via local sentence-transformers. No external influence on the embedding model |
+
+### Memory Review as Security Gate
+
+The review step is a **mandatory security gate**, not an optional UX feature:
+- No memory is written to storage without user confirmation
+- The user sees: compressed narrative, extracted entities, proposed routing destination (Your Story or specific Act)
+- The user can: edit the narrative, remove entities, change routing, or reject entirely
+- Implementation must enforce this — skipping the review step is a security violation, not a convenience shortcut
+
+### Memory Lifecycle Audit Logging
+
+All memory operations should be audit-logged:
+
+| Event | What's Logged |
+|-------|---------------|
+| `memory_created` | Memory ID, source conversation, routing destination, entity count |
+| `memory_edited` | Memory ID, fields changed, before/after |
+| `memory_deleted` | Memory ID, who deleted, reason if provided |
+| `memory_reviewed` | Memory ID, user decision (approved/edited/rejected), edits made |
+| `memory_routed` | Memory ID, destination Act(s), user-directed vs default |
+| `memory_influenced_reasoning` | Memory ID, classification ID, influence weight (via `classification_memory_references`) |
+
+### Entity Validation
+
+Extracted entities should be validated before storage:
+- Entity types must match the allowed enum (`person`, `task`, `decision`, `waiting_on`, etc.)
+- Entity data JSON must conform to expected schema per entity type
+- Cross-reference against existing entities to detect duplicates or contradictions
+- Entities marked `is_active` should be periodically reconciled against resolved items
+
+---
+
 ## Future Improvements
 
 ### Short Term
@@ -519,6 +580,7 @@ def test_ignore_instructions_detected():
 - [ ] Semantic intent analysis
 - [ ] Anomaly detection for unusual patterns
 - [ ] User authentication for multi-user scenarios
+- [ ] Memory encryption key management
 
 ### Long Term
 - [ ] Formal verification of safety properties

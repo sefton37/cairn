@@ -19,9 +19,18 @@ User Request: "Check memory usage and optimize auth.py"
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────────┐ │
+│  │  0. MEMORY RETRIEVAL (pre-classification)                  │ │
+│  │     • Semantic search across conversation memory embeddings│ │
+│  │     • Retrieve active entities (open threads, waiting-ons) │ │
+│  │     • Memories disambiguate intent and resolve references  │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                            │                                     │
+│                            ▼                                     │
+│  ┌────────────────────────────────────────────────────────────┐ │
 │  │  1. CONTEXT BUILDING                                       │ │
 │  │     • Load few-shot examples from database                 │ │
 │  │     • Select similar examples (if available)               │ │
+│  │     • Include relevant memories in classification prompt   │ │
 │  │     • Build structured prompt with taxonomy explanation    │ │
 │  └────────────────────────────────────────────────────────────┘ │
 │                            │                                     │
@@ -289,7 +298,7 @@ LLM-native classification accuracy (estimated):
 - **Moderate requests:** 85-90% ("check if service is running")
 - **Complex requests:** 70-80% ("analyze code and optimize if needed")
 
-Accuracy improves over time as few-shot examples accumulate from user feedback.
+Accuracy improves over time as few-shot examples accumulate from user feedback and conversation memories accumulate context for disambiguation.
 
 ---
 
@@ -313,8 +322,21 @@ This simplifies the architecture, reduces dependencies, and leverages the LLM's 
 
 ---
 
+---
+
+## Memory-Augmented Classification
+
+Classification is enhanced by conversation memories. Before classifying a request, relevant memories are retrieved via semantic search and included in the classification prompt. This enables disambiguation that few-shot examples alone cannot provide — because memories carry personal context, not just structural examples.
+
+Each classification records which memories influenced it in the `classification_memory_references` table. When the user asks "Why did you interpret it that way?", Talking Rock can trace back to the specific past conversations that informed the current interpretation.
+
+See [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) for the complete memory-as-reasoning-context architecture.
+
+---
+
 ## Related Documentation
 
 - [Atomic Operations](./atomic-operations.md) — The 3x2x3 taxonomy
+- [Conversation Lifecycle](./CONVERSATION_LIFECYCLE_SPEC.md) — Memory architecture and reasoning integration
 - [RLHF Learning](./rlhf-learning.md) — How feedback improves classification
 - [Verification Layers](./verification-layers.md) — Post-classification verification

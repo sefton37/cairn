@@ -63,9 +63,16 @@ The only report goes to the only stakeholder that matters: you.
   - **System (ReOS)**: "What's using memory?", "Install docker"
   - **Code (RIVA)**: "Add login to my API", "Fix the test failures"
 
+- **Conversation Lifecycle** (see [Conversation Lifecycle Spec](./CONVERSATION_LIFECYCLE_SPEC.md)):
+  - One conversation at a time — depth over breadth
+  - Deliberate closure with meaning extraction
+  - Memory review: user sees and edits what the system learned
+  - Memories feed back into future conversations as reasoning context
+
 - **Context Awareness**:
   - System state automatically included (failed services, low disk, etc.)
   - The Play context (current Act, related projects)
+  - Conversation memories (retrieved via semantic search for disambiguation)
   - Conversation history (refer to "it", "that service", "the error from before")
 
 ### 3. The Play (CAIRN's Domain)
@@ -111,7 +118,7 @@ The only report goes to the only stakeholder that matters: you.
   - Post-execution summary with undo options
 
 ### 5. Code Mode (RIVA's Domain)
-**AI-assisted development**
+**AI-assisted development** *(development frozen — see README for current priorities)*
 
 - **Diff Preview**:
   - See exactly what RIVA will change before it happens
@@ -189,10 +196,12 @@ The only report goes to the only stakeholder that matters: you.
 
 ### Journey 2: Daily Planning (CAIRN)
 1. User opens Talking Rock
-2. CAIRN surfaces: "Good morning. Based on your Play, here's what needs attention..."
-3. Shows prioritized items without guilt-tripping
-4. User asks clarifying questions
-5. CAIRN updates priorities based on user decisions
+2. If an active conversation exists, CAIRN resumes it ("We were discussing...")
+3. If no active conversation, CAIRN surfaces: "Good morning. Based on your memories and Play, here's what needs attention..."
+4. Startup greeting is memory-driven: open threads, waiting-ons, recent decisions, stale items — all sourced from accumulated conversation memories
+5. User asks clarifying questions
+6. CAIRN updates priorities based on user decisions
+7. When done, user closes the conversation; meaning is extracted, reviewed, and routed to an Act or Your Story
 
 ### Journey 3: System Issue (ReOS)
 1. User notices system slowdown
@@ -203,7 +212,7 @@ The only report goes to the only stakeholder that matters: you.
 6. User approves, ReOS executes
 7. System panel updates: nginx ✓ green
 
-### Journey 4: Coding Task (RIVA)
+### Journey 4: Coding Task (RIVA) *(planned — RIVA development is frozen)*
 1. User: "Add user authentication to my API"
 2. CAIRN routes to RIVA
 3. RIVA discovers intent, builds contract
@@ -325,7 +334,7 @@ The three agents work together:
 - **ReOS** helps you control your system
 - **RIVA** helps you write code
 
-And over time, you **need them less** because you've internalized the patterns.
+And over time, you **need them less** because you've internalized the patterns. Meanwhile, Talking Rock **understands you more** because each conversation's meaning is extracted, compressed, and woven into your ongoing narrative — creating a compounding loop of better understanding.
 
 **That's not a bug. That's the whole point.**
 
