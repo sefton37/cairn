@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a1a2e" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="TalkRock" />
+  <meta name="description" content="Talking Rock AI assistant — CAIRN, ReOS, RIVA" />
+
+  <title>Talking Rock</title>
+
+  <link rel="manifest" href="/app/manifest.json" />
+  <link rel="apple-touch-icon" href="/app/icons/icon-192.png" />
+  <link rel="stylesheet" href="/app/app.css" />
+</head>
+<body>
+
+  <!-- ── Login overlay ──────────────────────────────────────────────────── -->
+  <div id="login-overlay" class="login-overlay" aria-modal="true" role="dialog" aria-label="Sign in">
+    <div class="login-card">
+      <div class="login-logo" aria-hidden="true">&#x1FAA8;</div>
+      <h1 class="login-title">Talking Rock</h1>
+      <p class="login-subtitle">Sign in to continue</p>
+
+      <form id="login-form" novalidate>
+        <div class="field-group">
+          <label for="login-username">Username</label>
+          <input
+            id="login-username"
+            type="text"
+            name="username"
+            autocomplete="username"
+            autocorrect="off"
+            autocapitalize="none"
+            spellcheck="false"
+            placeholder="username"
+            required
+          />
+        </div>
+
+        <div class="field-group">
+          <label for="login-password">Password</label>
+          <input
+            id="login-password"
+            type="password"
+            name="password"
+            autocomplete="current-password"
+            placeholder="password"
+            required
+          />
+        </div>
+
+        <div id="login-error" class="login-error" role="alert" aria-live="polite" hidden></div>
+
+        <button type="submit" id="login-submit" class="btn btn-primary btn-full">
+          Sign In
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Main app shell ─────────────────────────────────────────────────── -->
+  <div id="app" class="app" hidden>
+
+    <!-- Header -->
+    <header class="app-header">
+      <button id="btn-back" class="icon-btn" aria-label="Back to conversations" hidden>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+      </button>
+
+      <span class="app-title">Talking Rock</span>
+
+      <button id="btn-menu" class="icon-btn" aria-label="Menu" aria-expanded="false">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
+        </svg>
+      </button>
+    </header>
+
+    <!-- Agent tab strip -->
+    <nav class="agent-tabs" role="tablist" aria-label="Agent selection">
+      <button class="tab active" role="tab" data-agent="cairn" aria-selected="true">CAIRN</button>
+      <button class="tab" role="tab" data-agent="reos" aria-selected="false">ReOS</button>
+      <button class="tab" role="tab" data-agent="riva" aria-selected="false">RIVA</button>
+    </nav>
+
+    <!-- Surfacing card (CAIRN only) -->
+    <div id="surfacing-section" class="surfacing-section" hidden>
+      <div class="surfacing-header" id="surfacing-toggle" role="button" tabindex="0" aria-expanded="true" aria-controls="surfacing-items">
+        <span class="surfacing-title">Attention Items</span>
+        <svg class="surfacing-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      <div id="surfacing-items" class="surfacing-items">
+        <div class="surfacing-loading">Loading attention items...</div>
+      </div>
+    </div>
+
+    <!-- Message area -->
+    <main id="message-area" class="message-area" role="main" aria-live="polite" aria-relevant="additions">
+      <!-- Messages rendered here by JS -->
+    </main>
+
+    <!-- Input bar -->
+    <footer class="input-bar">
+      <textarea
+        id="chat-input"
+        class="chat-input"
+        placeholder="Message..."
+        rows="1"
+        aria-label="Message input"
+        autocorrect="off"
+        autocomplete="off"
+        spellcheck="true"
+      ></textarea>
+      <button id="btn-send" class="send-btn" aria-label="Send message" disabled>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"/>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </footer>
+
+    <!-- Consciousness drawer (CAIRN thinking) -->
+    <div id="consciousness-drawer" class="consciousness-drawer" aria-label="CAIRN thinking process" hidden>
+      <div class="drawer-handle" id="drawer-handle" role="button" tabindex="0" aria-label="Collapse thinking drawer"></div>
+      <div class="drawer-header">
+        <span class="drawer-title">
+          <span class="pulse-dot" aria-hidden="true"></span>
+          Thinking...
+        </span>
+        <button id="btn-close-drawer" class="icon-btn" aria-label="Close thinking drawer">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div id="consciousness-content" class="consciousness-content">
+        <!-- Thinking steps injected here -->
+      </div>
+    </div>
+
+    <!-- Drawer backdrop -->
+    <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+
+    <!-- Menu panel -->
+    <div id="menu-panel" class="menu-panel" hidden aria-label="Main menu">
+      <div class="menu-header">
+        <span id="menu-username" class="menu-username"></span>
+        <button id="btn-close-menu" class="icon-btn" aria-label="Close menu">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <button id="btn-new-convo" class="menu-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        New Conversation
+      </button>
+
+      <div class="menu-section-label">Recent Conversations</div>
+      <div id="conversations-list" class="conversations-list">
+        <div class="menu-loading">Loading...</div>
+      </div>
+
+      <div class="menu-footer">
+        <button id="btn-logout" class="menu-item menu-item-danger">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          Sign Out
+        </button>
+      </div>
+    </div>
+
+    <!-- Menu backdrop -->
+    <div id="menu-backdrop" class="drawer-backdrop" hidden></div>
+
+  </div><!-- /#app -->
+
+  <!-- Service worker registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/app/service-worker.js', { scope: '/app/' })
+          .then((reg) => console.log('[SW] Registered, scope:', reg.scope))
+          .catch((err) => console.warn('[SW] Registration failed:', err));
+      });
+    }
+  </script>
+
+  <script type="module" src="/app/app.js"></script>
+</body>
+</html>

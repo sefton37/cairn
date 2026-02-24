@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <!-- Background -->
+  <rect width="192" height="192" rx="40" fill="#1a1a2e"/>
+
+  <!-- Rock/mountain silhouette — stylized three-peak form -->
+  <!-- Back peak (left, tallest) -->
+  <polygon points="40,148 78,68 116,148" fill="#0f3460"/>
+  <!-- Middle peak (right, medium) -->
+  <polygon points="82,148 118,82 154,148" fill="#16213e"/>
+  <!-- Front rock — main rounded boulder shape -->
+  <ellipse cx="96" cy="138" rx="46" ry="22" fill="#1a1a2e"/>
+  <path d="M54,148 Q58,108 80,98 Q96,92 112,98 Q134,108 138,148 Z" fill="#4a90e2"/>
+  <!-- Highlight on rock -->
+  <ellipse cx="84" cy="110" rx="12" ry="6" fill="#5a9ff2" opacity="0.4"/>
+
+  <!-- "TR" monogram -->
+  <text x="96" y="170" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif"
+        font-size="18" font-weight="700" fill="#e0e0e0"
+        text-anchor="middle" letter-spacing="2">TR</text>
+</svg>

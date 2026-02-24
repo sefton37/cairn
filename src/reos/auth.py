@@ -25,7 +25,7 @@ import threading
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -48,12 +48,12 @@ class Session:
 
     def is_expired(self) -> bool:
         """Check if session has expired due to inactivity."""
-        elapsed = (datetime.now(timezone.utc) - self.last_activity).total_seconds()
+        elapsed = (datetime.now(UTC) - self.last_activity).total_seconds()
         return elapsed > SESSION_IDLE_TIMEOUT_SECONDS
 
     def refresh(self) -> None:
         """Update last activity timestamp."""
-        self.last_activity = datetime.now(timezone.utc)
+        self.last_activity = datetime.now(UTC)
 
     def get_user_data_root(self) -> Path:
         """Get the user's encrypted data directory."""
@@ -254,7 +254,7 @@ def create_session_polkit(username: str) -> Session | None:
 
     # Generate session token
     token = generate_session_token()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # For Polkit auth, we don't have access to password for key derivation
     # Use a placeholder - encrypted storage requires separate key setup
@@ -315,6 +315,54 @@ def login_polkit(username: str) -> dict[str, Any]:
         "session_token": session.token,
         "username": session.username,
     }
+
+
+def create_session_from_pam(username: str, credential: str) -> dict[str, Any]:
+    """Authenticate via PAM and create a session.
+
+    This is the HTTP/PWA auth path. Unlike authenticate_polkit() which shows
+    a native GUI dialog, this validates credentials directly via python-pam —
+    the same underlying PAM stack, different invocation mechanism.
+
+    Advantage over Polkit: since we have the password, we can derive a real
+    encryption key via Scrypt instead of using a random placeholder.
+
+    Called by rpc_handlers/http_auth.py. Never called by the Tauri path.
+    """
+    import pam as pam_lib
+
+    # Validate username format (same rules as login_polkit)
+    if not username or len(username) > 32:
+        return {"success": False, "error": "Invalid username"}
+    if not all(c.isalnum() or c in "_-" for c in username):
+        return {"success": False, "error": "Invalid username format"}
+
+    p = pam_lib.pam()
+    if not p.authenticate(username, credential):
+        logger.warning("PAM auth failed for %s: %s", username, p.reason)
+        return {"success": False, "error": "Authentication failed"}
+
+    # Derive real encryption key from credentials (Scrypt)
+    key_material = derive_encryption_key(username, credential)
+
+    token = generate_session_token()
+    now = datetime.now(UTC)
+
+    session = Session(
+        token=token,
+        username=username,
+        created_at=now,
+        last_activity=now,
+        key_material=key_material,
+    )
+    _session_store.insert(session)
+
+    # Ensure user data directory exists
+    user_data_root = session.get_user_data_root()
+    user_data_root.mkdir(parents=True, exist_ok=True)
+
+    logger.info("PAM session created for %s", username)
+    return {"success": True, "session_token": session.token, "username": session.username}
 
 
 # Keep old function name for compatibility

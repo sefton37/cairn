@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="108" fill="#1a1a2e"/>
+
+  <!-- Rock/mountain silhouette — three layered peaks -->
+  <!-- Back-left peak -->
+  <polygon points="90,390 200,165 310,390" fill="#0f3460"/>
+  <!-- Back-right peak -->
+  <polygon points="210,390 318,200 426,390" fill="#16213e"/>
+
+  <!-- Main boulder — the "talking rock" centerpiece -->
+  <path d="M128,400 Q132,290 188,258 Q224,238 256,236 Q288,238 324,258 Q380,290 384,400 Z" fill="#4a90e2"/>
+
+  <!-- Rock surface texture / shadow -->
+  <path d="M165,400 Q168,318 210,292 Q238,276 256,274 Q274,276 302,292 Q344,318 347,400 Z" fill="#3a7fd2"/>
+
+  <!-- Highlight glint on upper-left face of rock -->
+  <ellipse cx="218" cy="295" rx="32" ry="15" fill="#5a9ff2" opacity="0.35" transform="rotate(-15,218,295)"/>
+
+  <!-- Ground shadow -->
+  <ellipse cx="256" cy="402" rx="130" ry="14" fill="#0d0d22" opacity="0.5"/>
+
+  <!-- "TR" monogram beneath -->
+  <text x="256" y="468" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif"
+        font-size="52" font-weight="700" fill="#e0e0e0"
+        text-anchor="middle" letter-spacing="6">TR</text>
+</svg>
