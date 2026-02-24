@@ -3,12 +3,16 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from .db import get_db
 from .errors import record_error
+from .http_rpc import router as http_rpc_router
 from .logging_setup import configure_logging
 from .models import (
     Event,
@@ -39,6 +43,24 @@ app = FastAPI(
     ),
     lifespan=lifespan,
 )
+
+
+# HTTP RPC routes for PWA (auth, JSON-RPC dispatch, SSE streaming)
+app.include_router(http_rpc_router)
+
+# CORS: allow the PWA origin (same host, served by StaticFiles)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Tailscale-only; no public exposure
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
+# Serve PWA static assets at /app — must be mounted LAST so it doesn't
+# shadow API routes. html=True serves index.html for unmatched paths.
+_pwa_dir = Path(__file__).resolve().parent.parent.parent / "apps" / "pwa"
+if _pwa_dir.is_dir():
+    app.mount("/app", StaticFiles(directory=_pwa_dir, html=True), name="pwa")
 
 
 @app.exception_handler(Exception)

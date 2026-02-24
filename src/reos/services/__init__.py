@@ -17,13 +17,25 @@ Design Principles:
 """
 
 from .chat_service import ChatService
+from .compression_manager import CompressionManager, get_compression_manager
+from .compression_pipeline import CompressionPipeline, ExtractionResult
+from .conversation_service import ConversationError, ConversationService
+from .memory_service import MemoryError, MemoryService
 from .play_service import PlayService
 from .context_service import ContextService
 from .knowledge_service import KnowledgeService
 
 __all__ = [
     "ChatService",
+    "CompressionManager",
+    "CompressionPipeline",
+    "ConversationError",
+    "ConversationService",
+    "ExtractionResult",
+    "MemoryError",
+    "MemoryService",
     "PlayService",
     "ContextService",
     "KnowledgeService",
+    "get_compression_manager",
 ]

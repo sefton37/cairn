@@ -112,8 +112,8 @@ class TestBlocksSchema:
         )
         assert cursor.fetchone() is not None
 
-    def test_schema_version_is_8(self, temp_data_dir: Path) -> None:
-        """Schema version is 8 after init."""
+    def test_schema_version_is_current(self, temp_data_dir: Path) -> None:
+        """Schema version matches SCHEMA_VERSION after init."""
         import reos.play_db as play_db
 
         play_db.init_db()
@@ -121,7 +121,7 @@ class TestBlocksSchema:
 
         cursor = conn.execute("SELECT version FROM schema_version")
         version = cursor.fetchone()[0]
-        assert version == 8
+        assert version == play_db.SCHEMA_VERSION
 
 
 # =============================================================================

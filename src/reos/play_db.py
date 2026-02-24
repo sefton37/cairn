@@ -45,7 +45,10 @@ _local = threading.local()
 # v9: Add disable_auto_complete column to scenes (auto-complete vs needs_attention on overdue)
 # v10: Enforce recurring scenes cannot be 'complete' - cleanup existing data
 # v11: Add block_relationships and block_embeddings tables for memory graph
-SCHEMA_VERSION = 11
+# v12: Add conversation lifecycle tables (conversations, messages, memories,
+#      memory_entities, memory_state_deltas, classification_memory_references),
+#      system_role column on acts, Your Story + Archived Conversations system acts
+SCHEMA_VERSION = 12
 
 
 def _play_db_path() -> Path:
@@ -132,6 +135,7 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             artifact_type TEXT,
             code_config TEXT,  -- JSON string
             root_block_id TEXT,  -- v8: Root block for act's main content
+            system_role TEXT,  -- v12: NULL=user act, 'your_story', 'archived_conversations'
             position INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -274,9 +278,131 @@ def _init_schema(conn: sqlite3.Connection) -> None:
         );
 
         CREATE INDEX IF NOT EXISTS idx_block_emb_hash ON block_embeddings(content_hash);
+
+        -- Conversations table (v12: Conversation lifecycle)
+        CREATE TABLE IF NOT EXISTS conversations (
+            id TEXT PRIMARY KEY,
+            block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+            status TEXT NOT NULL DEFAULT 'active',
+            started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_message_at TIMESTAMP,
+            closed_at TIMESTAMP,
+            archived_at TIMESTAMP,
+            message_count INTEGER DEFAULT 0,
+            compression_model TEXT,
+            compression_duration_ms INTEGER,
+            compression_passes INTEGER,
+            is_paused BOOLEAN DEFAULT 0,
+            paused_at TIMESTAMP,
+            CHECK (status IN ('active', 'ready_to_close', 'compressing', 'archived'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_conversations_status ON conversations(status);
+        CREATE INDEX IF NOT EXISTS idx_conversations_last_message ON conversations(last_message_at);
+
+        -- Messages table (v12: Messages within conversations)
+        CREATE TABLE IF NOT EXISTS messages (
+            id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            position INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            active_act_id TEXT,
+            active_scene_id TEXT,
+            CHECK (role IN ('user', 'cairn', 'reos', 'riva', 'system'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
+        CREATE INDEX IF NOT EXISTS idx_messages_position ON messages(conversation_id, position);
+
+        -- Memories table (v12: Compressed meaning from conversations)
+        CREATE TABLE IF NOT EXISTS memories (
+            id TEXT PRIMARY KEY,
+            block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            narrative TEXT NOT NULL,
+            narrative_embedding BLOB,
+            destination_act_id TEXT,
+            destination_page_id TEXT,
+            is_your_story BOOLEAN DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'pending_review',
+            user_reviewed BOOLEAN DEFAULT 0,
+            user_edited BOOLEAN DEFAULT 0,
+            original_narrative TEXT,
+            extraction_model TEXT,
+            extraction_confidence REAL,
+            signal_count INTEGER NOT NULL DEFAULT 1,
+            last_reinforced_at TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (destination_act_id) REFERENCES acts(act_id) ON DELETE SET NULL,
+            CHECK (status IN ('pending_review', 'approved', 'rejected', 'superseded'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_memories_conversation ON memories(conversation_id);
+        CREATE INDEX IF NOT EXISTS idx_memories_destination ON memories(destination_act_id);
+        CREATE INDEX IF NOT EXISTS idx_memories_your_story ON memories(is_your_story);
+        CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at);
+        CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status);
+        CREATE INDEX IF NOT EXISTS idx_memories_signal ON memories(signal_count);
+
+        -- Memory entities table (v12: Extracted entities from memories)
+        CREATE TABLE IF NOT EXISTS memory_entities (
+            id TEXT PRIMARY KEY,
+            memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+            entity_type TEXT NOT NULL,
+            entity_data JSON NOT NULL,
+            is_active BOOLEAN DEFAULT 1,
+            resolved_by_memory_id TEXT REFERENCES memories(id) ON DELETE SET NULL,
+            resolved_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            CHECK (entity_type IN (
+                'person', 'task', 'decision', 'waiting_on',
+                'question_resolved', 'question_opened',
+                'blocker_cleared', 'priority_change',
+                'act_reference', 'insight'
+            ))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_memory_entities_memory ON memory_entities(memory_id);
+        CREATE INDEX IF NOT EXISTS idx_memory_entities_type ON memory_entities(entity_type);
+        CREATE INDEX IF NOT EXISTS idx_memory_entities_active ON memory_entities(is_active);
+
+        -- Memory state deltas table (v12: Knowledge graph changes)
+        CREATE TABLE IF NOT EXISTS memory_state_deltas (
+            id TEXT PRIMARY KEY,
+            memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+            delta_type TEXT NOT NULL,
+            delta_data JSON NOT NULL,
+            applied BOOLEAN DEFAULT 0,
+            applied_at TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_state_deltas_memory ON memory_state_deltas(memory_id);
+        CREATE INDEX IF NOT EXISTS idx_state_deltas_applied ON memory_state_deltas(applied);
+
+        -- Classification memory references table (v12: Transparency audit trail)
+        CREATE TABLE IF NOT EXISTS classification_memory_references (
+            id TEXT PRIMARY KEY,
+            classification_id TEXT NOT NULL,
+            memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+            influence_type TEXT NOT NULL,
+            influence_score REAL,
+            reasoning TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_memory_refs_classification
+            ON classification_memory_references(classification_id);
+        CREATE INDEX IF NOT EXISTS idx_memory_refs_memory
+            ON classification_memory_references(memory_id);
     """)
 
     conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
+
+    # Create system acts for fresh databases
+    _create_system_acts(conn)
 
 
 def _run_schema_migrations(conn: sqlite3.Connection, current_version: int) -> None:
@@ -341,6 +467,11 @@ def _run_schema_migrations(conn: sqlite3.Connection, current_version: int) -> No
     if current_version < 11:
         logger.info("Running v11 migration: Add memory graph tables")
         _migrate_v10_to_v11(conn)
+
+    # Migration v11 -> v12: Add conversation lifecycle tables and system acts
+    if current_version < 12:
+        logger.info("Running v12 migration: Add conversation lifecycle tables")
+        _migrate_v11_to_v12(conn)
 
     # Update schema version
     conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
@@ -726,6 +857,278 @@ def _migrate_v10_to_v11(conn: sqlite3.Connection) -> None:
     logger.info("v11 migration complete")
 
 
+def _migrate_v11_to_v12(conn: sqlite3.Connection) -> None:
+    """Migrate from v11 to v12 schema.
+
+    Adds conversation lifecycle tables and system acts:
+    - system_role column on acts (your_story, archived_conversations)
+    - conversations: Conversation lifecycle tracking
+    - messages: Messages within conversations
+    - memories: Compressed meaning blocks with signal strengthening
+    - memory_entities: Extracted entities (relational, not blocks)
+    - memory_state_deltas: Knowledge graph changes
+    - classification_memory_references: Transparency audit trail
+    - Your Story and Archived Conversations system acts
+    """
+    # Add system_role column to acts
+    cursor = conn.execute("PRAGMA table_info(acts)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if "system_role" not in columns:
+        conn.execute("ALTER TABLE acts ADD COLUMN system_role TEXT")
+        logger.info("Added system_role column to acts table")
+
+    # Create conversations table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS conversations (
+            id TEXT PRIMARY KEY,
+            block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+            status TEXT NOT NULL DEFAULT 'active',
+            started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_message_at TIMESTAMP,
+            closed_at TIMESTAMP,
+            archived_at TIMESTAMP,
+            message_count INTEGER DEFAULT 0,
+            compression_model TEXT,
+            compression_duration_ms INTEGER,
+            compression_passes INTEGER,
+            is_paused BOOLEAN DEFAULT 0,
+            paused_at TIMESTAMP,
+            CHECK (status IN ('active', 'ready_to_close', 'compressing', 'archived'))
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_conversations_status ON conversations(status)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_conversations_last_message "
+        "ON conversations(last_message_at)"
+    )
+
+    # Create messages table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS messages (
+            id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            position INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            active_act_id TEXT,
+            active_scene_id TEXT,
+            CHECK (role IN ('user', 'cairn', 'reos', 'riva', 'system'))
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_messages_position "
+        "ON messages(conversation_id, position)"
+    )
+
+    # Create memories table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS memories (
+            id TEXT PRIMARY KEY,
+            block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+            conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            narrative TEXT NOT NULL,
+            narrative_embedding BLOB,
+            destination_act_id TEXT,
+            destination_page_id TEXT,
+            is_your_story BOOLEAN DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'pending_review',
+            user_reviewed BOOLEAN DEFAULT 0,
+            user_edited BOOLEAN DEFAULT 0,
+            original_narrative TEXT,
+            extraction_model TEXT,
+            extraction_confidence REAL,
+            signal_count INTEGER NOT NULL DEFAULT 1,
+            last_reinforced_at TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (destination_act_id) REFERENCES acts(act_id) ON DELETE SET NULL,
+            CHECK (status IN ('pending_review', 'approved', 'rejected', 'superseded'))
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memories_conversation ON memories(conversation_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memories_destination ON memories(destination_act_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memories_your_story ON memories(is_your_story)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memories_signal ON memories(signal_count)"
+    )
+
+    # Create memory_entities table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS memory_entities (
+            id TEXT PRIMARY KEY,
+            memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+            entity_type TEXT NOT NULL,
+            entity_data JSON NOT NULL,
+            is_active BOOLEAN DEFAULT 1,
+            resolved_by_memory_id TEXT REFERENCES memories(id) ON DELETE SET NULL,
+            resolved_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            CHECK (entity_type IN (
+                'person', 'task', 'decision', 'waiting_on',
+                'question_resolved', 'question_opened',
+                'blocker_cleared', 'priority_change',
+                'act_reference', 'insight'
+            ))
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memory_entities_memory "
+        "ON memory_entities(memory_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memory_entities_type "
+        "ON memory_entities(entity_type)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memory_entities_active "
+        "ON memory_entities(is_active)"
+    )
+
+    # Create memory_state_deltas table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS memory_state_deltas (
+            id TEXT PRIMARY KEY,
+            memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+            delta_type TEXT NOT NULL,
+            delta_data JSON NOT NULL,
+            applied BOOLEAN DEFAULT 0,
+            applied_at TIMESTAMP
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_state_deltas_memory "
+        "ON memory_state_deltas(memory_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_state_deltas_applied "
+        "ON memory_state_deltas(applied)"
+    )
+
+    # Create classification_memory_references table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS classification_memory_references (
+            id TEXT PRIMARY KEY,
+            classification_id TEXT NOT NULL,
+            memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+            influence_type TEXT NOT NULL,
+            influence_score REAL,
+            reasoning TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memory_refs_classification "
+        "ON classification_memory_references(classification_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memory_refs_memory "
+        "ON classification_memory_references(memory_id)"
+    )
+
+    # Create system acts
+    _create_system_acts(conn)
+
+    logger.info("v12 migration complete")
+
+
+YOUR_STORY_ACT_ID = "your-story"
+ARCHIVED_CONVERSATIONS_ACT_ID = "archived-conversations"
+
+
+def _create_system_acts(conn: sqlite3.Connection) -> None:
+    """Create Your Story and Archived Conversations system acts if they don't exist.
+
+    Uses stable IDs so they can be referenced reliably across the codebase.
+    If a Your Story act already exists (from ensure_your_story_act), updates it
+    with the system_role rather than creating a duplicate.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Your Story - permanent, un-archivable Act for cross-cutting identity context
+    cursor = conn.execute("SELECT act_id FROM acts WHERE act_id = ?", (YOUR_STORY_ACT_ID,))
+    if cursor.fetchone():
+        # Already exists (created by ensure_your_story_act) — just set system_role
+        conn.execute(
+            "UPDATE acts SET system_role = 'your_story', active = 1 WHERE act_id = ?",
+            (YOUR_STORY_ACT_ID,),
+        )
+        logger.info("Updated existing 'Your Story' act with system_role")
+    else:
+        conn.execute(
+            """INSERT INTO acts (act_id, title, active, notes, system_role, position,
+               created_at, updated_at)
+               VALUES (?, ?, 1, ?, ?, 0, ?, ?)""",
+            (
+                YOUR_STORY_ACT_ID,
+                "Your Story",
+                "A permanent record of who you are, built from conversation memories.",
+                "your_story",
+                now,
+                now,
+            ),
+        )
+        logger.info("Created 'Your Story' system act: %s", YOUR_STORY_ACT_ID)
+
+    # Archived Conversations - system container for archived conversation blocks
+    cursor = conn.execute(
+        "SELECT act_id FROM acts WHERE act_id = ?", (ARCHIVED_CONVERSATIONS_ACT_ID,)
+    )
+    if not cursor.fetchone():
+        conn.execute(
+            """INSERT INTO acts (act_id, title, active, notes, system_role, position,
+               created_at, updated_at)
+               VALUES (?, ?, 0, ?, ?, 999, ?, ?)""",
+            (
+                ARCHIVED_CONVERSATIONS_ACT_ID,
+                "Archived Conversations",
+                "System container for archived conversation blocks. Not user-facing.",
+                "archived_conversations",
+                now,
+                now,
+            ),
+        )
+        logger.info(
+            "Created 'Archived Conversations' system act: %s",
+            ARCHIVED_CONVERSATIONS_ACT_ID,
+        )
+
+
+def get_system_act_id(system_role: str) -> str | None:
+    """Get the act_id for a system act by its role.
+
+    Args:
+        system_role: 'your_story' or 'archived_conversations'
+
+    Returns:
+        The act_id, or None if not found.
+    """
+    init_db()
+    conn = _get_connection()
+    cursor = conn.execute(
+        "SELECT act_id FROM acts WHERE system_role = ?", (system_role,)
+    )
+    row = cursor.fetchone()
+    return row["act_id"] if row else None
+
+
 def _migrate_calendar_data_from_cairn(conn: sqlite3.Connection) -> None:
     """Migrate calendar data from cairn_metadata.scene_calendar_links to scenes table.
 
@@ -1002,7 +1405,8 @@ def list_acts() -> tuple[list[dict[str, Any]], str | None]:
     conn = _get_connection()
 
     cursor = conn.execute("""
-        SELECT act_id, title, active, notes, repo_path, artifact_type, code_config, color, root_block_id
+        SELECT act_id, title, active, notes, repo_path, artifact_type, code_config,
+               color, root_block_id, system_role
         FROM acts
         ORDER BY position ASC
     """)
@@ -1028,6 +1432,7 @@ def list_acts() -> tuple[list[dict[str, Any]], str | None]:
             "code_config": code_config,
             "color": row["color"],
             "root_block_id": row["root_block_id"],
+            "system_role": row["system_role"],
         }
         acts.append(act)
 
@@ -1042,7 +1447,8 @@ def get_act(act_id: str) -> dict[str, Any] | None:
     conn = _get_connection()
     cursor = conn.execute(
         """
-        SELECT act_id, title, active, notes, repo_path, artifact_type, code_config, color, root_block_id
+        SELECT act_id, title, active, notes, repo_path, artifact_type, code_config,
+               color, root_block_id, system_role
         FROM acts WHERE act_id = ?
     """,
         (act_id,),
@@ -1069,6 +1475,7 @@ def get_act(act_id: str) -> dict[str, Any] | None:
         "artifact_type": row["artifact_type"],
         "code_config": code_config,
         "root_block_id": row["root_block_id"],
+        "system_role": row["system_role"],
     }
 
 
@@ -1149,7 +1556,15 @@ def set_active_act(act_id: str | None) -> tuple[list[dict[str, Any]], str | None
 
 
 def delete_act(act_id: str) -> tuple[list[dict[str, Any]], str | None]:
-    """Delete an act and all its scenes."""
+    """Delete an act and all its scenes.
+
+    System acts (Your Story, Archived Conversations) cannot be deleted.
+    """
+    act = get_act(act_id)
+    if act and act.get("system_role"):
+        logger.warning("Cannot delete system act '%s' (role: %s)", act_id, act["system_role"])
+        return list_acts()
+
     with _transaction() as conn:
         conn.execute("DELETE FROM acts WHERE act_id = ?", (act_id,))
 
@@ -1883,13 +2298,18 @@ def remove_attachment(attachment_id: str) -> bool:
 
 
 def ensure_your_story_act() -> tuple[list[dict[str, Any]], str]:
-    """Ensure 'Your Story' Act exists."""
-    YOUR_STORY_ACT_ID = "your-story"
-
+    """Ensure 'Your Story' Act exists with system_role set."""
     init_db()
 
     act = get_act(YOUR_STORY_ACT_ID)
     if act:
+        # Ensure system_role is set (may be missing if created before v12)
+        if not act.get("system_role"):
+            with _transaction() as conn:
+                conn.execute(
+                    "UPDATE acts SET system_role = 'your_story' WHERE act_id = ?",
+                    (YOUR_STORY_ACT_ID,),
+                )
         acts, _ = list_acts()
         return acts, YOUR_STORY_ACT_ID
 
@@ -1897,10 +2317,11 @@ def ensure_your_story_act() -> tuple[list[dict[str, Any]], str]:
     now = _now_iso()
     with _transaction() as conn:
         conn.execute(
-            """
-            INSERT INTO acts (act_id, title, active, notes, position, created_at, updated_at)
-            VALUES (?, 'Your Story', 0, 'The overarching narrative of your life.', 0, ?, ?)
-        """,
+            """INSERT INTO acts (act_id, title, active, notes, system_role, position,
+               created_at, updated_at)
+               VALUES (?, 'Your Story', 1,
+               'A permanent record of who you are, built from conversation memories.',
+               'your_story', 0, ?, ?)""",
             (YOUR_STORY_ACT_ID, now, now),
         )
 

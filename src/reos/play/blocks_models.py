@@ -45,6 +45,11 @@ class BlockType(str, Enum):
     # Document knowledge base blocks
     DOCUMENT_CHUNK = "document_chunk"        # Chunk of extracted document text for RAG
 
+    # Conversation lifecycle blocks (v12)
+    CONVERSATION = "conversation"            # Container for an interaction session
+    MESSAGE = "message"                      # Individual message within a conversation
+    MEMORY = "memory"                        # Compressed meaning extracted from a conversation
+
 
 # Block types that support nesting children
 NESTABLE_TYPES = frozenset({

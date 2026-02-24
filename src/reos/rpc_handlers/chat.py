@@ -14,7 +14,6 @@ from reos.db import Database
 
 from .approvals import handle_approval_respond
 
-
 # =============================================================================
 # Chat Handlers
 # =============================================================================
@@ -112,6 +111,27 @@ def handle_chat_respond(
         "extended_thinking_trace": response.extended_thinking_trace,
         "user_message_id": response.user_message_id,
     }
+
+
+def handle_conversations_list(
+    db: Database,
+    *,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """List recent conversations for the PWA conversation picker."""
+    rows = db.iter_conversations(limit=limit)
+    return {"conversations": rows}
+
+
+def handle_conversation_messages(
+    db: Database,
+    *,
+    conversation_id: str,
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Get messages for a conversation to restore chat history in the PWA."""
+    rows = db.get_messages(conversation_id=conversation_id, limit=limit)
+    return {"messages": rows, "conversation_id": conversation_id}
 
 
 def handle_chat_clear(
