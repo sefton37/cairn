@@ -158,3 +158,65 @@ def handle_conversations_compression_status(
     manager = get_compression_manager()
     status = manager.get_status(conversation_id)
     return {"status": status.to_dict() if status else None}
+
+
+@require_params("query")
+@rpc_handler("lifecycle/conversations/search")
+def handle_conversations_search(
+    db: Database,
+    *,
+    query: str,
+    status: str | None = "archived",
+    limit: int = 20,
+    offset: int = 0,
+    since: str | None = None,
+    until: str | None = None,
+) -> dict[str, Any]:
+    """Search conversation messages by keyword using FTS5."""
+    service = _get_service()
+    results = service.search_messages(
+        query,
+        status=status or "archived",
+        limit=limit,
+        offset=offset,
+        since=since,
+        until=until,
+    )
+    return {"results": results, "count": len(results)}
+
+
+@rpc_handler("lifecycle/conversations/list_enhanced")
+def handle_conversations_list_enhanced(
+    db: Database,
+    *,
+    status: str | None = "archived",
+    limit: int = 50,
+    offset: int = 0,
+    since: str | None = None,
+    until: str | None = None,
+    has_memories: bool | None = None,
+) -> dict[str, Any]:
+    """List conversations with summaries and memory counts."""
+    service = _get_service()
+    conversations = service.list_with_summaries(
+        status=status or "archived",
+        limit=limit,
+        offset=offset,
+        since=since,
+        until=until,
+        has_memories=has_memories,
+    )
+    return {"conversations": conversations, "count": len(conversations)}
+
+
+@require_params("conversation_id")
+@rpc_handler("lifecycle/conversations/detail")
+def handle_conversations_detail(
+    db: Database,
+    *,
+    conversation_id: str,
+) -> dict[str, Any]:
+    """Get full conversation detail with messages, memories, and summary."""
+    service = _get_service()
+    detail = service.get_conversation_detail(conversation_id)
+    return detail

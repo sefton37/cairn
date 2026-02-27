@@ -146,16 +146,18 @@ class TestActsCRUD:
         acts, act_id = initialized_db.create_act(title="Test Act", notes="Test notes")
 
         assert act_id.startswith("act-")
-        assert len(acts) == 1
-        assert acts[0]["title"] == "Test Act"
-        assert acts[0]["notes"] == "Test notes"
-        assert acts[0]["active"] is False
+        # acts includes built-in acts (your-story, archived-conversations) + new one
+        new_act = next(a for a in acts if a["act_id"] == act_id)
+        assert new_act["title"] == "Test Act"
+        assert new_act["notes"] == "Test notes"
+        assert new_act["active"] is False
 
     def test_create_act_with_color(self, initialized_db) -> None:
         """create_act supports color parameter."""
         acts, act_id = initialized_db.create_act(title="Colored Act", color="#ff5500")
 
-        assert acts[0]["color"] == "#ff5500"
+        new_act = next(a for a in acts if a["act_id"] == act_id)
+        assert new_act["color"] == "#ff5500"
 
     def test_get_act(self, initialized_db) -> None:
         """get_act returns single act by ID."""

@@ -100,6 +100,13 @@ def handle_chat_respond(
         agent_type=agent_type,
         extended_thinking=extended_thinking,
     )
+
+    # Fire turn assessment asynchronously — zero latency impact on the caller.
+    _maybe_submit_turn_assessment(
+        user_message=text,
+        cairn_response=response.answer,
+    )
+
     return {
         "answer": response.answer,
         "conversation_id": response.conversation_id,
@@ -111,6 +118,47 @@ def handle_chat_respond(
         "extended_thinking_trace": response.extended_thinking_trace,
         "user_message_id": response.user_message_id,
     }
+
+
+def _maybe_submit_turn_assessment(
+    *,
+    user_message: str,
+    cairn_response: str,
+) -> None:
+    """Submit a turn for background assessment if an active lifecycle conversation exists.
+
+    Imports lazily to avoid circular imports. Silently no-ops when:
+    - The reos.services imports are unavailable
+    - No active lifecycle conversation exists (soft bridge between DB systems)
+    - Any other unexpected error occurs
+
+    This must never raise — it runs after a response is already generated.
+    """
+    try:
+        # Lazy imports to avoid circular dependency at module load time.
+        from reos.services.conversation_service import ConversationService
+        from reos.services.turn_delta_assessor import get_turn_assessment_queue
+
+        conv_service = ConversationService()
+        active = conv_service.get_active()
+        if active is None:
+            # No lifecycle conversation open — skip silently.
+            return
+
+        queue = get_turn_assessment_queue()
+        turn_position = active.message_count  # approximate position after this turn
+
+        queue.submit(
+            conversation_id=active.id,
+            turn_position=turn_position,
+            user_message=user_message,
+            cairn_response=cairn_response,
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug(
+            "Turn assessment submission skipped: %s", e
+        )
 
 
 def handle_conversations_list(

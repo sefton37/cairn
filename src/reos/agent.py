@@ -121,6 +121,9 @@ class ConversationContext:
     play_context: str = ""  # Formatted text for prompt
     play_data: dict[str, Any] = field(default_factory=dict)  # Structured data for intent engine
 
+    # Temporal awareness (injected first, before all other context)
+    temporal_context: str = ""
+
     # Other context sources
     learned_context: str = ""
     system_context: str = ""
@@ -133,7 +136,11 @@ class ConversationContext:
 
     def build_prompt_prefix(self) -> str:
         """Build the full prompt prefix from all context sources."""
-        parts = [self.persona_system]
+        parts = []
+        if self.temporal_context:
+            parts.append(self.temporal_context)
+        if self.persona_system:
+            parts.append(self.persona_system)
         if self.persona_context:
             parts.append(self.persona_context)
         if self.play_context:
@@ -1939,10 +1946,35 @@ class ChatAgent:
         # Conversation history ("messages") - always loaded, cannot be disabled
         conversation_history = self._build_conversation_context(conversation_id)
 
+        # Inject state briefing on first message of a new conversation.
+        # conversation_history is empty only before any prior messages have been
+        # exchanged in this conversation session, making it a reliable first-turn
+        # detector without requiring an extra DB query.
+        if "memory" not in disabled_sources and not conversation_history:
+            try:
+                from .services.state_briefing_service import StateBriefingService
+                briefing = StateBriefingService().get_or_generate()
+                if briefing and briefing.content:
+                    memory_context = (
+                        f"## Situational Awareness\n{briefing.content}\n\n{memory_context}"
+                    )
+            except Exception:
+                logger.debug("State briefing unavailable, continuing without")
+
+        # Build temporal context (zero inference cost — pure datetime math)
+        temporal_context = ""
+        try:
+            from .services.temporal_context import build_temporal_context
+
+            temporal_context = build_temporal_context()
+        except Exception:
+            logger.debug("Temporal context unavailable, continuing without")
+
         # Build the context object
         ctx = ConversationContext(
             user_text=user_text,
             conversation_id=conversation_id,
+            temporal_context=temporal_context,
             persona_system=persona_system,
             persona_context=persona_context_str,
             play_context=play_context,

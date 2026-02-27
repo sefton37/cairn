@@ -442,5 +442,204 @@ class ConversationService:
         return conv
 
 
+    def search_messages(
+        self,
+        query: str,
+        *,
+        status: str = "archived",
+        limit: int = 20,
+        offset: int = 0,
+        since: str | None = None,
+        until: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """FTS5 search across message content.
+
+        Searches the messages_fts virtual table and joins with conversations
+        to filter by status and date range.
+
+        Returns dicts with: conversation_id, message_id, snippet, rank, role,
+        position, created_at.
+        """
+        conn = _get_connection()
+
+        # Build dynamic WHERE clause for optional date filters
+        date_filters = ""
+        params: list[Any] = [query]
+
+        if since:
+            date_filters += " AND c.started_at >= ?"
+            params.append(since)
+        if until:
+            date_filters += " AND c.started_at <= ?"
+            params.append(until)
+
+        params.extend([limit, offset])
+
+        cursor = conn.execute(
+            f"""
+            SELECT
+                m.conversation_id,
+                m.id AS message_id,
+                snippet(messages_fts, 0, '<b>', '</b>', '...', 20) AS snippet,
+                messages_fts.rank AS rank,
+                m.role,
+                m.position,
+                m.created_at
+            FROM messages_fts
+            JOIN messages m ON m.rowid = messages_fts.rowid
+            JOIN conversations c ON c.id = m.conversation_id
+            WHERE messages_fts MATCH ?
+              AND c.status = '{status}'
+              {date_filters}
+            ORDER BY rank
+            LIMIT ? OFFSET ?
+            """,
+            params,
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_with_summaries(
+        self,
+        *,
+        status: str = "archived",
+        limit: int = 50,
+        offset: int = 0,
+        since: str | None = None,
+        until: str | None = None,
+        has_memories: bool | None = None,
+    ) -> list[dict[str, Any]]:
+        """List conversations with summary, memory_count, and entity_count.
+
+        Joins conversations with conversation_summaries (LEFT JOIN), counts
+        associated memories and entities.  Supports filtering by status, date
+        range, and whether at least one memory exists.
+        """
+        conn = _get_connection()
+
+        conditions = ["c.status = ?"]
+        params: list[Any] = [status]
+
+        if since:
+            conditions.append("c.started_at >= ?")
+            params.append(since)
+        if until:
+            conditions.append("c.started_at <= ?")
+            params.append(until)
+        if has_memories is True:
+            conditions.append(
+                "EXISTS (SELECT 1 FROM memories mem WHERE mem.conversation_id = c.id)"
+            )
+        elif has_memories is False:
+            conditions.append(
+                "NOT EXISTS (SELECT 1 FROM memories mem WHERE mem.conversation_id = c.id)"
+            )
+
+        where_clause = " AND ".join(conditions)
+        params.extend([limit, offset])
+
+        cursor = conn.execute(
+            f"""
+            SELECT
+                c.id,
+                c.block_id,
+                c.status,
+                c.started_at,
+                c.last_message_at,
+                c.closed_at,
+                c.archived_at,
+                c.message_count,
+                c.is_paused,
+                cs.summary,
+                COUNT(DISTINCT mem.id) AS memory_count,
+                COUNT(DISTINCT me.id) AS entity_count
+            FROM conversations c
+            LEFT JOIN conversation_summaries cs ON cs.conversation_id = c.id
+            LEFT JOIN memories mem ON mem.conversation_id = c.id
+            LEFT JOIN memory_entities me ON me.memory_id = mem.id
+            WHERE {where_clause}
+            GROUP BY c.id
+            ORDER BY c.started_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            params,
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def get_conversation_detail(self, conversation_id: str) -> dict[str, Any]:
+        """Return a full conversation view: metadata, messages, memories, summary.
+
+        Returns a dict with keys:
+        - conversation: the conversation fields (or None if not found)
+        - messages: ordered list of message dicts
+        - memories: list of memory dicts with entities and deltas
+        - summary: the conversation summary string (or None)
+        """
+        conn = _get_connection()
+
+        # Conversation row
+        cursor = conn.execute(
+            "SELECT * FROM conversations WHERE id = ?", (conversation_id,)
+        )
+        conv_row = cursor.fetchone()
+        if conv_row is None:
+            return {
+                "conversation": None,
+                "messages": [],
+                "memories": [],
+                "summary": None,
+            }
+
+        # Messages
+        cursor = conn.execute(
+            "SELECT * FROM messages WHERE conversation_id = ? ORDER BY position ASC",
+            (conversation_id,),
+        )
+        message_rows = cursor.fetchall()
+
+        # Memories with entities and deltas
+        cursor = conn.execute(
+            "SELECT * FROM memories WHERE conversation_id = ? ORDER BY created_at ASC",
+            (conversation_id,),
+        )
+        memory_rows = cursor.fetchall()
+
+        memories = []
+        for mem_row in memory_rows:
+            mem_dict = dict(mem_row)
+
+            # Entities for this memory
+            cursor = conn.execute(
+                "SELECT * FROM memory_entities WHERE memory_id = ?",
+                (mem_row["id"],),
+            )
+            mem_dict["entities"] = [dict(r) for r in cursor.fetchall()]
+
+            # State deltas for this memory
+            cursor = conn.execute(
+                "SELECT * FROM memory_state_deltas WHERE memory_id = ?",
+                (mem_row["id"],),
+            )
+            mem_dict["deltas"] = [dict(r) for r in cursor.fetchall()]
+
+            memories.append(mem_dict)
+
+        # Summary
+        cursor = conn.execute(
+            "SELECT summary FROM conversation_summaries WHERE conversation_id = ?",
+            (conversation_id,),
+        )
+        summary_row = cursor.fetchone()
+        summary = summary_row["summary"] if summary_row else None
+
+        return {
+            "conversation": dict(conv_row),
+            "messages": [dict(r) for r in message_rows],
+            "memories": memories,
+            "summary": summary,
+        }
+
+
 class ConversationError(Exception):
     """Raised when a conversation operation fails."""

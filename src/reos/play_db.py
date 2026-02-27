@@ -48,7 +48,9 @@ _local = threading.local()
 # v12: Add conversation lifecycle tables (conversations, messages, memories,
 #      memory_entities, memory_state_deltas, classification_memory_references),
 #      system_role column on acts, Your Story + Archived Conversations system acts
-SCHEMA_VERSION = 12
+# v13: Add source column on memories, FTS5 tables, conversation_summaries,
+#      state_briefings, turn_assessments
+SCHEMA_VERSION = 13
 
 
 def _play_db_path() -> Path:
@@ -335,6 +337,8 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             extraction_confidence REAL,
             signal_count INTEGER NOT NULL DEFAULT 1,
             last_reinforced_at TEXT,
+            source TEXT NOT NULL DEFAULT 'compression'
+                CHECK (source IN ('compression', 'turn_assessment')),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (destination_act_id) REFERENCES acts(act_id) ON DELETE SET NULL,
             CHECK (status IN ('pending_review', 'approved', 'rejected', 'superseded'))
@@ -397,9 +401,57 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             ON classification_memory_references(classification_id);
         CREATE INDEX IF NOT EXISTS idx_memory_refs_memory
             ON classification_memory_references(memory_id);
+
+        -- FTS5 on messages for archive search (v13)
+        CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+            content, content='messages', content_rowid='rowid'
+        );
+
+        -- FTS5 on memory narratives for keyword search (v13)
+        CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+            narrative, content='memories', content_rowid='rowid'
+        );
+
+        -- Conversation summaries (v13)
+        CREATE TABLE IF NOT EXISTS conversation_summaries (
+            id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL UNIQUE REFERENCES conversations(id),
+            summary TEXT NOT NULL,
+            summary_model TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        -- State briefing cache (v13)
+        CREATE TABLE IF NOT EXISTS state_briefings (
+            id TEXT PRIMARY KEY,
+            generated_at TEXT NOT NULL,
+            content TEXT NOT NULL,
+            token_count INTEGER,
+            trigger TEXT NOT NULL
+        );
+
+        -- Turn assessment audit log (v13)
+        CREATE TABLE IF NOT EXISTS turn_assessments (
+            id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL REFERENCES conversations(id),
+            turn_position INTEGER NOT NULL,
+            assessment TEXT NOT NULL,
+            memory_id TEXT REFERENCES memories(id) ON DELETE SET NULL,
+            raw_input TEXT,
+            model_used TEXT,
+            duration_ms INTEGER,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_turn_assessments_conversation
+            ON turn_assessments(conversation_id);
     """)
 
     conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
+
+    # FTS5 sync triggers (must be outside executescript for some SQLite builds)
+    _create_fts_triggers(conn)
 
     # Create system acts for fresh databases
     _create_system_acts(conn)
@@ -472,6 +524,11 @@ def _run_schema_migrations(conn: sqlite3.Connection, current_version: int) -> No
     if current_version < 12:
         logger.info("Running v12 migration: Add conversation lifecycle tables")
         _migrate_v11_to_v12(conn)
+
+    # Migration v12 -> v13: Add FTS5, summaries, briefings, turn assessments
+    if current_version < 13:
+        logger.info("Running v13 migration: Add FTS5, summaries, briefings, assessments")
+        _migrate_v12_to_v13(conn)
 
     # Update schema version
     conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
@@ -1047,6 +1104,137 @@ def _migrate_v11_to_v12(conn: sqlite3.Connection) -> None:
     _create_system_acts(conn)
 
     logger.info("v12 migration complete")
+
+
+def _create_fts_triggers(conn: sqlite3.Connection) -> None:
+    """Create FTS5 sync triggers for messages_fts and memories_fts."""
+    # Messages FTS triggers
+    conn.execute("""
+        CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
+            INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+        END
+    """)
+    conn.execute("""
+        CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
+            INSERT INTO messages_fts(messages_fts, rowid, content)
+                VALUES ('delete', old.rowid, old.content);
+        END
+    """)
+    conn.execute("""
+        CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE OF content ON messages BEGIN
+            INSERT INTO messages_fts(messages_fts, rowid, content)
+                VALUES ('delete', old.rowid, old.content);
+            INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+        END
+    """)
+    # Memories FTS triggers
+    conn.execute("""
+        CREATE TRIGGER IF NOT EXISTS memories_fts_insert AFTER INSERT ON memories BEGIN
+            INSERT INTO memories_fts(rowid, narrative) VALUES (new.rowid, new.narrative);
+        END
+    """)
+    conn.execute("""
+        CREATE TRIGGER IF NOT EXISTS memories_fts_delete AFTER DELETE ON memories BEGIN
+            INSERT INTO memories_fts(memories_fts, rowid, narrative)
+                VALUES ('delete', old.rowid, old.narrative);
+        END
+    """)
+    conn.execute("""
+        CREATE TRIGGER IF NOT EXISTS memories_fts_update AFTER UPDATE OF narrative ON memories BEGIN
+            INSERT INTO memories_fts(memories_fts, rowid, narrative)
+                VALUES ('delete', old.rowid, old.narrative);
+            INSERT INTO memories_fts(rowid, narrative) VALUES (new.rowid, new.narrative);
+        END
+    """)
+
+
+def _migrate_v12_to_v13(conn: sqlite3.Connection) -> None:
+    """Migrate from v12 to v13 schema.
+
+    Adds:
+    - source column on memories (mid-turn vs end-of-conversation)
+    - FTS5 virtual tables on messages and memories
+    - conversation_summaries table
+    - state_briefings table
+    - turn_assessments table
+    """
+    # Add source column to memories
+    cursor = conn.execute("PRAGMA table_info(memories)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if "source" not in columns:
+        conn.execute(
+            "ALTER TABLE memories ADD COLUMN source TEXT NOT NULL DEFAULT 'compression'"
+        )
+        logger.info("Added source column to memories table")
+
+    # Create FTS5 virtual tables
+    conn.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+            content, content='messages', content_rowid='rowid'
+        )
+    """)
+    conn.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+            narrative, content='memories', content_rowid='rowid'
+        )
+    """)
+
+    # Backfill FTS5 tables with existing data
+    conn.execute(
+        "INSERT OR IGNORE INTO messages_fts(rowid, content) "
+        "SELECT rowid, content FROM messages"
+    )
+    conn.execute(
+        "INSERT OR IGNORE INTO memories_fts(rowid, narrative) "
+        "SELECT rowid, narrative FROM memories"
+    )
+
+    # Create FTS triggers
+    _create_fts_triggers(conn)
+
+    # Create conversation_summaries table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS conversation_summaries (
+            id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL UNIQUE REFERENCES conversations(id),
+            summary TEXT NOT NULL,
+            summary_model TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+
+    # Create state_briefings table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS state_briefings (
+            id TEXT PRIMARY KEY,
+            generated_at TEXT NOT NULL,
+            content TEXT NOT NULL,
+            token_count INTEGER,
+            trigger TEXT NOT NULL
+        )
+    """)
+
+    # Create turn_assessments table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS turn_assessments (
+            id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL REFERENCES conversations(id),
+            turn_position INTEGER NOT NULL,
+            assessment TEXT NOT NULL,
+            memory_id TEXT REFERENCES memories(id) ON DELETE SET NULL,
+            raw_input TEXT,
+            model_used TEXT,
+            duration_ms INTEGER,
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_turn_assessments_conversation "
+        "ON turn_assessments(conversation_id)"
+    )
+
+    logger.info("v13 migration complete")
 
 
 YOUR_STORY_ACT_ID = "your-story"

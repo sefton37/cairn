@@ -100,6 +100,7 @@ class Memory:
     user_edited: bool
     original_narrative: str | None
     created_at: str
+    source: str = "compression"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -118,10 +119,16 @@ class Memory:
             "user_edited": self.user_edited,
             "original_narrative": self.original_narrative,
             "created_at": self.created_at,
+            "source": self.source,
         }
 
     @classmethod
     def from_row(cls, row: Any) -> Memory:
+        # source column added in v13; handle gracefully for older DBs
+        try:
+            source = row["source"]
+        except (IndexError, KeyError):
+            source = "compression"
         return cls(
             id=row["id"],
             block_id=row["block_id"],
@@ -138,6 +145,7 @@ class Memory:
             user_edited=bool(row["user_edited"]),
             original_narrative=row["original_narrative"],
             created_at=row["created_at"],
+            source=source,
         )
 
 
@@ -219,6 +227,7 @@ class MemoryService:
         model: str = "",
         confidence: float = 0.0,
         destination_act_id: str | None = None,
+        source: str = "compression",
     ) -> Memory:
         """Store a memory with deduplication via signal strengthening.
 
@@ -236,6 +245,7 @@ class MemoryService:
             model: Model used for extraction.
             confidence: Extraction confidence score.
             destination_act_id: Target Act, or None for Your Story.
+            source: How this memory was created ('compression' or 'turn_assessment').
 
         Returns:
             The created or reinforced Memory.
@@ -264,6 +274,7 @@ class MemoryService:
             model=model,
             confidence=confidence,
             destination_act_id=destination_act_id,
+            source=source,
         )
 
     def _check_duplicate(
@@ -429,6 +440,7 @@ class MemoryService:
         model: str = "",
         confidence: float = 0.0,
         destination_act_id: str | None = None,
+        source: str = "compression",
     ) -> Memory:
         """Create a new memory (no duplicate found)."""
         memory_id = _new_id()
@@ -450,8 +462,9 @@ class MemoryService:
             conn.execute(
                 """INSERT INTO memories (id, block_id, conversation_id, narrative,
                    narrative_embedding, destination_act_id, is_your_story, status,
-                   extraction_model, extraction_confidence, signal_count, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?, 1, ?)""",
+                   extraction_model, extraction_confidence, signal_count, source,
+                   created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?, 1, ?, ?)""",
                 (
                     memory_id,
                     block_id,
@@ -462,6 +475,7 @@ class MemoryService:
                     1 if is_your_story else 0,
                     model,
                     confidence,
+                    source,
                     now,
                 ),
             )
@@ -497,9 +511,13 @@ class MemoryService:
             user_edited=False,
             original_narrative=None,
             created_at=now,
+            source=source,
         )
 
-        logger.info("Created memory %s for conversation %s", memory_id, conversation_id)
+        logger.info(
+            "Created memory %s for conversation %s (source=%s)",
+            memory_id, conversation_id, source,
+        )
         return memory
 
     def _link_conversation(self, block_id: str, conversation_id: str) -> None:
@@ -1016,6 +1034,295 @@ class MemoryService:
                 "id": row["id"],
                 "delta_type": row["delta_type"],
                 "delta_data": json.loads(row["delta_data"]),
+            }
+            for row in cursor.fetchall()
+        ]
+
+    # -------------------------------------------------------------------------
+    # Knowledge Browser
+    # -------------------------------------------------------------------------
+
+    def search_fts(
+        self,
+        query: str,
+        *,
+        status: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Keyword FTS5 search on memory narratives.
+
+        Uses memories_fts virtual table. Joins with memories for status filter.
+        Returns dicts with: id, narrative, status, signal_count, source,
+        created_at, snippet, rank.
+        """
+        conn = _get_connection()
+        params: list[Any] = [query]
+        status_clause = ""
+        if status:
+            status_clause = "AND m.status = ?"
+            params.append(status)
+        params.extend([limit, offset])
+
+        cursor = conn.execute(
+            f"""SELECT m.id, m.narrative, m.status, m.signal_count, m.source,
+                       m.created_at,
+                       snippet(memories_fts, 0, '[', ']', '...', 20) AS snippet,
+                       fts.rank
+                FROM memories_fts fts
+                JOIN memories m ON m.rowid = fts.rowid
+                WHERE memories_fts MATCH ?
+                {status_clause}
+                ORDER BY fts.rank
+                LIMIT ? OFFSET ?""",
+            params,
+        )
+        return [
+            {
+                "id": row["id"],
+                "narrative": row["narrative"],
+                "status": row["status"],
+                "signal_count": row["signal_count"],
+                "source": row["source"],
+                "created_at": row["created_at"],
+                "snippet": row["snippet"],
+                "rank": row["rank"],
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def list_enhanced(
+        self,
+        *,
+        status: str | None = None,
+        act_id: str | None = None,
+        entity_type: str | None = None,
+        source: str | None = None,
+        min_signal: int | None = None,
+        limit: int = 50,
+        offset: int = 0,
+        order_by: str = "created_at",
+    ) -> list[dict[str, Any]]:
+        """Enhanced listing with entity_count, delta_count, supersession info.
+
+        Joins memories with counts from memory_entities and memory_state_deltas.
+        Also checks block_relationships for SUPERSEDES relationships.
+        Filters: status, act_id, entity_type (via memory_entities), source,
+        min_signal (signal_count >= N).
+        Order: 'created_at', 'signal_count', 'entity_count'.
+        Returns dicts with all memory fields + entity_count, delta_count,
+        is_superseded (bool), superseded_by (memory_id or None).
+        """
+        conn = _get_connection()
+
+        # Validate order_by to prevent SQL injection
+        valid_orders = {"created_at", "signal_count", "entity_count"}
+        if order_by not in valid_orders:
+            order_by = "created_at"
+
+        conditions: list[str] = []
+        params: list[Any] = []
+
+        if status:
+            conditions.append("m.status = ?")
+            params.append(status)
+        if act_id:
+            conditions.append(
+                "(m.destination_act_id = ? OR (? = ? AND m.is_your_story = 1))"
+            )
+            params.extend([act_id, act_id, YOUR_STORY_ACT_ID])
+        if source:
+            conditions.append("m.source = ?")
+            params.append(source)
+        if min_signal is not None:
+            conditions.append("m.signal_count >= ?")
+            params.append(min_signal)
+        if entity_type:
+            conditions.append(
+                "EXISTS (SELECT 1 FROM memory_entities me "
+                "WHERE me.memory_id = m.id AND me.entity_type = ?)"
+            )
+            params.append(entity_type)
+
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        params.extend([limit, offset])
+
+        cursor = conn.execute(
+            f"""SELECT
+                    m.*,
+                    (SELECT COUNT(*) FROM memory_entities me
+                     WHERE me.memory_id = m.id) AS entity_count,
+                    (SELECT COUNT(*) FROM memory_state_deltas msd
+                     WHERE msd.memory_id = m.id) AS delta_count,
+                    (SELECT sup_m.id
+                     FROM block_relationships br
+                     JOIN memories sup_m ON sup_m.block_id = br.source_block_id
+                     WHERE br.target_block_id = m.block_id
+                       AND br.relationship_type = 'supersedes'
+                     LIMIT 1) AS superseded_by_id
+                FROM memories m
+                {where}
+                ORDER BY {order_by} DESC
+                LIMIT ? OFFSET ?""",
+            params,
+        )
+
+        results = []
+        for row in cursor.fetchall():
+            d = Memory.from_row(row).to_dict()
+            d["entity_count"] = row["entity_count"]
+            d["delta_count"] = row["delta_count"]
+            superseded_by = row["superseded_by_id"]
+            d["is_superseded"] = row["status"] == "superseded"
+            d["superseded_by"] = superseded_by
+            results.append(d)
+        return results
+
+    def get_supersession_chain(self, memory_id: str) -> list[dict[str, Any]]:
+        """Full SUPERSEDES chain, oldest to newest.
+
+        Walks block_relationships with type='supersedes' in both directions.
+        Returns list of memory dicts ordered chronologically.
+        Safety cap: 20 hops (consistent with get_latest_version).
+        """
+        # Find the root of the chain by walking backwards (who was superseded)
+        start = self.get_by_id(memory_id)
+        if not start:
+            return []
+
+        # Walk backwards to find the oldest ancestor
+        visited: set[str] = set()
+        chain: list[Memory] = []
+
+        # Find the oldest memory in the chain by walking backwards
+        conn = _get_connection()
+        current = start
+        ancestors: list[Memory] = [current]
+        visited.add(current.id)
+
+        for _ in range(20):
+            # Find what this memory superseded (target of a SUPERSEDES relationship
+            # where current is the source)
+            cursor = conn.execute(
+                """SELECT m.id FROM memories m
+                   JOIN block_relationships br
+                     ON m.block_id = br.target_block_id
+                   WHERE br.source_block_id = ?
+                     AND br.relationship_type = 'supersedes'""",
+                (current.block_id,),
+            )
+            row = cursor.fetchone()
+            if not row or row["id"] in visited:
+                break
+            predecessor = self.get_by_id(row["id"])
+            if not predecessor:
+                break
+            visited.add(predecessor.id)
+            ancestors.append(predecessor)
+            current = predecessor
+
+        # ancestors is [requested_memory, ..., oldest]; reverse to chronological
+        ancestors.reverse()
+
+        # Now walk forward from the oldest to collect all descendants
+        # Reset and start fresh from the oldest ancestor
+        chain = [ancestors[0]]
+        visited_chain: set[str] = {ancestors[0].id}
+        current = ancestors[0]
+
+        for _ in range(20):
+            cursor = conn.execute(
+                """SELECT m.id FROM memories m
+                   JOIN block_relationships br
+                     ON m.block_id = br.source_block_id
+                   WHERE br.target_block_id = ?
+                     AND br.relationship_type = 'supersedes'""",
+                (current.block_id,),
+            )
+            row = cursor.fetchone()
+            if not row or row["id"] in visited_chain:
+                break
+            successor = self.get_by_id(row["id"])
+            if not successor:
+                break
+            visited_chain.add(successor.id)
+            chain.append(successor)
+            current = successor
+
+        return [m.to_dict() for m in chain]
+
+    def get_influence_log(
+        self, memory_id: str, *, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        """Which classification decisions this memory influenced.
+
+        Queries classification_memory_references table.
+        Returns dicts with: classification_id, influence_type, influence_score,
+        reasoning, created_at.
+        """
+        conn = _get_connection()
+        cursor = conn.execute(
+            """SELECT classification_id, influence_type, influence_score,
+                      reasoning, created_at
+               FROM classification_memory_references
+               WHERE memory_id = ?
+               ORDER BY created_at DESC
+               LIMIT ?""",
+            (memory_id, limit),
+        )
+        return [
+            {
+                "classification_id": row["classification_id"],
+                "influence_type": row["influence_type"],
+                "influence_score": row["influence_score"],
+                "reasoning": row["reasoning"],
+                "created_at": row["created_at"],
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def get_entity_type_counts(self, *, status: str = "approved") -> dict[str, int]:
+        """Entity type count mapping for filter UI.
+
+        Counts memory_entities grouped by entity_type, filtered by parent
+        memory's status.
+        """
+        conn = _get_connection()
+        cursor = conn.execute(
+            """SELECT me.entity_type, COUNT(*) AS cnt
+               FROM memory_entities me
+               JOIN memories m ON m.id = me.memory_id
+               WHERE m.status = ?
+               GROUP BY me.entity_type""",
+            (status,),
+        )
+        return {row["entity_type"]: row["cnt"] for row in cursor.fetchall()}
+
+    def get_act_memory_groups(self, *, status: str = "approved") -> list[dict[str, Any]]:
+        """Memories grouped by destination Act.
+
+        Returns list of dicts with: act_id, act_title, memory_count.
+        Joins memories with acts table.
+        """
+        conn = _get_connection()
+        cursor = conn.execute(
+            """SELECT
+                   COALESCE(m.destination_act_id, a_ys.act_id) AS act_id,
+                   COALESCE(a.title, a_ys.title) AS act_title,
+                   COUNT(*) AS memory_count
+               FROM memories m
+               LEFT JOIN acts a ON a.act_id = m.destination_act_id
+               LEFT JOIN acts a_ys ON m.is_your_story = 1 AND a_ys.system_role = 'your_story'
+               WHERE m.status = ?
+               GROUP BY COALESCE(m.destination_act_id, a_ys.act_id)
+               ORDER BY memory_count DESC""",
+            (status,),
+        )
+        return [
+            {
+                "act_id": row["act_id"],
+                "act_title": row["act_title"],
+                "memory_count": row["memory_count"],
             }
             for row in cursor.fetchall()
         ]

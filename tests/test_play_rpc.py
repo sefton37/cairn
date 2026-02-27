@@ -27,8 +27,9 @@ def test_play_rpc_me_and_acts_defaults(tmp_path, monkeypatch, isolated_db_single
 
     acts_resp = _rpc(db, req_id=2, method="play/acts/list")
     result = acts_resp["result"]
-    assert result["acts"] == []
-    assert result["active_act_id"] is None
+    # Built-in acts (your-story, archived-conversations) are always present
+    act_ids = {a["act_id"] for a in result["acts"]}
+    assert "your-story" in act_ids
 
 
 def test_play_rpc_set_active_unknown_act_silently_ignored(tmp_path, monkeypatch, isolated_db_singleton: object) -> None:

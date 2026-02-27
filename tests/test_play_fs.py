@@ -520,9 +520,7 @@ class TestKbListFiles:
         from reos.play_fs import kb_list_files
 
         # Create an act first
-        play_db.create_act(title="Test", notes="", color="#000000")
-        acts, _ = play_db.list_acts()
-        act_id = acts[0]["act_id"]
+        _, act_id = play_db.create_act(title="Test", notes="", color="#000000")
 
         files = kb_list_files(act_id=act_id)
         assert "kb.md" in files
@@ -532,9 +530,7 @@ class TestKbListFiles:
         import reos.play_db as play_db
         from reos.play_fs import kb_list_files, _kb_root_for
 
-        play_db.create_act(title="Test", notes="", color="#000000")
-        acts, _ = play_db.list_acts()
-        act_id = acts[0]["act_id"]
+        _, act_id = play_db.create_act(title="Test", notes="", color="#000000")
 
         kb_root = _kb_root_for(act_id=act_id)
         kb_root.mkdir(parents=True, exist_ok=True)
@@ -556,9 +552,7 @@ class TestKbRead:
         import reos.play_db as play_db
         from reos.play_fs import kb_read
 
-        play_db.create_act(title="Test", notes="", color="#000000")
-        acts, _ = play_db.list_acts()
-        act_id = acts[0]["act_id"]
+        _, act_id = play_db.create_act(title="Test", notes="", color="#000000")
 
         content = kb_read(act_id=act_id)
         assert "# KB" in content
@@ -568,9 +562,7 @@ class TestKbRead:
         import reos.play_db as play_db
         from reos.play_fs import kb_read, _kb_root_for
 
-        play_db.create_act(title="Test", notes="", color="#000000")
-        acts, _ = play_db.list_acts()
-        act_id = acts[0]["act_id"]
+        _, act_id = play_db.create_act(title="Test", notes="", color="#000000")
 
         kb_root = _kb_root_for(act_id=act_id)
         kb_root.mkdir(parents=True, exist_ok=True)
@@ -584,9 +576,7 @@ class TestKbRead:
         import reos.play_db as play_db
         from reos.play_fs import kb_read
 
-        play_db.create_act(title="Test", notes="", color="#000000")
-        acts, _ = play_db.list_acts()
-        act_id = acts[0]["act_id"]
+        _, act_id = play_db.create_act(title="Test", notes="", color="#000000")
 
         with pytest.raises(FileNotFoundError):
             kb_read(act_id=act_id, path="nonexistent.md")
@@ -600,9 +590,7 @@ class TestKbWritePreview:
         import reos.play_db as play_db
         from reos.play_fs import kb_write_preview
 
-        play_db.create_act(title="Test", notes="", color="#000000")
-        acts, _ = play_db.list_acts()
-        act_id = acts[0]["act_id"]
+        _, act_id = play_db.create_act(title="Test", notes="", color="#000000")
 
         result = kb_write_preview(act_id=act_id, path="new.md", text="# New Content")
 
@@ -614,9 +602,7 @@ class TestKbWritePreview:
         import reos.play_db as play_db
         from reos.play_fs import kb_write_preview, _kb_root_for
 
-        play_db.create_act(title="Test", notes="", color="#000000")
-        acts, _ = play_db.list_acts()
-        act_id = acts[0]["act_id"]
+        _, act_id = play_db.create_act(title="Test", notes="", color="#000000")
 
         kb_root = _kb_root_for(act_id=act_id)
         kb_root.mkdir(parents=True, exist_ok=True)
@@ -637,9 +623,7 @@ class TestKbWriteApply:
         import reos.play_db as play_db
         from reos.play_fs import kb_write_apply, kb_write_preview, _kb_root_for
 
-        play_db.create_act(title="Test", notes="", color="#000000")
-        acts, _ = play_db.list_acts()
-        act_id = acts[0]["act_id"]
+        _, act_id = play_db.create_act(title="Test", notes="", color="#000000")
 
         # Get preview first to get current SHA
         preview = kb_write_preview(act_id=act_id, path="new.md", text="Content")
@@ -662,9 +646,7 @@ class TestKbWriteApply:
         import reos.play_db as play_db
         from reos.play_fs import kb_write_apply, _kb_root_for
 
-        play_db.create_act(title="Test", notes="", color="#000000")
-        acts, _ = play_db.list_acts()
-        act_id = acts[0]["act_id"]
+        _, act_id = play_db.create_act(title="Test", notes="", color="#000000")
 
         kb_root = _kb_root_for(act_id=act_id)
         kb_root.mkdir(parents=True, exist_ok=True)

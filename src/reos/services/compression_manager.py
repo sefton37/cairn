@@ -285,6 +285,16 @@ class CompressionManager:
                     ),
                 )
 
+            # Write conversation summary (v13)
+            summary_id = uuid4().hex[:12]
+            conn.execute(
+                """INSERT OR REPLACE INTO conversation_summaries
+                   (id, conversation_id, summary, summary_model, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (summary_id, conversation_id, result.narrative, result.model_used,
+                 now_iso, now_iso),
+            )
+
             # Update conversation compression metadata
             conn.execute(
                 """UPDATE conversations SET

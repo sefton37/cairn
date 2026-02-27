@@ -168,3 +168,133 @@ def handle_memories_correct(
         return {"memory": new_memory.to_dict()}
     except MemoryError as e:
         return {"error": str(e)}
+
+
+# =============================================================================
+# Knowledge Browser handlers
+# =============================================================================
+
+
+@require_params("query")
+@rpc_handler("lifecycle/memories/search_fts")
+def handle_memories_search_fts(
+    db: Database,
+    *,
+    query: str,
+    status: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Search memories by keyword (FTS5)."""
+    service = _get_service()
+    results = service.search_fts(query, status=status, limit=limit, offset=offset)
+    return {"results": results, "query": query, "total": len(results)}
+
+
+@rpc_handler("lifecycle/memories/list_enhanced")
+def handle_memories_list_enhanced(
+    db: Database,
+    *,
+    status: str | None = None,
+    act_id: str | None = None,
+    entity_type: str | None = None,
+    source: str | None = None,
+    min_signal: int | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    order_by: str = "created_at",
+) -> dict[str, Any]:
+    """List memories with enhanced metadata."""
+    service = _get_service()
+    memories = service.list_enhanced(
+        status=status,
+        act_id=act_id,
+        entity_type=entity_type,
+        source=source,
+        min_signal=min_signal,
+        limit=limit,
+        offset=offset,
+        order_by=order_by,
+    )
+    return {"memories": memories}
+
+
+@require_params("memory_id")
+@rpc_handler("lifecycle/memories/supersession_chain")
+def handle_memories_supersession_chain(
+    db: Database,
+    *,
+    memory_id: str,
+) -> dict[str, Any]:
+    """Get the full supersession chain for a memory."""
+    service = _get_service()
+    chain = service.get_supersession_chain(memory_id)
+    return {"chain": chain, "memory_id": memory_id, "length": len(chain)}
+
+
+@require_params("memory_id")
+@rpc_handler("lifecycle/memories/influence_log")
+def handle_memories_influence_log(
+    db: Database,
+    *,
+    memory_id: str,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """Get classification decisions this memory influenced."""
+    service = _get_service()
+    entries = service.get_influence_log(memory_id, limit=limit)
+    return {"memory_id": memory_id, "entries": entries}
+
+
+@rpc_handler("lifecycle/memories/entity_type_counts")
+def handle_memories_entity_type_counts(
+    db: Database,
+    *,
+    status: str = "approved",
+) -> dict[str, Any]:
+    """Get entity type counts for filter UI."""
+    service = _get_service()
+    counts = service.get_entity_type_counts(status=status)
+    return {"counts": counts, "status": status}
+
+
+@rpc_handler("lifecycle/memories/by_act")
+def handle_memories_by_act(
+    db: Database,
+    *,
+    status: str = "approved",
+) -> dict[str, Any]:
+    """Get memories grouped by destination Act."""
+    service = _get_service()
+    groups = service.get_act_memory_groups(status=status)
+    return {"groups": groups, "status": status}
+
+
+@rpc_handler("lifecycle/memories/open_threads")
+def handle_memories_open_threads(
+    db: Database,
+    *,
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Get unresolved state deltas (open threads)."""
+    service = _get_service()
+    threads = service.get_open_threads(limit=limit)
+    return {"threads": threads}
+
+
+@require_params("memory_id", "delta_id")
+@rpc_handler("lifecycle/memories/resolve_thread")
+def handle_memories_resolve_thread(
+    db: Database,
+    *,
+    memory_id: str,
+    delta_id: str,
+    resolution_note: str = "",
+) -> dict[str, Any]:
+    """Resolve an open thread (state delta)."""
+    service = _get_service()
+    try:
+        result = service.resolve_thread(memory_id, delta_id, resolution_note=resolution_note)
+        return {"delta": result}
+    except MemoryError as e:
+        return {"error": str(e)}

@@ -173,6 +173,23 @@ from .rpc_handlers.conversations import (
 from .rpc_handlers.conversations import (
     handle_conversations_compression_status as _handle_lifecycle_compression_status,
 )
+# Conversation archive search (v13)
+from .rpc_handlers.conversations import (
+    handle_conversations_search as _handle_lifecycle_search,
+)
+from .rpc_handlers.conversations import (
+    handle_conversations_list_enhanced as _handle_lifecycle_list_enhanced,
+)
+from .rpc_handlers.conversations import (
+    handle_conversations_detail as _handle_lifecycle_detail,
+)
+# State briefing RPC handlers (v13)
+from .rpc_handlers.briefing import (
+    handle_briefing_get as _handle_briefing_get,
+)
+from .rpc_handlers.briefing import (
+    handle_briefing_generate as _handle_briefing_generate,
+)
 # Memory lifecycle RPC handlers
 from .rpc_handlers.memories import (
     handle_memories_approve as _handle_memories_approve,
@@ -203,6 +220,31 @@ from .rpc_handlers.memories import (
 )
 from .rpc_handlers.memories import (
     handle_memories_search as _handle_memories_search,
+)
+# Knowledge browser RPC handlers (v13)
+from .rpc_handlers.memories import (
+    handle_memories_search_fts as _handle_memories_search_fts,
+)
+from .rpc_handlers.memories import (
+    handle_memories_list_enhanced as _handle_memories_list_enhanced,
+)
+from .rpc_handlers.memories import (
+    handle_memories_supersession_chain as _handle_memories_supersession_chain,
+)
+from .rpc_handlers.memories import (
+    handle_memories_influence_log as _handle_memories_influence_log,
+)
+from .rpc_handlers.memories import (
+    handle_memories_entity_type_counts as _handle_memories_entity_type_counts,
+)
+from .rpc_handlers.memories import (
+    handle_memories_by_act as _handle_memories_by_act,
+)
+from .rpc_handlers.memories import (
+    handle_memories_open_threads as _handle_memories_open_threads,
+)
+from .rpc_handlers.memories import (
+    handle_memories_resolve_thread as _handle_memories_resolve_thread,
 )
 from .rpc_handlers.consciousness import (
     handle_cairn_chat_async as _handle_cairn_chat_async,
@@ -2371,6 +2413,184 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                     memory_id=memory_id,
                     corrected_narrative=corrected_narrative,
                     conversation_id=conversation_id,
+                ),
+            )
+
+        # --- Conversation Archive Search (v13) ---
+
+        if method == "lifecycle/conversations/search":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            query = params.get("query")
+            if not isinstance(query, str) or not query:
+                raise RpcError(code=-32602, message="query is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_lifecycle_search(
+                    db,
+                    query=query,
+                    status=params.get("status", "archived"),
+                    limit=params.get("limit", 20),
+                    offset=params.get("offset", 0),
+                    since=params.get("since"),
+                    until=params.get("until"),
+                ),
+            )
+
+        if method == "lifecycle/conversations/list_enhanced":
+            if not isinstance(params, dict):
+                params = {}
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_lifecycle_list_enhanced(
+                    db,
+                    status=params.get("status", "archived"),
+                    limit=params.get("limit", 50),
+                    offset=params.get("offset", 0),
+                    since=params.get("since"),
+                    until=params.get("until"),
+                    has_memories=params.get("has_memories"),
+                ),
+            )
+
+        if method == "lifecycle/conversations/detail":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            conversation_id = params.get("conversation_id")
+            if not isinstance(conversation_id, str) or not conversation_id:
+                raise RpcError(code=-32602, message="conversation_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_lifecycle_detail(
+                    db, conversation_id=conversation_id,
+                ),
+            )
+
+        # --- State Briefing (v13) ---
+
+        if method == "lifecycle/briefing/get":
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_briefing_get(db),
+            )
+
+        if method == "lifecycle/briefing/generate":
+            if not isinstance(params, dict):
+                params = {}
+            trigger = params.get("trigger", "manual") if isinstance(params, dict) else "manual"
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_briefing_generate(db, trigger=trigger),
+            )
+
+        # --- Knowledge Browser (v13) ---
+
+        if method == "lifecycle/memories/search_fts":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            query = params.get("query")
+            if not isinstance(query, str) or not query:
+                raise RpcError(code=-32602, message="query is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_memories_search_fts(
+                    db,
+                    query=query,
+                    status=params.get("status"),
+                    limit=params.get("limit", 20),
+                    offset=params.get("offset", 0),
+                ),
+            )
+
+        if method == "lifecycle/memories/list_enhanced":
+            if not isinstance(params, dict):
+                params = {}
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_memories_list_enhanced(
+                    db,
+                    status=params.get("status"),
+                    act_id=params.get("act_id"),
+                    entity_type=params.get("entity_type"),
+                    source=params.get("source"),
+                    min_signal=params.get("min_signal"),
+                    limit=params.get("limit", 50),
+                    offset=params.get("offset", 0),
+                    order_by=params.get("order_by", "created_at"),
+                ),
+            )
+
+        if method == "lifecycle/memories/supersession_chain":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            memory_id = params.get("memory_id")
+            if not isinstance(memory_id, str) or not memory_id:
+                raise RpcError(code=-32602, message="memory_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_memories_supersession_chain(
+                    db, memory_id=memory_id,
+                ),
+            )
+
+        if method == "lifecycle/memories/influence_log":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            memory_id = params.get("memory_id")
+            if not isinstance(memory_id, str) or not memory_id:
+                raise RpcError(code=-32602, message="memory_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_memories_influence_log(
+                    db,
+                    memory_id=memory_id,
+                    limit=params.get("limit", 20),
+                ),
+            )
+
+        if method == "lifecycle/memories/entity_type_counts":
+            if not isinstance(params, dict):
+                params = {}
+            status = params.get("status", "approved") if isinstance(params, dict) else "approved"
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_memories_entity_type_counts(db, status=status),
+            )
+
+        if method == "lifecycle/memories/by_act":
+            if not isinstance(params, dict):
+                params = {}
+            status = params.get("status", "approved") if isinstance(params, dict) else "approved"
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_memories_by_act(db, status=status),
+            )
+
+        if method == "lifecycle/memories/open_threads":
+            if not isinstance(params, dict):
+                params = {}
+            limit = params.get("limit", 50) if isinstance(params, dict) else 50
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_memories_open_threads(db, limit=limit),
+            )
+
+        if method == "lifecycle/memories/resolve_thread":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            memory_id = params.get("memory_id")
+            delta_id = params.get("delta_id")
+            if not isinstance(memory_id, str) or not memory_id:
+                raise RpcError(code=-32602, message="memory_id is required")
+            if not isinstance(delta_id, str) or not delta_id:
+                raise RpcError(code=-32602, message="delta_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_memories_resolve_thread(
+                    db,
+                    memory_id=memory_id,
+                    delta_id=delta_id,
+                    resolution_note=params.get("resolution_note", ""),
                 ),
             )
 
