@@ -225,14 +225,42 @@ export function createPlayOverlay(onClose: () => void): {
     }
   }
 
+  // Save status element reference (set during render, used during save)
+  let saveStatusEl: HTMLElement | null = null;
+  let saveStatusTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function setSaveStatus(status: 'saving' | 'saved' | 'error') {
+    if (!saveStatusEl) return;
+    if (saveStatusTimeout) { clearTimeout(saveStatusTimeout); saveStatusTimeout = null; }
+    if (status === 'saving') {
+      saveStatusEl.textContent = 'Saving...';
+      saveStatusEl.style.color = '#9ca3af';
+      saveStatusEl.style.opacity = '1';
+    } else if (status === 'saved') {
+      saveStatusEl.textContent = 'Saved';
+      saveStatusEl.style.color = '#22c55e';
+      saveStatusEl.style.opacity = '1';
+      saveStatusTimeout = setTimeout(() => {
+        if (saveStatusEl) saveStatusEl.style.opacity = '0';
+      }, 2000);
+    } else {
+      saveStatusEl.textContent = 'Save failed';
+      saveStatusEl.style.color = '#ef4444';
+      saveStatusEl.style.opacity = '1';
+    }
+  }
+
   async function saveKbContent(text: string) {
+    setSaveStatus('saving');
     if (state.selectedLevel === 'play') {
       // Save play-level (me.md) through me/write endpoint
       try {
         await kernelRequest('play/me/write', { text });
         state.kbText = text;
+        setSaveStatus('saved');
       } catch (e) {
         console.error('Failed to save Play content:', e);
+        setSaveStatus('error');
       }
       return;
     }
@@ -258,8 +286,10 @@ export function createPlayOverlay(onClose: () => void): {
       });
 
       state.kbText = text;
+      setSaveStatus('saved');
     } catch (e) {
       console.error('Failed to save KB content:', e);
+      setSaveStatus('error');
     }
   }
 
@@ -570,8 +600,47 @@ export function createPlayOverlay(onClose: () => void): {
         showActColorPicker(act.act_id, actColor, colorBtn);
       });
 
+      // Delete button (hover-reveal)
+      const deleteBtn = el('button');
+      deleteBtn.textContent = '\u00d7';
+      deleteBtn.title = 'Delete Act';
+      deleteBtn.style.cssText = `
+        background: none;
+        border: none;
+        color: #ef4444;
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+        padding: 0 2px;
+        opacity: 0;
+        transition: opacity 0.15s;
+        flex-shrink: 0;
+        margin-left: 2px;
+      `;
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (window.confirm(`Delete act "${act.title}" and all its scenes?`)) {
+          void (async () => {
+            try {
+              await kernelRequest('play/acts/delete', { act_id: act.act_id });
+              await refreshData();
+              render();
+            } catch (err) {
+              console.error('Failed to delete act:', err);
+            }
+          })();
+        }
+      });
+
+      const actRightGroup = el('div');
+      actRightGroup.style.cssText = 'display:flex;align-items:center;flex-shrink:0;';
+      actRightGroup.appendChild(colorBtn);
+      actRightGroup.appendChild(deleteBtn);
+
       actItem.appendChild(actItemLeft);
-      actItem.appendChild(colorBtn);
+      actItem.appendChild(actRightGroup);
+      actItem.addEventListener('mouseenter', () => { deleteBtn.style.opacity = '1'; });
+      actItem.addEventListener('mouseleave', () => { deleteBtn.style.opacity = '0'; });
       actItemLeft.addEventListener('click', () => {
         // Toggle: if clicking already-active act, deselect it
         if (state.activeActId === act.act_id) {
@@ -608,25 +677,71 @@ export function createPlayOverlay(onClose: () => void): {
 
           const sceneItem = el('div');
           sceneItem.className = `tree-item scene ${sceneSelected ? 'selected' : ''}`;
+          sceneItem.style.display = 'flex';
+          sceneItem.style.alignItems = 'center';
+          sceneItem.style.justifyContent = 'space-between';
+
+          const sceneLeft = el('div');
+          sceneLeft.style.cssText = 'display:flex;align-items:center;flex:1;overflow:hidden;';
 
           const bulletIcon = el('span');
           bulletIcon.className = 'tree-icon';
           bulletIcon.textContent = scene.stage === 'complete' ? '✓' : '•';
-          sceneItem.appendChild(bulletIcon);
+          sceneLeft.appendChild(bulletIcon);
 
           const sceneLabel = el('span');
           sceneLabel.textContent = ` ${scene.title}`;
-          sceneItem.appendChild(sceneLabel);
+          sceneLabel.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+          sceneLeft.appendChild(sceneLabel);
 
           // Add stage badge
           if (scene.stage && scene.stage !== 'planning') {
             const stageBadge = el('span');
             stageBadge.className = `scene-stage scene-stage-${scene.stage}`;
             stageBadge.textContent = scene.stage.replace('_', ' ');
-            sceneItem.appendChild(stageBadge);
+            sceneLeft.appendChild(stageBadge);
           }
 
-          sceneItem.addEventListener('click', () =>
+          // Delete button (hover-reveal)
+          const sceneDeleteBtn = el('button');
+          sceneDeleteBtn.textContent = '\u00d7';
+          sceneDeleteBtn.title = 'Delete Scene';
+          sceneDeleteBtn.style.cssText = `
+            background: none;
+            border: none;
+            color: #ef4444;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            padding: 0 2px;
+            opacity: 0;
+            transition: opacity 0.15s;
+            flex-shrink: 0;
+            margin-left: 4px;
+          `;
+          sceneDeleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (window.confirm(`Delete scene "${scene.title}"?`)) {
+              void (async () => {
+                try {
+                  await kernelRequest('play/scenes/delete', {
+                    act_id: act.act_id,
+                    scene_id: scene.scene_id,
+                  });
+                  await refreshData();
+                  render();
+                } catch (err) {
+                  console.error('Failed to delete scene:', err);
+                }
+              })();
+            }
+          });
+
+          sceneItem.appendChild(sceneLeft);
+          sceneItem.appendChild(sceneDeleteBtn);
+          sceneItem.addEventListener('mouseenter', () => { sceneDeleteBtn.style.opacity = '1'; });
+          sceneItem.addEventListener('mouseleave', () => { sceneDeleteBtn.style.opacity = '0'; });
+          sceneLeft.addEventListener('click', () =>
             selectLevel('scene', act.act_id, scene.scene_id)
           );
           sidebar.appendChild(sceneItem);
@@ -793,11 +908,25 @@ export function createPlayOverlay(onClose: () => void): {
     // Editor area
     const editorWrap = el('div');
     editorWrap.className = 'play-editor-wrap';
+    editorWrap.style.position = 'relative';
 
     const editor = el('textarea') as HTMLTextAreaElement;
     editor.className = 'play-editor';
     editor.placeholder = PLACEHOLDER_TEXT[state.selectedLevel];
     editor.value = state.kbText;
+
+    // Save status indicator
+    const saveStatus = el('span');
+    saveStatus.style.cssText = `
+      position: absolute;
+      bottom: 8px;
+      right: 12px;
+      font-size: 11px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    `;
+    saveStatusEl = saveStatus;
 
     // Debounced auto-save
     let saveTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -809,6 +938,7 @@ export function createPlayOverlay(onClose: () => void): {
     });
 
     editorWrap.appendChild(editor);
+    editorWrap.appendChild(saveStatus);
     content.appendChild(editorWrap);
 
     // Attachments section (all levels including Play)

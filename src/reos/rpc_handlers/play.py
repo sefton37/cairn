@@ -25,6 +25,12 @@ from reos.play_fs import (
     create_scene as play_create_scene,
 )
 from reos.play_fs import (
+    delete_act as play_delete_act,
+)
+from reos.play_fs import (
+    delete_scene as play_delete_scene,
+)
+from reos.play_fs import (
     kb_list_files as play_kb_list_files,
 )
 from reos.play_fs import (
@@ -257,9 +263,58 @@ def handle_play_acts_assign_repo(
     }
 
 
+def handle_play_acts_delete(_db: Database, *, act_id: str) -> dict[str, Any]:
+    """Delete an act and all its scenes."""
+    try:
+        acts, active_id = play_delete_act(act_id=act_id)
+    except ValueError as exc:
+        raise RpcError(code=-32602, message=str(exc)) from exc
+    return {
+        "active_act_id": active_id,
+        "acts": [
+            {
+                "act_id": a.act_id,
+                "title": a.title,
+                "active": bool(a.active),
+                "notes": a.notes,
+                "repo_path": a.repo_path,
+                "color": a.color,
+            }
+            for a in acts
+        ],
+    }
+
+
 # =============================================================================
 # Scenes Handlers
 # =============================================================================
+
+
+def handle_play_scenes_delete(
+    _db: Database, *, act_id: str, scene_id: str
+) -> dict[str, Any]:
+    """Delete a scene."""
+    try:
+        scenes = play_delete_scene(act_id=act_id, scene_id=scene_id)
+    except ValueError as exc:
+        raise RpcError(code=-32602, message=str(exc)) from exc
+    return {
+        "scenes": [
+            {
+                "scene_id": s.scene_id,
+                "act_id": s.act_id,
+                "title": s.title,
+                "stage": s.stage,
+                "notes": s.notes,
+                "link": s.link,
+                "calendar_event_id": s.calendar_event_id,
+                "recurrence_rule": s.recurrence_rule,
+                "thunderbird_event_id": s.thunderbird_event_id,
+                "disable_auto_complete": s.disable_auto_complete,
+            }
+            for s in scenes
+        ]
+    }
 
 
 def handle_play_scenes_list(_db: Database, *, act_id: str) -> dict[str, Any]:

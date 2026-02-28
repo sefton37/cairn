@@ -398,6 +398,9 @@ from .rpc_handlers.play import (
     handle_play_acts_create as _handle_play_acts_create,
 )
 from .rpc_handlers.play import (
+    handle_play_acts_delete as _handle_play_acts_delete,
+)
+from .rpc_handlers.play import (
     handle_play_acts_list as _handle_play_acts_list,
 )
 from .rpc_handlers.play import (
@@ -459,6 +462,9 @@ from .rpc_handlers.play import (
 )
 from .rpc_handlers.play import (
     handle_play_scenes_create as _handle_play_scenes_create,
+)
+from .rpc_handlers.play import (
+    handle_play_scenes_delete as _handle_play_scenes_delete,
 )
 from .rpc_handlers.play import (
     handle_play_scenes_list as _handle_play_scenes_list,
@@ -1130,6 +1136,17 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 result=_handle_play_acts_assign_repo(db, act_id=act_id, repo_path=repo_path),
             )
 
+        if method == "play/acts/delete":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            act_id = params.get("act_id")
+            if not isinstance(act_id, str) or not act_id:
+                raise RpcError(code=-32602, message="act_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_play_acts_delete(db, act_id=act_id),
+            )
+
         if method == "play/scenes/list":
             if not isinstance(params, dict):
                 raise RpcError(code=-32602, message="params must be an object")
@@ -1224,6 +1241,20 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                     recurrence_rule=recurrence_rule,
                     thunderbird_event_id=thunderbird_event_id,
                 ),
+            )
+
+        if method == "play/scenes/delete":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            act_id = params.get("act_id")
+            scene_id = params.get("scene_id")
+            if not isinstance(act_id, str) or not act_id:
+                raise RpcError(code=-32602, message="act_id is required")
+            if not isinstance(scene_id, str) or not scene_id:
+                raise RpcError(code=-32602, message="scene_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_play_scenes_delete(db, act_id=act_id, scene_id=scene_id),
             )
 
         if method == "play/kb/list":

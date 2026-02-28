@@ -130,6 +130,7 @@ from reos.rpc_handlers.personas import handle_persona_upsert, handle_personas_li
 from reos.rpc_handlers.play import (
     handle_play_acts_assign_repo,
     handle_play_acts_create,
+    handle_play_acts_delete,
     handle_play_acts_list,
     handle_play_acts_set_active,
     handle_play_acts_update,
@@ -151,6 +152,7 @@ from reos.rpc_handlers.play import (
     handle_play_pages_tree,
     handle_play_pages_update,
     handle_play_scenes_create,
+    handle_play_scenes_delete,
     handle_play_scenes_list,
     handle_play_scenes_list_all,
     handle_play_scenes_update,
@@ -284,11 +286,13 @@ _METHODS: dict[str, tuple[Callable[..., Any], bool]] = {
     "play/acts/update": (handle_play_acts_update, True),
     "play/acts/set_active": (handle_play_acts_set_active, True),
     "play/acts/assign_repo": (handle_play_acts_assign_repo, True),
+    "play/acts/delete": (handle_play_acts_delete, True),
     # play — scenes
     "play/scenes/list": (handle_play_scenes_list, True),
     "play/scenes/list_all": (handle_play_scenes_list_all, True),
     "play/scenes/create": (handle_play_scenes_create, True),
     "play/scenes/update": (handle_play_scenes_update, True),
+    "play/scenes/delete": (handle_play_scenes_delete, True),
     # play — knowledge base
     "play/kb/list": (handle_play_kb_list, True),
     "play/kb/read": (handle_play_kb_read, True),
