@@ -13,22 +13,9 @@ import type { ChatRespondResult, ExtendedThinkingTrace, ThinkingNode, FacetCheck
 import { highlight, injectSyntaxHighlightStyles } from './syntaxHighlight';
 import { createConsciousnessPane } from './consciousnessPane';
 
-interface ArchivePreviewData {
-  title: string;
-  summary: string;
-  linked_act_id: string | null;
-  linking_reason: string | null;
-  knowledge_entries: Array<{ category: string; content: string }>;
-  topics: string[];
-  message_count: number;
-}
-
 interface CairnViewCallbacks {
   onSendMessage: (message: string, options?: { extendedThinking?: boolean }) => Promise<void>;
   kernelRequest: (method: string, params: unknown) => Promise<unknown>;
-  getConversationId: () => string | null;
-  onConversationCleared: () => void;
-  showArchiveReview: (preview: ArchivePreviewData) => void;
 }
 
 /** Full message data including LLM context for expandable details */
@@ -198,123 +185,7 @@ export function createCairnView(
   chatTitleArea.appendChild(chatTitle);
   chatTitleArea.appendChild(chatSubtitle);
 
-  // Archive/Delete buttons
-  const chatActions = el('div');
-  chatActions.style.cssText = `
-    display: flex;
-    gap: 8px;
-  `;
-
-  const archiveBtn = el('button');
-  archiveBtn.title = 'Archive conversation';
-  archiveBtn.style.cssText = `
-    padding: 6px 12px;
-    background: rgba(34, 197, 94, 0.15);
-    border: 1px solid rgba(34, 197, 94, 0.3);
-    border-radius: 6px;
-    color: #22c55e;
-    font-size: 12px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    transition: all 0.2s;
-  `;
-  archiveBtn.innerHTML = `<span>📦</span><span>Archive</span>`;
-  archiveBtn.addEventListener('mouseenter', () => {
-    archiveBtn.style.background = 'rgba(34, 197, 94, 0.25)';
-  });
-  archiveBtn.addEventListener('mouseleave', () => {
-    archiveBtn.style.background = 'rgba(34, 197, 94, 0.15)';
-  });
-
-  const deleteBtn = el('button');
-  deleteBtn.title = 'Delete conversation';
-  deleteBtn.style.cssText = `
-    padding: 6px 12px;
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    border-radius: 6px;
-    color: #ef4444;
-    font-size: 12px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    transition: all 0.2s;
-  `;
-  deleteBtn.innerHTML = `<span>🗑️</span><span>Delete</span>`;
-  deleteBtn.addEventListener('mouseenter', () => {
-    deleteBtn.style.background = 'rgba(239, 68, 68, 0.25)';
-  });
-  deleteBtn.addEventListener('mouseleave', () => {
-    deleteBtn.style.background = 'rgba(239, 68, 68, 0.15)';
-  });
-
-  // Archive button handler - shows preview first
-  archiveBtn.addEventListener('click', async () => {
-    const conversationId = callbacks.getConversationId();
-    if (!conversationId) {
-      addChatMessage('assistant', 'No active conversation to archive.');
-      return;
-    }
-
-    // Show analyzing indicator
-    const originalText = archiveBtn.innerHTML;
-    archiveBtn.innerHTML = `<span>⏳</span><span>Analyzing...</span>`;
-    archiveBtn.style.pointerEvents = 'none';
-
-    try {
-      // Get preview from LLM analysis
-      const preview = await callbacks.kernelRequest('conversation/archive/preview', {
-        conversation_id: conversationId,
-        auto_link: true,
-      }) as ArchivePreviewData;
-
-      // Show the review overlay
-      callbacks.showArchiveReview(preview);
-
-    } catch (e) {
-      addChatMessage('assistant', `Analysis failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    } finally {
-      archiveBtn.innerHTML = originalText;
-      archiveBtn.style.pointerEvents = 'auto';
-    }
-  });
-
-  // Delete button handler
-  deleteBtn.addEventListener('click', async () => {
-    const conversationId = callbacks.getConversationId();
-    if (!conversationId) {
-      addChatMessage('assistant', 'No active conversation to delete.');
-      return;
-    }
-
-    // Confirm deletion
-    if (!window.confirm('Delete this conversation? This cannot be undone.')) {
-      return;
-    }
-
-    try {
-      await callbacks.kernelRequest('conversation/delete', {
-        conversation_id: conversationId,
-        archive_first: false,
-      });
-
-      // Clear the chat
-      clearChat();
-      callbacks.onConversationCleared();
-
-    } catch (e) {
-      addChatMessage('assistant', `Delete failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    }
-  });
-
-  chatActions.appendChild(archiveBtn);
-  chatActions.appendChild(deleteBtn);
-
   chatHeader.appendChild(chatTitleArea);
-  chatHeader.appendChild(chatActions);
 
   // Chat messages area
   const chatMessages = el('div');
@@ -761,49 +632,50 @@ export function createCairnView(
       padding: 12px;
     }
     .consciousness-event {
-      margin-bottom: 8px;
-      border-radius: 8px;
+      margin-bottom: 2px;
+      border-radius: 4px;
       overflow: hidden;
     }
     .consciousness-event-header {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      background: rgba(255,255,255,0.05);
+      gap: 6px;
+      padding: 4px 8px;
+      background: rgba(255,255,255,0.03);
       cursor: pointer;
     }
     .consciousness-event-header:hover {
-      background: rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.07);
     }
     .consciousness-icon {
-      font-size: 14px;
+      font-size: 11px;
+      flex-shrink: 0;
+      opacity: 0.6;
     }
-    .consciousness-event .consciousness-title {
+    .consciousness-headline {
       flex: 1;
       font-size: 12px;
       font-weight: 500;
-      color: rgba(255,255,255,0.9);
-    }
-    .consciousness-timestamp {
-      font-size: 10px;
-      color: rgba(255,255,255,0.4);
-      font-family: monospace;
+      color: rgba(255,255,255,0.85);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .consciousness-expand-btn {
       background: none;
       border: none;
-      color: rgba(255,255,255,0.4);
-      font-size: 12px;
+      color: rgba(255,255,255,0.3);
+      font-size: 11px;
       cursor: pointer;
-      padding: 2px 6px;
+      padding: 1px 4px;
+      flex-shrink: 0;
     }
     .consciousness-content {
-      padding: 8px 12px;
-      background: rgba(0,0,0,0.2);
+      padding: 6px 8px 6px 22px;
+      background: rgba(0,0,0,0.15);
       font-size: 11px;
       font-family: monospace;
-      color: rgba(255,255,255,0.7);
+      color: rgba(255,255,255,0.6);
       line-height: 1.4;
       white-space: pre-wrap;
       word-break: break-word;
@@ -832,6 +704,9 @@ export function createCairnView(
     }
     .event-reasoning {
       border-left: 3px solid #f59e0b;
+    }
+    .event-memory {
+      border-left: 3px solid #ec4899;
     }
   `;
   document.head.appendChild(consciousnessStyles);

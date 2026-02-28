@@ -60,6 +60,11 @@ class ConsciousnessEventType(Enum):
     TOOL_CALL_START = auto()
     TOOL_CALL_COMPLETE = auto()
 
+    # Memory / turn assessment
+    MEMORY_ASSESSING = auto()     # Evaluating turn for new knowledge
+    MEMORY_CREATED = auto()       # New memory stored
+    MEMORY_NO_CHANGE = auto()     # Turn assessed, no new knowledge
+
     # Final
     RESPONSE_READY = auto()
 

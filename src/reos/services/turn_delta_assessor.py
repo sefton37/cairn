@@ -140,6 +140,13 @@ class TurnDeltaAssessor:
             self._compression_pipeline = CompressionPipeline()
         return self._compression_pipeline
 
+    @staticmethod
+    def _get_observer():
+        """Get the consciousness observer (lazy import to avoid circular deps)."""
+        from reos.cairn.consciousness_stream import ConsciousnessObserver
+
+        return ConsciousnessObserver.get_instance()
+
     def assess_turn(
         self,
         conversation_id: str,
@@ -163,8 +170,18 @@ class TurnDeltaAssessor:
         Returns:
             TurnAssessment with the classification result and any created memory_id.
         """
+        from reos.cairn.consciousness_stream import ConsciousnessEventType
+
+        observer = self._get_observer()
         start = time.monotonic()
         memories = relevant_memories or []
+
+        observer.emit(
+            ConsciousnessEventType.MEMORY_ASSESSING,
+            "Evaluating turn for new knowledge",
+            f"Turn {turn_position} in conversation {conversation_id[:8]}...",
+            turn_position=turn_position,
+        )
 
         assessment, what = self._classify_turn(user_message, cairn_response, memories)
 
@@ -172,6 +189,18 @@ class TurnDeltaAssessor:
         if assessment == "CREATE":
             memory_id = self._extract_and_store(
                 conversation_id, user_message, cairn_response
+            )
+            observer.emit(
+                ConsciousnessEventType.MEMORY_CREATED,
+                f"Memory created: {what}" if what else "Memory created",
+                what or "New knowledge extracted from turn",
+                memory_id=memory_id,
+            )
+        else:
+            observer.emit(
+                ConsciousnessEventType.MEMORY_NO_CHANGE,
+                "No new knowledge",
+                what or "Turn did not establish new knowledge",
             )
 
         duration_ms = int((time.monotonic() - start) * 1000)

@@ -2,12 +2,12 @@
  * Consciousness Pane - Real-time visibility into CAIRN's thinking process.
  *
  * Philosophy: Full transparency as our open-source competitive advantage.
- * Users see everything in real-time.
+ * Users see headlines of each reasoning step and memory creation in real-time.
  *
- * This component renders consciousness events as they stream in:
- * - Intent extraction phases
- * - Extended thinking phases
- * - Tool calls
+ * This component renders consciousness events as a compact stream:
+ * - Intent extraction and tool calls
+ * - Reasoning phases
+ * - Memory creation from turn assessment
  * - Response generation
  */
 
@@ -49,35 +49,43 @@ const EVENT_TYPE_CLASSES: Record<string, string> = {
   TOOL_CALL_START: "event-llm",
   TOOL_CALL_COMPLETE: "event-llm",
 
+  // Memory
+  MEMORY_ASSESSING: "event-memory",
+  MEMORY_CREATED: "event-memory",
+  MEMORY_NO_CHANGE: "event-memory",
+
   // Final
   RESPONSE_READY: "event-result",
 };
 
-// Event type icons
+// Compact single-character or small icons — no emoji clutter
 const EVENT_TYPE_ICONS: Record<string, string> = {
-  PHASE_START: "▶",
-  PHASE_COMPLETE: "✓",
-  INTENT_EXTRACTED: "🎯",
-  INTENT_VERIFIED: "✓",
-  COMPREHENSION_START: "🔍",
-  COMPREHENSION_RESULT: "📋",
-  DECOMPOSITION_START: "🔬",
-  DECOMPOSITION_RESULT: "📊",
-  REASONING_START: "💭",
-  REASONING_ITERATION: "🔄",
-  REASONING_RESULT: "💡",
-  COHERENCE_START: "🪞",
-  COHERENCE_RESULT: "✨",
-  DECISION_START: "⚖️",
-  DECISION_RESULT: "📍",
-  EXPLORE_PASS: "🔭",
-  IDEATE_PASS: "💡",
-  SYNTHESIZE_PASS: "🧩",
-  TOOL_CALL_START: "🔧",
-  TOOL_CALL_COMPLETE: "✓",
-  LLM_CALL_START: "🤖",
-  LLM_CALL_COMPLETE: "✓",
-  RESPONSE_READY: "✅",
+  PHASE_START: "\u25B6",
+  PHASE_COMPLETE: "\u2713",
+  INTENT_EXTRACTED: "\u25C9",
+  INTENT_VERIFIED: "\u2713",
+  COMPREHENSION_START: "\u25B6",
+  COMPREHENSION_RESULT: "\u2713",
+  DECOMPOSITION_START: "\u25B6",
+  DECOMPOSITION_RESULT: "\u2713",
+  REASONING_START: "\u25B6",
+  REASONING_ITERATION: "\u21BB",
+  REASONING_RESULT: "\u2713",
+  COHERENCE_START: "\u25B6",
+  COHERENCE_RESULT: "\u2713",
+  DECISION_START: "\u25B6",
+  DECISION_RESULT: "\u2713",
+  EXPLORE_PASS: "\u25B6",
+  IDEATE_PASS: "\u25B6",
+  SYNTHESIZE_PASS: "\u25B6",
+  TOOL_CALL_START: "\u2699",
+  TOOL_CALL_COMPLETE: "\u2713",
+  LLM_CALL_START: "\u25CF",
+  LLM_CALL_COMPLETE: "\u2713",
+  MEMORY_ASSESSING: "\u25CB",
+  MEMORY_CREATED: "\u2726",
+  MEMORY_NO_CHANGE: "\u2013",
+  RESPONSE_READY: "\u2714",
 };
 
 export interface ConsciousnessPaneState {
@@ -107,8 +115,8 @@ export function createConsciousnessPane(
       <div class="consciousness-header">
         <span class="consciousness-title">Consciousness Stream</span>
         <div class="consciousness-header-actions">
-          <button class="consciousness-scroll-btn" title="Toggle auto-scroll">⬇</button>
-          <button class="consciousness-clear-btn" title="Clear">×</button>
+          <button class="consciousness-scroll-btn" title="Toggle auto-scroll">\u2B07</button>
+          <button class="consciousness-clear-btn" title="Clear">\u00D7</button>
         </div>
       </div>
       <div class="consciousness-events"></div>
@@ -134,11 +142,11 @@ export function createConsciousnessPane(
   // Update scroll button appearance
   function updateScrollBtn() {
     if (state.autoScroll) {
-      scrollBtn.textContent = "⬇";
+      scrollBtn.textContent = "\u2B07";
       scrollBtn.title = "Auto-scroll ON (click to stop)";
       scrollBtn.style.opacity = "1";
     } else {
-      scrollBtn.textContent = "⏸";
+      scrollBtn.textContent = "\u23F8";
       scrollBtn.title = "Auto-scroll OFF (click to resume)";
       scrollBtn.style.opacity = "0.5";
     }
@@ -156,33 +164,20 @@ export function createConsciousnessPane(
   scrollBtn.addEventListener("click", () => {
     state.autoScroll = !state.autoScroll;
     updateScrollBtn();
-    // If re-enabling auto-scroll, scroll to bottom immediately
     if (state.autoScroll) {
       eventsContainer.scrollTop = eventsContainer.scrollHeight;
     }
   });
 
-  function formatTimestamp(isoString: string): string {
-    const date = new Date(isoString);
-    return date.toLocaleTimeString("en-US", {
-      hour12: false,
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  }
-
   function renderEvent(event: ConsciousnessEvent, index: number): string {
     const typeClass = EVENT_TYPE_CLASSES[event.type] || "event-phase";
-    const icon = EVENT_TYPE_ICONS[event.type] || "•";
+    const icon = EVENT_TYPE_ICONS[event.type] || "\u2022";
     const isExpanded = state.expanded.has(index);
     const hasContent = event.content && event.content.length > 0;
 
-    // Render content as markdown if it looks like it needs formatting
     let contentHtml = "";
-    if (hasContent) {
+    if (hasContent && isExpanded) {
       try {
-        // Simple content - just escape and wrap
         const escapedContent = event.content
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
@@ -198,18 +193,16 @@ export function createConsciousnessPane(
       <div class="consciousness-event ${typeClass}" data-index="${index}">
         <div class="consciousness-event-header">
           <span class="consciousness-icon">${icon}</span>
-          <span class="consciousness-title">${escapeHtml(event.title)}</span>
-          <span class="consciousness-timestamp">${formatTimestamp(event.timestamp)}</span>
-          ${hasContent ? `<button class="consciousness-expand-btn">${isExpanded ? "−" : "+"}</button>` : ""}
+          <span class="consciousness-headline">${escapeHtml(event.title)}</span>
+          ${hasContent ? `<button class="consciousness-expand-btn">${isExpanded ? "\u2212" : "+"}</button>` : ""}
         </div>
-        ${isExpanded ? contentHtml : ""}
+        ${contentHtml}
       </div>
     `;
   }
 
   function renderEvents() {
     const html = state.events.map(renderEvent).join("");
-    console.log('[CONSCIOUSNESS PANE] renderEvents:', state.events.length, 'events, html length:', html.length);
     eventsContainer.innerHTML = html;
 
     // Attach expand/collapse handlers
@@ -235,19 +228,8 @@ export function createConsciousnessPane(
   }
 
   function update(events: ConsciousnessEvent[], isActive: boolean) {
-    console.log('[CONSCIOUSNESS PANE] update called with', events.length, 'events, container:', eventsContainer?.tagName);
     state.events = events;
     state.isActive = isActive;
-
-    // Auto-expand new events
-    const prevCount = eventsContainer.children.length;
-    if (events.length > prevCount) {
-      // Expand the latest event if it has content
-      const latestIdx = events.length - 1;
-      if (events[latestIdx]?.content) {
-        state.expanded.add(latestIdx);
-      }
-    }
 
     renderEvents();
 
@@ -256,7 +238,7 @@ export function createConsciousnessPane(
       statusEl.textContent = "Processing...";
       statusEl.classList.add("active");
     } else if (events.length > 0) {
-      statusEl.textContent = `${events.length} events`;
+      statusEl.textContent = `${events.length} steps`;
       statusEl.classList.remove("active");
     } else {
       statusEl.textContent = "Idle";
