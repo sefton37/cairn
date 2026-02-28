@@ -136,8 +136,8 @@ curl -fsSL https://ollama.com/install.sh | sh
 ollama pull llama3.2:1b
 
 # 2. Clone and install Talking Rock
-git clone https://github.com/sefton37/talking-rock
-cd talking-rock
+git clone https://github.com/sefton37/cairn.git
+cd cairn
 pip install -e .
 
 # 3. Run the desktop app
@@ -163,8 +163,8 @@ ollama pull llama3.2:1b
 **Step 2: Install Talking Rock**
 
 ```bash
-git clone https://github.com/sefton37/talking-rock
-cd talking-rock
+git clone https://github.com/sefton37/cairn.git
+cd cairn
 pip install -e .
 cd apps/cairn-tauri
 npm install
