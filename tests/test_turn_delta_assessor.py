@@ -19,8 +19,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from reos.play_db import _get_connection
-from reos.services.turn_delta_assessor import (
+from cairn.play_db import _get_connection
+from cairn.services.turn_delta_assessor import (
     TurnAssessmentQueue,
     TurnDeltaAssessor,
 )
@@ -37,7 +37,7 @@ def fresh_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     data_dir.mkdir()
     monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.close_connection()
     play_db.init_db()
@@ -97,7 +97,7 @@ def mock_provider_bad_json():
 @pytest.fixture()
 def lifecycle_conversation(fresh_db):
     """Create and return an active lifecycle conversation."""
-    from reos.services.conversation_service import ConversationService
+    from cairn.services.conversation_service import ConversationService
 
     svc = ConversationService()
     conv = svc.start()
@@ -364,7 +364,7 @@ class TestNoActiveLifecycleConversationSkips:
 
     def test_no_active_conv_is_silent(self, fresh_db):
         """With no active lifecycle conversation, the function returns without error."""
-        from reos.rpc_handlers.chat import _maybe_submit_turn_assessment
+        from cairn.rpc_handlers.chat import _maybe_submit_turn_assessment
 
         # No conversation started — get_active() returns None.
         # Must not raise; must not submit to queue.
@@ -375,10 +375,10 @@ class TestNoActiveLifecycleConversationSkips:
 
     def test_no_active_conv_does_not_call_queue(self, fresh_db):
         """With no active lifecycle conversation, queue.submit() is never called."""
-        from reos.rpc_handlers.chat import _maybe_submit_turn_assessment
+        from cairn.rpc_handlers.chat import _maybe_submit_turn_assessment
 
         with patch(
-            "reos.services.turn_delta_assessor.get_turn_assessment_queue"
+            "cairn.services.turn_delta_assessor.get_turn_assessment_queue"
         ) as mock_get_queue:
             _maybe_submit_turn_assessment(
                 user_message="test",

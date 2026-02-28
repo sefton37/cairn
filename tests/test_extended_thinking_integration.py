@@ -7,16 +7,16 @@ import pytest
 from unittest.mock import patch, MagicMock
 from datetime import datetime
 
-from reos.agent import ChatAgent, ChatResponse
-from reos.cairn.extended_thinking import (
+from cairn.agent import ChatAgent, ChatResponse
+from cairn.cairn.extended_thinking import (
     CAIRNExtendedThinking,
     ExtendedThinkingTrace,
     ThinkingNode,
     FacetCheck,
     Tension,
 )
-from reos.cairn.coherence import IdentityModel, IdentityFacet
-from reos.cairn.store import CairnStore
+from cairn.cairn.coherence import IdentityModel, IdentityFacet
+from cairn.cairn.store import CairnStore
 
 
 # ============ Fixtures ============

@@ -7,8 +7,8 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from reos.db import Database, get_db
-from reos.models import Event
+from cairn.db import Database, get_db
+from cairn.models import Event
 
 
 @pytest.fixture
@@ -121,7 +121,7 @@ def test_storage_append_and_iter() -> None:
         data_dir = Path(tmpdir)
 
         # Create a fresh database for this test
-        from reos.db import Database
+        from cairn.db import Database
 
         db = Database(db_path=data_dir / "test.db")
         db.migrate()
@@ -160,7 +160,7 @@ class TestDatabaseInit:
 
     def test_init_with_none_uses_settings(self) -> None:
         """Database should use settings.data_dir when path is None."""
-        with patch("reos.db.settings") as mock_settings:
+        with patch("cairn.db.settings") as mock_settings:
             mock_settings.data_dir = Path("/tmp/test_data")
             db = Database(db_path=None)
             assert db.db_path == Path("/tmp/test_data/reos.db")
@@ -706,7 +706,7 @@ class TestGetDb:
 
     def test_get_db_returns_database(self) -> None:
         """get_db() should return Database instance."""
-        import reos.db as db_module
+        import cairn.db as db_module
 
         # Reset singleton
         db_module._db_instance = None
@@ -722,7 +722,7 @@ class TestGetDb:
 
     def test_get_db_returns_same_instance(self) -> None:
         """get_db() should return same instance on subsequent calls."""
-        import reos.db as db_module
+        import cairn.db as db_module
 
         # Reset and set a mock
         db_module._db_instance = MagicMock()
@@ -763,7 +763,7 @@ class TestDatabaseMigrations:
             # Manually create connection without full migration
             db.connect()
 
-            with patch("reos.migrations.run_migrations") as mock_migrate:
+            with patch("cairn.migrations.run_migrations") as mock_migrate:
                 mock_migrate.side_effect = Exception("Migration failed")
 
                 with pytest.raises(Exception, match="Migration failed"):

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from reos.atomic_ops.cairn_integration import _format_health_report
+from cairn.atomic_ops.cairn_integration import _format_health_report
 
 
 # =============================================================================

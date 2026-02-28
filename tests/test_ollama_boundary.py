@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from reos.ollama import OllamaClient, OllamaError, check_ollama, list_ollama_models
+from cairn.ollama import OllamaClient, OllamaError, check_ollama, list_ollama_models
 
 
 class _FakeResponse:
@@ -43,7 +43,7 @@ class _FakeClient:
 
 
 def test_check_ollama_reachable_true(monkeypatch: pytest.MonkeyPatch) -> None:
-    import reos.ollama as ollama_mod
+    import cairn.ollama as ollama_mod
 
     def fake_client(*_args, **_kwargs):
         return _FakeClient(get_resp=_FakeResponse(payload={"models": [{"name": "m1"}] }))
@@ -57,7 +57,7 @@ def test_check_ollama_reachable_true(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_check_ollama_reachable_false_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    import reos.ollama as ollama_mod
+    import cairn.ollama as ollama_mod
 
     def fake_client(*_args, **_kwargs):
         return _FakeClient(get_resp=None)
@@ -71,7 +71,7 @@ def test_check_ollama_reachable_false_on_error(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_list_ollama_models_filters_names(monkeypatch: pytest.MonkeyPatch) -> None:
-    import reos.ollama as ollama_mod
+    import cairn.ollama as ollama_mod
 
     def fake_client(*_args, **_kwargs):
         return _FakeClient(
@@ -85,7 +85,7 @@ def test_list_ollama_models_filters_names(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_ollama_client_raises_on_missing_message(monkeypatch: pytest.MonkeyPatch) -> None:
-    import reos.ollama as ollama_mod
+    import cairn.ollama as ollama_mod
 
     def fake_client(*_args, **_kwargs):
         return _FakeClient(post_resp=_FakeResponse(payload={"nope": True}))
@@ -98,7 +98,7 @@ def test_ollama_client_raises_on_missing_message(monkeypatch: pytest.MonkeyPatch
 
 
 def test_ollama_client_raises_on_missing_content(monkeypatch: pytest.MonkeyPatch) -> None:
-    import reos.ollama as ollama_mod
+    import cairn.ollama as ollama_mod
 
     def fake_client(*_args, **_kwargs):
         return _FakeClient(post_resp=_FakeResponse(payload={"message": {"role": "assistant"}}))

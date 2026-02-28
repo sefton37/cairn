@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 import pytest
 
-from reos.play_computed import (
+from cairn.play_computed import (
     _is_placeholder_date,
     compute_effective_stage,
     enrich_scene_for_display,

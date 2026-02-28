@@ -34,7 +34,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
     # Close any existing connection before test
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.close_connection()
 
@@ -47,7 +47,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 def initialized_db(temp_data_dir: Path):
     """Initialize the database and return the module."""
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.init_db()
     return play_db
@@ -63,7 +63,7 @@ class TestSchemaInitialization:
 
     def test_init_db_creates_schema(self, temp_data_dir: Path) -> None:
         """init_db creates all required tables."""
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         play_db.init_db()
         conn = play_db._get_connection()
@@ -80,7 +80,7 @@ class TestSchemaInitialization:
 
     def test_init_db_sets_schema_version(self, temp_data_dir: Path) -> None:
         """init_db sets schema version to current."""
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         play_db.init_db()
         conn = play_db._get_connection()
@@ -92,7 +92,7 @@ class TestSchemaInitialization:
 
     def test_init_db_idempotent(self, temp_data_dir: Path) -> None:
         """Calling init_db multiple times is safe."""
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         play_db.init_db()
         play_db.init_db()

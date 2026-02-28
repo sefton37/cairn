@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from reos.security import verify_command_safety_llm
+from cairn.security import verify_command_safety_llm
 
 
 class TestVerifyCommandSafetyLlmHappyPath:

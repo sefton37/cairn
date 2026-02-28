@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 
-from reos.cairn.health.runner import (
+from cairn.cairn.health.runner import (
     CACHE_TTL_SECONDS,
     HealthCheckResult,
     HealthCheckRunner,

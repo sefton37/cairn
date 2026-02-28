@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from reos.db import Database
-from reos.errors import record_error
+from cairn.db import Database
+from cairn.errors import record_error
 
 
 @pytest.fixture
@@ -76,7 +76,7 @@ def test_record_error_dedupes_within_window(temp_db: Database) -> None:
 # =============================================================================
 
 
-from reos.errors import (
+from cairn.errors import (
     TalkingRockError,
     ValidationError,
     PathValidationError,

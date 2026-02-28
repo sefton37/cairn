@@ -11,9 +11,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from reos.cairn.store import CairnStore
-from reos.db import Database
-from reos.rpc_handlers.health import (
+from cairn.cairn.store import CairnStore
+from cairn.db import Database
+from cairn.rpc_handlers.health import (
     handle_health_acknowledge,
     handle_health_findings,
     handle_health_status,
@@ -42,13 +42,13 @@ def mock_db(tmp_play_path: Path) -> Database:
     db = MagicMock(spec=Database)
 
     # Mock get_current_play_path to return our test path
-    with patch("reos.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
+    with patch("cairn.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
         yield db
 
 
 def test_handle_health_status_returns_expected_format(mock_db: Database, tmp_play_path: Path):
     """handle_health_status should return expected dict format."""
-    with patch("reos.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
+    with patch("cairn.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
         result = handle_health_status(mock_db)
 
     assert isinstance(result, dict)
@@ -59,7 +59,7 @@ def test_handle_health_status_returns_expected_format(mock_db: Database, tmp_pla
 
 def test_handle_health_status_fresh_database_is_healthy(mock_db: Database, tmp_play_path: Path):
     """Fresh database should return healthy status."""
-    with patch("reos.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
+    with patch("cairn.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
         result = handle_health_status(mock_db)
 
     # Fresh database with no acts should be healthy
@@ -86,7 +86,7 @@ def test_handle_health_status_with_stale_acts(mock_db: Database, tmp_play_path: 
     conn.commit()
     conn.close()
 
-    with patch("reos.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
+    with patch("cairn.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
         result = handle_health_status(mock_db)
 
     # Should show warning status
@@ -96,7 +96,7 @@ def test_handle_health_status_with_stale_acts(mock_db: Database, tmp_play_path: 
 
 def test_handle_health_findings_returns_expected_format(mock_db: Database, tmp_play_path: Path):
     """handle_health_findings should return expected dict format."""
-    with patch("reos.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
+    with patch("cairn.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
         result = handle_health_findings(mock_db)
 
     assert isinstance(result, dict)
@@ -124,7 +124,7 @@ def test_handle_health_findings_with_stale_acts(mock_db: Database, tmp_play_path
     conn.commit()
     conn.close()
 
-    with patch("reos.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
+    with patch("cairn.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
         result = handle_health_findings(mock_db)
 
     findings = result["findings"]
@@ -141,7 +141,7 @@ def test_handle_health_findings_with_stale_acts(mock_db: Database, tmp_play_path
 
 def test_handle_health_findings_excludes_healthy_results(mock_db: Database, tmp_play_path: Path):
     """Findings list should only include non-healthy results."""
-    with patch("reos.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
+    with patch("cairn.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
         result = handle_health_findings(mock_db)
 
     findings = result["findings"]
@@ -157,7 +157,7 @@ def test_handle_health_acknowledge_with_valid_log_id(mock_db: Database, tmp_play
     cairn_db = tmp_play_path / ".cairn" / "cairn.db"
     store = CairnStore(cairn_db)
 
-    from reos.cairn.health.anti_nag import AntiNagProtocol
+    from cairn.cairn.health.anti_nag import AntiNagProtocol
 
     conn = store._get_connection()
     anti_nag = AntiNagProtocol(conn)
@@ -168,7 +168,7 @@ def test_handle_health_acknowledge_with_valid_log_id(mock_db: Database, tmp_play
         title="Test",
     )
 
-    with patch("reos.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
+    with patch("cairn.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
         result = handle_health_acknowledge(mock_db, log_id=log_id)
 
     assert result["success"] is True
@@ -176,7 +176,7 @@ def test_handle_health_acknowledge_with_valid_log_id(mock_db: Database, tmp_play
 
 def test_handle_health_acknowledge_with_invalid_log_id(mock_db: Database, tmp_play_path: Path):
     """handle_health_acknowledge should return success=False for invalid log_id."""
-    with patch("reos.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
+    with patch("cairn.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
         result = handle_health_acknowledge(mock_db, log_id="nonexistent")
 
     assert result["success"] is False
@@ -187,7 +187,7 @@ def test_handle_health_status_no_active_play_returns_safe_defaults():
     # Don't use mock_db fixture - create a simple mock without the fixture's patch
     mock_db = MagicMock(spec=Database)
 
-    with patch("reos.rpc_handlers.health.get_current_play_path", return_value=None):
+    with patch("cairn.rpc_handlers.health.get_current_play_path", return_value=None):
         result = handle_health_status(mock_db)
 
     # Implementation catches exceptions and returns safe defaults
@@ -201,7 +201,7 @@ def test_handle_health_findings_no_active_play_returns_safe_defaults():
     # Don't use mock_db fixture - create a simple mock without the fixture's patch
     mock_db = MagicMock(spec=Database)
 
-    with patch("reos.rpc_handlers.health.get_current_play_path", return_value=None):
+    with patch("cairn.rpc_handlers.health.get_current_play_path", return_value=None):
         result = handle_health_findings(mock_db)
 
     # Implementation catches exceptions and returns safe defaults
@@ -213,9 +213,9 @@ def test_handle_health_findings_no_active_play_returns_safe_defaults():
 
 def test_health_components_registers_all_phase_1_checks(mock_db: Database, tmp_play_path: Path):
     """_get_health_components should register all Phase 1 checks."""
-    from reos.rpc_handlers.health import _get_health_components
+    from cairn.rpc_handlers.health import _get_health_components
 
-    with patch("reos.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
+    with patch("cairn.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
         runner, anti_nag, store = _get_health_components(mock_db)
 
     # Run checks to see what's registered
@@ -231,9 +231,9 @@ def test_health_components_handles_phase_2_imports_gracefully(
     mock_db: Database, tmp_play_path: Path
 ):
     """_get_health_components should handle missing Phase 2+ checks gracefully."""
-    from reos.rpc_handlers.health import _get_health_components
+    from cairn.rpc_handlers.health import _get_health_components
 
-    with patch("reos.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
+    with patch("cairn.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
         # Should not raise ImportError even if Phase 2 checks don't exist
         runner, anti_nag, store = _get_health_components(mock_db)
 
@@ -244,7 +244,7 @@ def test_health_components_handles_phase_2_imports_gracefully(
 
 def test_handle_health_status_caches_results(mock_db: Database, tmp_play_path: Path):
     """Multiple status calls should use cached results."""
-    with patch("reos.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
+    with patch("cairn.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
         result1 = handle_health_status(mock_db)
         result2 = handle_health_status(mock_db)
 
@@ -254,7 +254,7 @@ def test_handle_health_status_caches_results(mock_db: Database, tmp_play_path: P
 
 def test_handle_health_findings_count_matches_list_length(mock_db: Database, tmp_play_path: Path):
     """finding_count should match the length of findings list."""
-    with patch("reos.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
+    with patch("cairn.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
         result = handle_health_findings(mock_db)
 
     assert result["finding_count"] == len(result["findings"])
@@ -264,7 +264,7 @@ def test_exception_handling_returns_safe_defaults(mock_db: Database):
     """Exceptions during health checks should return safe defaults."""
     # Mock get_current_play_path to raise an exception
     with patch(
-        "reos.rpc_handlers.health.get_current_play_path",
+        "cairn.rpc_handlers.health.get_current_play_path",
         side_effect=Exception("Test error"),
     ):
         result = handle_health_status(mock_db)
@@ -276,9 +276,9 @@ def test_exception_handling_returns_safe_defaults(mock_db: Database):
 
 def test_rpc_error_for_no_active_play_in_acknowledge(mock_db: Database):
     """handle_health_acknowledge should raise RpcError if no active play."""
-    from reos.rpc_handlers import RpcError
+    from cairn.rpc_handlers import RpcError
 
-    with patch("reos.rpc_handlers.health.get_current_play_path", return_value=None):
+    with patch("cairn.rpc_handlers.health.get_current_play_path", return_value=None):
         with pytest.raises(RpcError) as exc_info:
             handle_health_acknowledge(mock_db, log_id="test-id")
 
@@ -291,7 +291,7 @@ def test_unacknowledged_count_reflects_anti_nag_state(mock_db: Database, tmp_pla
     cairn_db = tmp_play_path / ".cairn" / "cairn.db"
     store = CairnStore(cairn_db)
 
-    from reos.cairn.health.anti_nag import AntiNagProtocol
+    from cairn.cairn.health.anti_nag import AntiNagProtocol
 
     conn = store._get_connection()
     anti_nag = AntiNagProtocol(conn)
@@ -302,7 +302,7 @@ def test_unacknowledged_count_reflects_anti_nag_state(mock_db: Database, tmp_pla
         title="Test",
     )
 
-    with patch("reos.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
+    with patch("cairn.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
         result = handle_health_status(mock_db)
 
     # Should show 1 unacknowledged

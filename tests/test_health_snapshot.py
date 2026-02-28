@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from reos.cairn.health.snapshot import (
+from cairn.cairn.health.snapshot import (
     create_daily_snapshot,
     get_snapshots,
     init_snapshot_tables,

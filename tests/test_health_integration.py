@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from reos.cairn.store import CairnStore
+from cairn.cairn.store import CairnStore
 
 
 @pytest.fixture
@@ -66,12 +66,12 @@ def test_health_check_config_seeded(store: CairnStore):
 
 def test_runner_registers_all_phase_1_checks(store: CairnStore):
     """HealthCheckRunner should accept all Phase 1 checks."""
-    from reos.cairn.health.checks.act_vitality import ActVitalityCheck
-    from reos.cairn.health.checks.context_freshness import (
+    from cairn.cairn.health.checks.act_vitality import ActVitalityCheck
+    from cairn.cairn.health.checks.context_freshness import (
         ContextFreshnessCheck,
     )
-    from reos.cairn.health.checks.data_integrity import DataIntegrityCheck
-    from reos.cairn.health.runner import HealthCheckRunner
+    from cairn.cairn.health.checks.data_integrity import DataIntegrityCheck
+    from cairn.cairn.health.runner import HealthCheckRunner
 
     runner = HealthCheckRunner()
     runner.register(ContextFreshnessCheck(store))
@@ -88,26 +88,26 @@ def test_runner_registers_all_phase_1_checks(store: CairnStore):
 
 def test_runner_registers_all_checks_without_error(store: CairnStore):
     """All Phase 1-4 checks should register without import errors."""
-    from reos.cairn.health.checks.act_vitality import ActVitalityCheck
-    from reos.cairn.health.checks.context_freshness import (
+    from cairn.cairn.health.checks.act_vitality import ActVitalityCheck
+    from cairn.cairn.health.checks.context_freshness import (
         ContextFreshnessCheck,
     )
-    from reos.cairn.health.checks.correction_intake import (
+    from cairn.cairn.health.checks.correction_intake import (
         CorrectionIntakeCheck,
     )
-    from reos.cairn.health.checks.data_integrity import DataIntegrityCheck
-    from reos.cairn.health.checks.pattern_currency import PatternCurrencyCheck
-    from reos.cairn.health.checks.preference_alignment import (
+    from cairn.cairn.health.checks.data_integrity import DataIntegrityCheck
+    from cairn.cairn.health.checks.pattern_currency import PatternCurrencyCheck
+    from cairn.cairn.health.checks.preference_alignment import (
         PreferenceAlignmentCheck,
     )
-    from reos.cairn.health.checks.security_posture import (
+    from cairn.cairn.health.checks.security_posture import (
         SecurityPostureCheck,
     )
-    from reos.cairn.health.checks.signal_quality import SignalQualityCheck
-    from reos.cairn.health.checks.software_currency import (
+    from cairn.cairn.health.checks.signal_quality import SignalQualityCheck
+    from cairn.cairn.health.checks.software_currency import (
         SoftwareCurrencyCheck,
     )
-    from reos.cairn.health.runner import HealthCheckRunner
+    from cairn.cairn.health.runner import HealthCheckRunner
 
     runner = HealthCheckRunner()
     mock_db = MagicMock()
@@ -141,7 +141,7 @@ def test_runner_registers_all_checks_without_error(store: CairnStore):
 
 def test_mcp_tools_include_all_health_tools():
     """list_tools() should include all 3 health MCP tools."""
-    from reos.cairn.mcp_tools import list_tools
+    from cairn.cairn.mcp_tools import list_tools
 
     tools = list_tools()
     tool_names = {t.name for t in tools}
@@ -153,7 +153,7 @@ def test_mcp_tools_include_all_health_tools():
 
 def test_mcp_health_report_returns_expected_shape(store: CairnStore):
     """cairn_health_report should return full_results, surfaced, summary."""
-    from reos.cairn.mcp_tools import CairnToolHandler
+    from cairn.cairn.mcp_tools import CairnToolHandler
 
     handler = CairnToolHandler(store=store)
     result = handler.call_tool("cairn_health_report", {})
@@ -167,7 +167,7 @@ def test_mcp_health_report_returns_expected_shape(store: CairnStore):
 
 def test_mcp_health_history_returns_expected_shape(store: CairnStore):
     """cairn_health_history should return snapshots list."""
-    from reos.cairn.mcp_tools import CairnToolHandler
+    from cairn.cairn.mcp_tools import CairnToolHandler
 
     handler = CairnToolHandler(store=store)
     result = handler.call_tool("cairn_health_history", {})
@@ -180,8 +180,8 @@ def test_mcp_health_history_returns_expected_shape(store: CairnStore):
 
 def test_mcp_health_history_with_data(store: CairnStore):
     """cairn_health_history should return snapshot data when available."""
-    from reos.cairn.health.snapshot import create_daily_snapshot
-    from reos.cairn.mcp_tools import CairnToolHandler
+    from cairn.cairn.health.snapshot import create_daily_snapshot
+    from cairn.cairn.mcp_tools import CairnToolHandler
 
     # Create a snapshot
     conn = store._get_connection()
@@ -203,7 +203,7 @@ def test_mcp_health_history_with_data(store: CairnStore):
 
 def test_rpc_health_status_returns_expected_shape(tmp_path: Path):
     """health/status RPC should return severity, counts."""
-    from reos.rpc_handlers.health import handle_health_status
+    from cairn.rpc_handlers.health import handle_health_status
 
     play_path = tmp_path / "play"
     play_path.mkdir()
@@ -213,7 +213,7 @@ def test_rpc_health_status_returns_expected_shape(tmp_path: Path):
 
     mock_db = MagicMock()
     with patch(
-        "reos.rpc_handlers.health.get_current_play_path",
+        "cairn.rpc_handlers.health.get_current_play_path",
         return_value=str(play_path),
     ):
         result = handle_health_status(mock_db)
@@ -226,7 +226,7 @@ def test_rpc_health_status_returns_expected_shape(tmp_path: Path):
 
 def test_rpc_health_findings_returns_expected_shape(tmp_path: Path):
     """health/findings RPC should return findings list."""
-    from reos.rpc_handlers.health import handle_health_findings
+    from cairn.rpc_handlers.health import handle_health_findings
 
     play_path = tmp_path / "play"
     play_path.mkdir()
@@ -236,7 +236,7 @@ def test_rpc_health_findings_returns_expected_shape(tmp_path: Path):
 
     mock_db = MagicMock()
     with patch(
-        "reos.rpc_handlers.health.get_current_play_path",
+        "cairn.rpc_handlers.health.get_current_play_path",
         return_value=str(play_path),
     ):
         result = handle_health_findings(mock_db)
@@ -254,7 +254,7 @@ def test_rpc_health_findings_returns_expected_shape(tmp_path: Path):
 
 def test_health_behavior_mode_selects_report_by_default():
     """Health mode should select cairn_health_report for generic queries."""
-    from reos.cairn.behavior_modes import _health_tool_selector
+    from cairn.cairn.behavior_modes import _health_tool_selector
 
     ctx = MagicMock()
     ctx.user_input = "how am I doing?"
@@ -264,7 +264,7 @@ def test_health_behavior_mode_selects_report_by_default():
 
 def test_health_behavior_mode_selects_history_for_trends():
     """Health mode should select cairn_health_history for trend queries."""
-    from reos.cairn.behavior_modes import _health_tool_selector
+    from cairn.cairn.behavior_modes import _health_tool_selector
 
     ctx = MagicMock()
 
@@ -282,7 +282,7 @@ def test_health_behavior_mode_selects_history_for_trends():
 
 def test_health_arg_extractor_parses_days():
     """Health arg extractor should parse days from user input."""
-    from reos.cairn.behavior_modes import _health_arg_extractor
+    from cairn.cairn.behavior_modes import _health_arg_extractor
 
     ctx = MagicMock()
     ctx.user_input = "show health trends for 60 days"
@@ -293,7 +293,7 @@ def test_health_arg_extractor_parses_days():
 
 def test_health_arg_extractor_returns_empty_for_no_number():
     """Health arg extractor should return empty dict with no number."""
-    from reos.cairn.behavior_modes import _health_arg_extractor
+    from cairn.cairn.behavior_modes import _health_arg_extractor
 
     ctx = MagicMock()
     ctx.user_input = "show me health history"
@@ -309,7 +309,7 @@ def test_health_arg_extractor_returns_empty_for_no_number():
 
 def test_anti_nag_round_trip(store: CairnStore):
     """Anti-Nag should log, retrieve, and acknowledge findings."""
-    from reos.cairn.health.anti_nag import AntiNagProtocol
+    from cairn.cairn.health.anti_nag import AntiNagProtocol
 
     conn = store._get_connection()
     anti_nag = AntiNagProtocol(conn)

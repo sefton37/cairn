@@ -22,7 +22,7 @@ def search_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     data_dir.mkdir()
     monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.close_connection()
     play_db.init_db()
@@ -35,7 +35,7 @@ def search_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 def service(search_db):
     """ConversationService backed by the fresh test database."""
-    from reos.services.conversation_service import ConversationService
+    from cairn.services.conversation_service import ConversationService
 
     return ConversationService()
 
@@ -64,7 +64,7 @@ def _write_summary(conversation_id: str, summary_text: str, model: str = "test-m
     from datetime import UTC, datetime
     from uuid import uuid4
 
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     conn = play_db._get_connection()
     now = datetime.now(UTC).isoformat()
@@ -83,7 +83,7 @@ def _write_memory(conversation_id: str, narrative: str) -> str:
     from datetime import UTC, datetime
     from uuid import uuid4
 
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     conn = play_db._get_connection()
     now = datetime.now(UTC).isoformat()
@@ -112,7 +112,7 @@ def _write_entity(memory_id: str, entity_type: str = "person") -> str:
     from datetime import UTC, datetime
     from uuid import uuid4
 
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     conn = play_db._get_connection()
     now = datetime.now(UTC).isoformat()
@@ -435,7 +435,7 @@ class TestGetConversationDetail:
         """Each memory in the detail dict contains its state_deltas list."""
         from uuid import uuid4
 
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         conv = _archive_conversation(service, [("user", "delta content")])
         memory_id = _write_memory(conv.id, "Memory with delta")

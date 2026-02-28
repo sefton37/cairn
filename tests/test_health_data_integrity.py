@@ -8,8 +8,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from reos.cairn.health.checks.data_integrity import DataIntegrityCheck
-from reos.cairn.health.runner import Severity
+from cairn.cairn.health.checks.data_integrity import DataIntegrityCheck
+from cairn.cairn.health.runner import Severity
 
 
 def test_missing_database_returns_warning(tmp_path: Path):
@@ -139,7 +139,7 @@ def test_check_name_property(tmp_path: Path):
 
 def test_real_cairn_database_structure(tmp_path: Path):
     """Test passes on a real CairnStore database."""
-    from reos.cairn.store import CairnStore
+    from cairn.cairn.store import CairnStore
 
     # Create a real CairnStore (will init schema)
     db_path = tmp_path / "cairn.db"

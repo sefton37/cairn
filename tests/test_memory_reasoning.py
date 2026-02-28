@@ -21,20 +21,20 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from reos.memory.retriever import (
+from cairn.memory.retriever import (
     ConversationMemoryContext,
     ConversationMemoryMatch,
     _compute_recency_weight,
     _compute_signal_weight,
 )
-from reos.play_db import (
+from cairn.play_db import (
     YOUR_STORY_ACT_ID,
     _get_connection,
     _transaction,
     close_connection,
     init_db,
 )
-from reos.services.memory_service import (
+from cairn.services.memory_service import (
     MemoryService,
     log_memory_influence,
 )
@@ -58,7 +58,7 @@ def mem_db(tmp_path):
 @pytest.fixture()
 def conversation_id(mem_db):
     """Create a conversation and return its ID."""
-    from reos.services.conversation_service import ConversationService
+    from cairn.services.conversation_service import ConversationService
 
     service = ConversationService()
     conv = service.start()
@@ -451,7 +451,7 @@ class TestClassifierMemoryInjection:
             "action_hint": None,
         })
 
-        from reos.atomic_ops.classifier import AtomicClassifier
+        from cairn.atomic_ops.classifier import AtomicClassifier
 
         classifier = AtomicClassifier(llm=mock_llm)
         result = classifier.classify(
@@ -484,7 +484,7 @@ class TestClassifierMemoryInjection:
             "action_hint": None,
         })
 
-        from reos.atomic_ops.classifier import AtomicClassifier
+        from cairn.atomic_ops.classifier import AtomicClassifier
 
         classifier = AtomicClassifier(llm=mock_llm)
         result = classifier.classify("good morning")

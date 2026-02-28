@@ -24,7 +24,7 @@ class TestMovedItemDetection:
     """Test _detect_moved_item finds the item with the largest rank delta."""
 
     def test_simple_move(self) -> None:
-        from reos.services.priority_analysis_service import PriorityAnalysisService
+        from cairn.services.priority_analysis_service import PriorityAnalysisService
 
         svc = PriorityAnalysisService()
         # Item "c" moved from position 2 to position 0
@@ -37,7 +37,7 @@ class TestMovedItemDetection:
         assert new_pos == 0
 
     def test_swap_picks_larger_delta(self) -> None:
-        from reos.services.priority_analysis_service import PriorityAnalysisService
+        from cairn.services.priority_analysis_service import PriorityAnalysisService
 
         svc = PriorityAnalysisService()
         old = {"a": 0, "b": 1, "c": 2, "d": 3}
@@ -49,7 +49,7 @@ class TestMovedItemDetection:
         assert abs(old_pos - new_pos) == 2
 
     def test_no_change(self) -> None:
-        from reos.services.priority_analysis_service import PriorityAnalysisService
+        from cairn.services.priority_analysis_service import PriorityAnalysisService
 
         svc = PriorityAnalysisService()
         old = {"a": 0, "b": 1}
@@ -60,7 +60,7 @@ class TestMovedItemDetection:
         assert moved_id is None
 
     def test_empty_old_priorities(self) -> None:
-        from reos.services.priority_analysis_service import PriorityAnalysisService
+        from cairn.services.priority_analysis_service import PriorityAnalysisService
 
         svc = PriorityAnalysisService()
         old: dict[str, int] = {}
@@ -71,7 +71,7 @@ class TestMovedItemDetection:
         assert moved_id is None
 
     def test_new_item_in_order(self) -> None:
-        from reos.services.priority_analysis_service import PriorityAnalysisService
+        from cairn.services.priority_analysis_service import PriorityAnalysisService
 
         svc = PriorityAnalysisService()
         old = {"a": 0}
@@ -93,7 +93,7 @@ class TestSyntheticMessageConstruction:
     """Test _build_synthetic_message produces correct prompt."""
 
     def _make_service(self):
-        from reos.services.priority_analysis_service import PriorityAnalysisService
+        from cairn.services.priority_analysis_service import PriorityAnalysisService
         return PriorityAnalysisService()
 
     def test_contains_system_event_header(self) -> None:
@@ -214,9 +214,9 @@ class TestSyntheticMessageConstruction:
 class TestAnalyzeReorder:
     """Test analyze_reorder calls ChatAgent correctly."""
 
-    @patch("reos.agent.ChatAgent")
+    @patch("cairn.agent.ChatAgent")
     def test_calls_chat_agent_with_system_initiated(self, mock_agent_cls) -> None:
-        from reos.services.priority_analysis_service import PriorityAnalysisService
+        from cairn.services.priority_analysis_service import PriorityAnalysisService
 
         mock_response = MagicMock()
         mock_response.answer = "I notice you prioritized X over Y."
@@ -246,9 +246,9 @@ class TestAnalyzeReorder:
         assert call_kwargs.kwargs["agent_type"] == "cairn"
         assert call_kwargs.kwargs["is_system_initiated"] is True
 
-    @patch("reos.agent.ChatAgent")
+    @patch("cairn.agent.ChatAgent")
     def test_synthetic_message_passed_to_agent(self, mock_agent_cls) -> None:
-        from reos.services.priority_analysis_service import PriorityAnalysisService
+        from cairn.services.priority_analysis_service import PriorityAnalysisService
 
         mock_response = MagicMock()
         mock_response.answer = "analysis"
@@ -269,9 +269,9 @@ class TestAnalyzeReorder:
         message = call_args.args[0]
         assert "[SYSTEM EVENT — Priority Reorder]" in message
 
-    @patch("reos.agent.ChatAgent")
+    @patch("cairn.agent.ChatAgent")
     def test_llm_failure_propagates(self, mock_agent_cls) -> None:
-        from reos.services.priority_analysis_service import PriorityAnalysisService
+        from cairn.services.priority_analysis_service import PriorityAnalysisService
 
         mock_agent = MagicMock()
         mock_agent.respond.side_effect = RuntimeError("LLM unreachable")

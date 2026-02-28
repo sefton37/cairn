@@ -6,8 +6,8 @@ from typing import Any
 
 import pytest
 
-from reos.agent import ChatAgent
-from reos.db import get_db
+from cairn.agent import ChatAgent
+from cairn.db import get_db
 
 
 class FakeOllama:
@@ -43,7 +43,7 @@ def test_agent_strips_include_diff_when_not_opted_in(
 ) -> None:
     """Test that include_diff is stripped when user doesn't opt in.
 
-    NOTE: This test uses linux_system_info since git tools were removed.
+    NOTE: This test uses cairn_play_acts_list since git tools were removed.
     The test now verifies that arbitrary extra arguments are passed through,
     since include_diff policy doesn't apply to non-git tools.
     """
@@ -56,13 +56,13 @@ def test_agent_strips_include_diff_when_not_opted_in(
         return {"ok": True}
 
     # Avoid invoking real MCP tools; we only care about the arguments passed.
-    import reos.agent as agent_mod
+    import cairn.agent as agent_mod
 
     monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
 
     tool_plan = {
         "tool_calls": [
-            {"name": "linux_system_info", "arguments": {}},
+            {"name": "cairn_play_acts_list", "arguments": {}},
         ]
     }
 
@@ -71,8 +71,8 @@ def test_agent_strips_include_diff_when_not_opted_in(
     monkeypatch.setattr(agent, "_try_reasoning", lambda *args, **kwargs: None)
     _answer = agent.respond("How is my system?")
 
-    assert any(c["name"] == "linux_system_info" for c in calls)
-    info_call = next(c for c in calls if c["name"] == "linux_system_info")
+    assert any(c["name"] == "cairn_play_acts_list" for c in calls)
+    info_call = next(c for c in calls if c["name"] == "cairn_play_acts_list")
     assert info_call["arguments"] == {}
 
 
@@ -89,13 +89,13 @@ def test_agent_passes_arguments_to_tools(
         calls.append({"name": name, "arguments": arguments or {}})
         return {"ok": True}
 
-    import reos.agent as agent_mod
+    import cairn.agent as agent_mod
 
     monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
 
     tool_plan = {
         "tool_calls": [
-            {"name": "linux_disk_usage", "arguments": {"path": "/home"}},
+            {"name": "cairn_play_scenes_list", "arguments": {"path": "/home"}},
         ]
     }
 
@@ -104,7 +104,7 @@ def test_agent_passes_arguments_to_tools(
     monkeypatch.setattr(agent, "_try_reasoning", lambda *args, **kwargs: None)
     _answer = agent.respond("Check disk usage for /home")
 
-    disk_call = next(c for c in calls if c["name"] == "linux_disk_usage")
+    disk_call = next(c for c in calls if c["name"] == "cairn_play_scenes_list")
     assert disk_call["arguments"].get("path") == "/home"
 
 
@@ -120,14 +120,14 @@ def test_agent_respects_tool_call_limit(
         calls.append(name)
         return {"ok": True}
 
-    import reos.agent as agent_mod
+    import cairn.agent as agent_mod
 
     monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
 
     tool_plan = {
         "tool_calls": [
-            {"name": "linux_system_info", "arguments": {}},
-            {"name": "linux_disk_usage", "arguments": {"path": "/"}},
+            {"name": "cairn_play_acts_list", "arguments": {}},
+            {"name": "cairn_play_scenes_list", "arguments": {"path": "/"}},
         ]
     }
 
@@ -151,7 +151,7 @@ def test_agent_falls_back_on_invalid_json_tool_plan(
         calls.append(name)
         return {"ok": True}
 
-    import reos.agent as agent_mod
+    import cairn.agent as agent_mod
 
     monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
 

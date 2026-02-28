@@ -29,7 +29,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
     # Close any existing connection before test
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.close_connection()
 
@@ -42,8 +42,8 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 def initialized_db(temp_data_dir: Path):
     """Initialize the database and return the blocks_db module."""
-    import reos.play_db as play_db
-    from reos.play import blocks_db
+    import cairn.play_db as play_db
+    from cairn.play import blocks_db
 
     play_db.init_db()
     return blocks_db
@@ -52,7 +52,7 @@ def initialized_db(temp_data_dir: Path):
 @pytest.fixture
 def test_act(temp_data_dir: Path) -> str:
     """Create a test act and return its ID."""
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.init_db()
     _, act_id = play_db.create_act(title="Test Act")
@@ -62,7 +62,7 @@ def test_act(temp_data_dir: Path) -> str:
 @pytest.fixture
 def test_page(test_act: str) -> str:
     """Create a test page and return its ID."""
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     _, page_id = play_db.create_page(act_id=test_act, title="Test Page")
     return page_id
@@ -78,7 +78,7 @@ class TestBlocksSchema:
 
     def test_blocks_table_exists(self, temp_data_dir: Path) -> None:
         """blocks table is created in v7 schema."""
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         play_db.init_db()
         conn = play_db._get_connection()
@@ -90,7 +90,7 @@ class TestBlocksSchema:
 
     def test_block_properties_table_exists(self, temp_data_dir: Path) -> None:
         """block_properties table is created in v7 schema."""
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         play_db.init_db()
         conn = play_db._get_connection()
@@ -102,7 +102,7 @@ class TestBlocksSchema:
 
     def test_rich_text_table_exists(self, temp_data_dir: Path) -> None:
         """rich_text table is created in v7 schema."""
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         play_db.init_db()
         conn = play_db._get_connection()
@@ -114,7 +114,7 @@ class TestBlocksSchema:
 
     def test_schema_version_is_current(self, temp_data_dir: Path) -> None:
         """Schema version matches SCHEMA_VERSION after init."""
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         play_db.init_db()
         conn = play_db._get_connection()
@@ -134,7 +134,7 @@ class TestBlockCRUD:
 
     def test_create_block(self, initialized_db, test_act: str) -> None:
         """create_block creates a new block."""
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         block = initialized_db.create_block(
             type=BlockType.PARAGRAPH,
@@ -153,7 +153,7 @@ class TestBlockCRUD:
             act_id=test_act,
         )
 
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
         assert block.type == BlockType.PARAGRAPH
 
     def test_create_block_with_rich_text(self, initialized_db, test_act: str) -> None:
@@ -225,7 +225,7 @@ class TestBlockCRUD:
 
     def test_list_blocks_by_parent(self, initialized_db, test_act: str) -> None:
         """list_blocks filters by parent_id."""
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         parent = initialized_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         initialized_db.create_block(type="paragraph", act_id=test_act, parent_id=parent.id)
@@ -296,7 +296,7 @@ class TestBlockCRUD:
 
     def test_delete_block_cascade_children(self, initialized_db, test_act: str) -> None:
         """delete_block with recursive=True deletes children."""
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         parent = initialized_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         child1 = initialized_db.create_block(type="paragraph", act_id=test_act, parent_id=parent.id)
@@ -489,7 +489,7 @@ class TestConvenienceFunctions:
 
     def test_get_page_blocks_recursive(self, initialized_db, test_act: str, test_page: str) -> None:
         """get_page_blocks with recursive=True loads children."""
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         parent = initialized_db.create_block(
             type=BlockType.BULLETED_LIST,
@@ -532,7 +532,7 @@ class TestBlockModels:
 
     def test_block_from_dict(self) -> None:
         """Block.from_dict deserializes correctly."""
-        from reos.play.blocks_models import Block, BlockType
+        from cairn.play.blocks_models import Block, BlockType
 
         data = {
             "id": "block-123",
@@ -570,7 +570,7 @@ class TestBlockModels:
 
     def test_block_is_nestable(self) -> None:
         """Block.is_nestable returns correct value for type."""
-        from reos.play.blocks_models import Block, BlockType
+        from cairn.play.blocks_models import Block, BlockType
 
         paragraph = Block(id="1", type=BlockType.PARAGRAPH, act_id="a")
         bulleted = Block(id="2", type=BlockType.BULLETED_LIST, act_id="a")
@@ -582,7 +582,7 @@ class TestBlockModels:
 
     def test_rich_text_span_to_dict(self) -> None:
         """RichTextSpan.to_dict serializes correctly."""
-        from reos.play.blocks_models import RichTextSpan
+        from cairn.play.blocks_models import RichTextSpan
 
         span = RichTextSpan(
             id="span-1",
@@ -611,8 +611,8 @@ class TestCascadeDelete:
 
     def test_delete_act_cascades_to_blocks(self, temp_data_dir: Path) -> None:
         """Deleting act cascades to its blocks."""
-        import reos.play_db as play_db
-        from reos.play import blocks_db
+        import cairn.play_db as play_db
+        from cairn.play import blocks_db
 
         play_db.init_db()
         _, act_id = play_db.create_act(title="Test Act")
@@ -626,8 +626,8 @@ class TestCascadeDelete:
 
     def test_delete_page_cascades_to_blocks(self, temp_data_dir: Path) -> None:
         """Deleting page cascades to its blocks."""
-        import reos.play_db as play_db
-        from reos.play import blocks_db
+        import cairn.play_db as play_db
+        from cairn.play import blocks_db
 
         play_db.init_db()
         _, act_id = play_db.create_act(title="Test Act")
@@ -681,8 +681,8 @@ class TestActIntegration:
 
     def test_set_act_root_block(self, temp_data_dir: Path) -> None:
         """set_act_root_block links a block to an act."""
-        import reos.play_db as play_db
-        from reos.play import blocks_db
+        import cairn.play_db as play_db
+        from cairn.play import blocks_db
 
         play_db.init_db()
         _, act_id = play_db.create_act(title="Test Act")
@@ -696,7 +696,7 @@ class TestActIntegration:
 
     def test_set_act_root_block_nonexistent_act(self, temp_data_dir: Path) -> None:
         """set_act_root_block returns False for missing act."""
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         play_db.init_db()
 
@@ -706,8 +706,8 @@ class TestActIntegration:
 
     def test_get_act_root_block(self, temp_data_dir: Path) -> None:
         """get_act_root_block returns the root block."""
-        import reos.play_db as play_db
-        from reos.play import blocks_db
+        import cairn.play_db as play_db
+        from cairn.play import blocks_db
 
         play_db.init_db()
         _, act_id = play_db.create_act(title="Test Act")
@@ -726,7 +726,7 @@ class TestActIntegration:
 
     def test_get_act_root_block_no_root(self, temp_data_dir: Path) -> None:
         """get_act_root_block returns None if no root set."""
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         play_db.init_db()
         _, act_id = play_db.create_act(title="Test Act")
@@ -737,7 +737,7 @@ class TestActIntegration:
 
     def test_create_act_with_root_block(self, temp_data_dir: Path) -> None:
         """create_act_with_root_block creates act and root block."""
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         play_db.init_db()
 
@@ -760,8 +760,8 @@ class TestActIntegration:
 
     def test_get_unchecked_todos(self, temp_data_dir: Path) -> None:
         """get_unchecked_todos returns incomplete to-dos."""
-        import reos.play_db as play_db
-        from reos.play import blocks_db
+        import cairn.play_db as play_db
+        from cairn.play import blocks_db
 
         play_db.init_db()
         _, act_id = play_db.create_act(title="Test Act")
@@ -795,8 +795,8 @@ class TestActIntegration:
 
     def test_search_blocks_in_act(self, temp_data_dir: Path) -> None:
         """search_blocks_in_act finds blocks by text."""
-        import reos.play_db as play_db
-        from reos.play import blocks_db
+        import cairn.play_db as play_db
+        from cairn.play import blocks_db
 
         play_db.init_db()
         _, act_id = play_db.create_act(title="Test Act")
@@ -826,8 +826,8 @@ class TestActIntegration:
 
     def test_search_blocks_in_act_no_matches(self, temp_data_dir: Path) -> None:
         """search_blocks_in_act returns empty list for no matches."""
-        import reos.play_db as play_db
-        from reos.play import blocks_db
+        import cairn.play_db as play_db
+        from cairn.play import blocks_db
 
         play_db.init_db()
         _, act_id = play_db.create_act(title="Test Act")
@@ -844,7 +844,7 @@ class TestActIntegration:
 
     def test_acts_include_root_block_id(self, temp_data_dir: Path) -> None:
         """list_acts includes root_block_id field."""
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         play_db.init_db()
         play_db.create_act(title="Test Act")

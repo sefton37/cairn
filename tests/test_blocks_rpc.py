@@ -22,7 +22,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     data_dir.mkdir()
     monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.close_connection()
 
@@ -34,7 +34,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 def mock_db(temp_data_dir: Path):
     """Initialize database and return mock db object."""
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.init_db()
 
@@ -48,7 +48,7 @@ def mock_db(temp_data_dir: Path):
 @pytest.fixture
 def test_act(temp_data_dir: Path) -> str:
     """Create a test act."""
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.init_db()
     _, act_id = play_db.create_act(title="Test Act")
@@ -58,7 +58,7 @@ def test_act(temp_data_dir: Path) -> str:
 @pytest.fixture
 def test_page(test_act: str) -> str:
     """Create a test page."""
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     _, page_id = play_db.create_page(act_id=test_act, title="Test Page")
     return page_id
@@ -74,7 +74,7 @@ class TestBlocksCRUDHandlers:
 
     def test_handle_blocks_create(self, mock_db, test_act: str) -> None:
         """blocks/create creates a new block."""
-        from reos.rpc_handlers.blocks import handle_blocks_create
+        from cairn.rpc_handlers.blocks import handle_blocks_create
 
         result = handle_blocks_create(
             mock_db,
@@ -89,7 +89,7 @@ class TestBlocksCRUDHandlers:
 
     def test_handle_blocks_create_with_properties(self, mock_db, test_act: str) -> None:
         """blocks/create with properties."""
-        from reos.rpc_handlers.blocks import handle_blocks_create
+        from cairn.rpc_handlers.blocks import handle_blocks_create
 
         result = handle_blocks_create(
             mock_db,
@@ -102,7 +102,7 @@ class TestBlocksCRUDHandlers:
 
     def test_handle_blocks_get(self, mock_db, test_act: str) -> None:
         """blocks/get returns block by ID."""
-        from reos.rpc_handlers.blocks import handle_blocks_create, handle_blocks_get
+        from cairn.rpc_handlers.blocks import handle_blocks_create, handle_blocks_get
 
         created = handle_blocks_create(mock_db, type="paragraph", act_id=test_act)
         block_id = created["block"]["id"]
@@ -113,15 +113,15 @@ class TestBlocksCRUDHandlers:
 
     def test_handle_blocks_get_not_found(self, mock_db) -> None:
         """blocks/get raises for nonexistent ID."""
-        from reos.rpc_handlers.blocks import handle_blocks_get
-        from reos.rpc_handlers import RpcError
+        from cairn.rpc_handlers.blocks import handle_blocks_get
+        from cairn.rpc_handlers import RpcError
 
         with pytest.raises(RpcError, match="not found"):
             handle_blocks_get(mock_db, block_id="nonexistent")
 
     def test_handle_blocks_list(self, mock_db, test_act: str, test_page: str) -> None:
         """blocks/list returns matching blocks."""
-        from reos.rpc_handlers.blocks import handle_blocks_create, handle_blocks_list
+        from cairn.rpc_handlers.blocks import handle_blocks_create, handle_blocks_list
 
         handle_blocks_create(mock_db, type="paragraph", act_id=test_act, page_id=test_page)
         handle_blocks_create(mock_db, type="heading_1", act_id=test_act, page_id=test_page)
@@ -132,7 +132,7 @@ class TestBlocksCRUDHandlers:
 
     def test_handle_blocks_update(self, mock_db, test_act: str) -> None:
         """blocks/update modifies block."""
-        from reos.rpc_handlers.blocks import handle_blocks_create, handle_blocks_update
+        from cairn.rpc_handlers.blocks import handle_blocks_create, handle_blocks_update
 
         created = handle_blocks_create(
             mock_db,
@@ -152,8 +152,8 @@ class TestBlocksCRUDHandlers:
 
     def test_handle_blocks_delete(self, mock_db, test_act: str) -> None:
         """blocks/delete removes block."""
-        from reos.rpc_handlers.blocks import handle_blocks_create, handle_blocks_delete, handle_blocks_get
-        from reos.rpc_handlers import RpcError
+        from cairn.rpc_handlers.blocks import handle_blocks_create, handle_blocks_delete, handle_blocks_get
+        from cairn.rpc_handlers import RpcError
 
         created = handle_blocks_create(mock_db, type="paragraph", act_id=test_act)
         block_id = created["block"]["id"]
@@ -176,7 +176,7 @@ class TestBlocksTreeHandlers:
 
     def test_handle_blocks_move(self, mock_db, test_act: str) -> None:
         """blocks/move moves block to new parent."""
-        from reos.rpc_handlers.blocks import handle_blocks_create, handle_blocks_move
+        from cairn.rpc_handlers.blocks import handle_blocks_create, handle_blocks_move
 
         parent = handle_blocks_create(mock_db, type="bulleted_list", act_id=test_act)
         child = handle_blocks_create(mock_db, type="paragraph", act_id=test_act)
@@ -191,7 +191,7 @@ class TestBlocksTreeHandlers:
 
     def test_handle_blocks_reorder(self, mock_db, test_act: str) -> None:
         """blocks/reorder changes block positions."""
-        from reos.rpc_handlers.blocks import handle_blocks_create, handle_blocks_reorder
+        from cairn.rpc_handlers.blocks import handle_blocks_create, handle_blocks_reorder
 
         parent = handle_blocks_create(mock_db, type="bulleted_list", act_id=test_act)
         parent_id = parent["block"]["id"]
@@ -211,7 +211,7 @@ class TestBlocksTreeHandlers:
 
     def test_handle_blocks_ancestors(self, mock_db, test_act: str) -> None:
         """blocks/ancestors returns ancestor chain."""
-        from reos.rpc_handlers.blocks import handle_blocks_create, handle_blocks_ancestors
+        from cairn.rpc_handlers.blocks import handle_blocks_create, handle_blocks_ancestors
 
         grandparent = handle_blocks_create(mock_db, type="bulleted_list", act_id=test_act)
         parent = handle_blocks_create(
@@ -227,7 +227,7 @@ class TestBlocksTreeHandlers:
 
     def test_handle_blocks_descendants(self, mock_db, test_act: str) -> None:
         """blocks/descendants returns all descendants."""
-        from reos.rpc_handlers.blocks import handle_blocks_create, handle_blocks_descendants
+        from cairn.rpc_handlers.blocks import handle_blocks_create, handle_blocks_descendants
 
         parent = handle_blocks_create(mock_db, type="bulleted_list", act_id=test_act)
         handle_blocks_create(mock_db, type="paragraph", act_id=test_act, parent_id=parent["block"]["id"])
@@ -248,7 +248,7 @@ class TestBlocksPageHandlers:
 
     def test_handle_blocks_page_tree(self, mock_db, test_act: str, test_page: str) -> None:
         """blocks/page/tree returns block tree for page."""
-        from reos.rpc_handlers.blocks import handle_blocks_create, handle_blocks_page_tree
+        from cairn.rpc_handlers.blocks import handle_blocks_create, handle_blocks_page_tree
 
         handle_blocks_create(mock_db, type="heading_1", act_id=test_act, page_id=test_page)
         handle_blocks_create(mock_db, type="paragraph", act_id=test_act, page_id=test_page)
@@ -259,7 +259,7 @@ class TestBlocksPageHandlers:
 
     def test_handle_blocks_page_markdown(self, mock_db, test_act: str, test_page: str) -> None:
         """blocks/page/markdown exports page as markdown."""
-        from reos.rpc_handlers.blocks import handle_blocks_create, handle_blocks_page_markdown
+        from cairn.rpc_handlers.blocks import handle_blocks_create, handle_blocks_page_markdown
 
         handle_blocks_create(
             mock_db,
@@ -283,7 +283,7 @@ class TestBlocksPageHandlers:
 
     def test_handle_blocks_import_markdown(self, mock_db, test_act: str) -> None:
         """blocks/import/markdown creates blocks from markdown."""
-        from reos.rpc_handlers.blocks import handle_blocks_import_markdown
+        from cairn.rpc_handlers.blocks import handle_blocks_import_markdown
 
         markdown = """# Title
 
@@ -311,7 +311,7 @@ class TestBlocksRichTextHandlers:
 
     def test_handle_blocks_rich_text_get(self, mock_db, test_act: str) -> None:
         """blocks/rich_text/get returns spans."""
-        from reos.rpc_handlers.blocks import handle_blocks_create, handle_blocks_rich_text_get
+        from cairn.rpc_handlers.blocks import handle_blocks_create, handle_blocks_rich_text_get
 
         created = handle_blocks_create(
             mock_db,
@@ -326,7 +326,7 @@ class TestBlocksRichTextHandlers:
 
     def test_handle_blocks_rich_text_set(self, mock_db, test_act: str) -> None:
         """blocks/rich_text/set replaces spans."""
-        from reos.rpc_handlers.blocks import handle_blocks_create, handle_blocks_rich_text_set
+        from cairn.rpc_handlers.blocks import handle_blocks_create, handle_blocks_rich_text_set
 
         created = handle_blocks_create(
             mock_db,
@@ -355,7 +355,7 @@ class TestBlocksPropertyHandlers:
 
     def test_handle_blocks_property_get(self, mock_db, test_act: str) -> None:
         """blocks/property/get returns property value."""
-        from reos.rpc_handlers.blocks import handle_blocks_create, handle_blocks_property_get
+        from cairn.rpc_handlers.blocks import handle_blocks_create, handle_blocks_property_get
 
         created = handle_blocks_create(
             mock_db,
@@ -374,7 +374,7 @@ class TestBlocksPropertyHandlers:
 
     def test_handle_blocks_property_set(self, mock_db, test_act: str) -> None:
         """blocks/property/set sets property value."""
-        from reos.rpc_handlers.blocks import handle_blocks_create, handle_blocks_property_set, handle_blocks_property_get
+        from cairn.rpc_handlers.blocks import handle_blocks_create, handle_blocks_property_set, handle_blocks_property_get
 
         created = handle_blocks_create(mock_db, type="code", act_id=test_act)
 
@@ -395,7 +395,7 @@ class TestBlocksPropertyHandlers:
 
     def test_handle_blocks_property_delete(self, mock_db, test_act: str) -> None:
         """blocks/property/delete removes property."""
-        from reos.rpc_handlers.blocks import (
+        from cairn.rpc_handlers.blocks import (
             handle_blocks_create,
             handle_blocks_property_delete,
             handle_blocks_property_get,
@@ -434,8 +434,8 @@ class TestBlocksSceneHandlers:
 
     def test_handle_blocks_create_scene(self, mock_db, test_act: str) -> None:
         """blocks/scene/create creates scene embed block."""
-        import reos.play_db as play_db
-        from reos.rpc_handlers.blocks import handle_blocks_create_scene
+        import cairn.play_db as play_db
+        from cairn.rpc_handlers.blocks import handle_blocks_create_scene
 
         _, scene_id = play_db.create_scene(act_id=test_act, title="Test Scene")
 
@@ -450,8 +450,8 @@ class TestBlocksSceneHandlers:
 
     def test_handle_blocks_validate_scene(self, mock_db, test_act: str) -> None:
         """blocks/scene/validate validates scene reference."""
-        import reos.play_db as play_db
-        from reos.rpc_handlers.blocks import handle_blocks_create_scene, handle_blocks_validate_scene
+        import cairn.play_db as play_db
+        from cairn.rpc_handlers.blocks import handle_blocks_create_scene, handle_blocks_validate_scene
 
         _, scene_id = play_db.create_scene(act_id=test_act, title="Test Scene")
         created = handle_blocks_create_scene(mock_db, act_id=test_act, scene_id=scene_id)
@@ -475,7 +475,7 @@ class TestBlocksSearchHandlers:
 
     def test_handle_blocks_search(self, mock_db, test_act: str) -> None:
         """blocks/search finds blocks by text."""
-        from reos.rpc_handlers.blocks import handle_blocks_create, handle_blocks_search
+        from cairn.rpc_handlers.blocks import handle_blocks_create, handle_blocks_search
 
         handle_blocks_create(
             mock_db,
@@ -505,7 +505,7 @@ class TestBlocksSearchHandlers:
 
     def test_handle_blocks_search_no_matches(self, mock_db, test_act: str) -> None:
         """blocks/search returns empty for no matches."""
-        from reos.rpc_handlers.blocks import handle_blocks_create, handle_blocks_search
+        from cairn.rpc_handlers.blocks import handle_blocks_create, handle_blocks_search
 
         handle_blocks_create(
             mock_db,
@@ -521,7 +521,7 @@ class TestBlocksSearchHandlers:
 
     def test_handle_blocks_unchecked_todos(self, mock_db, test_act: str) -> None:
         """blocks/unchecked_todos returns incomplete to-dos."""
-        from reos.rpc_handlers.blocks import handle_blocks_create, handle_blocks_unchecked_todos
+        from cairn.rpc_handlers.blocks import handle_blocks_create, handle_blocks_unchecked_todos
 
         handle_blocks_create(
             mock_db,

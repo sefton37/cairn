@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from reos.db import get_db
+from cairn.db import get_db
 
 
 def test_mcp_initialize_returns_capabilities(isolated_db_singleton) -> None:  # noqa: ANN001
-    import reos.mcp_server as mcp
+    import cairn.mcp_server as mcp
 
     db = get_db()
     resp = mcp._handle_jsonrpc_request(db, {"jsonrpc": "2.0", "id": 1, "method": "initialize"})
@@ -19,7 +19,7 @@ def test_mcp_initialize_returns_capabilities(isolated_db_singleton) -> None:  # 
 
 
 def test_mcp_tools_list_returns_tools(isolated_db_singleton) -> None:  # noqa: ANN001
-    import reos.mcp_server as mcp
+    import cairn.mcp_server as mcp
 
     db = get_db()
     resp = mcp._handle_jsonrpc_request(db, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
@@ -33,7 +33,7 @@ def test_mcp_tools_list_returns_tools(isolated_db_singleton) -> None:  # noqa: A
 
 
 def test_mcp_tools_call_validates_params_object(isolated_db_singleton) -> None:  # noqa: ANN001
-    import reos.mcp_server as mcp
+    import cairn.mcp_server as mcp
 
     db = get_db()
     resp = mcp._handle_jsonrpc_request(
@@ -47,7 +47,7 @@ def test_mcp_tools_call_validates_params_object(isolated_db_singleton) -> None: 
 
 
 def test_mcp_tools_call_requires_name(isolated_db_singleton) -> None:  # noqa: ANN001
-    import reos.mcp_server as mcp
+    import cairn.mcp_server as mcp
 
     db = get_db()
     resp = mcp._handle_jsonrpc_request(
@@ -61,12 +61,12 @@ def test_mcp_tools_call_requires_name(isolated_db_singleton) -> None:  # noqa: A
 
 
 def test_mcp_tools_call_maps_tool_error(isolated_db_singleton, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: ANN001
-    import reos.mcp_server as mcp
+    import cairn.mcp_server as mcp
 
     db = get_db()
 
     def boom(*_args, **_kwargs):
-        from reos.mcp_tools import ToolError
+        from cairn.mcp_tools import ToolError
 
         raise ToolError(code="invalid_args", message="bad args")
 
@@ -88,7 +88,7 @@ def test_mcp_tools_call_maps_tool_error(isolated_db_singleton, monkeypatch: pyte
 
 
 def test_mcp_unknown_method_returns_method_not_found(isolated_db_singleton) -> None:  # noqa: ANN001
-    import reos.mcp_server as mcp
+    import cairn.mcp_server as mcp
 
     db = get_db()
     resp = mcp._handle_jsonrpc_request(db, {"jsonrpc": "2.0", "id": 6, "method": "nope"})

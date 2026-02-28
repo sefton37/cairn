@@ -8,35 +8,35 @@ from pathlib import Path
 
 import pytest
 
-from reos.reasoning.complexity import (
+from cairn.reasoning.complexity import (
     ComplexityAssessor,
     ComplexityLevel,
     ComplexityResult,
 )
-from reos.reasoning.safety import (
+from cairn.reasoning.safety import (
     SafetyManager,
     RiskLevel,
     RiskAssessment,
 )
-from reos.reasoning.planner import (
+from cairn.reasoning.planner import (
     TaskPlanner,
     TaskPlan,
     TaskStep,
     StepType,
     StepStatus,
 )
-from reos.reasoning.executor import (
+from cairn.reasoning.executor import (
     ExecutionEngine,
     ExecutionContext,
     ExecutionState,
     StepResult,
 )
-from reos.reasoning.conversation import (
+from cairn.reasoning.conversation import (
     ConversationManager,
     ConversationPreferences,
     VerbosityLevel,
 )
-from reos.reasoning.engine import (
+from cairn.reasoning.engine import (
     ReasoningEngine,
     ReasoningConfig,
     ProcessingResult,
@@ -455,7 +455,7 @@ class TestReasoningEngine:
         # Create a fresh engine with no history
         import tempfile
         temp_dir = tempfile.mkdtemp()
-        from reos.reasoning.safety import SafetyManager
+        from cairn.reasoning.safety import SafetyManager
         from pathlib import Path
         fresh_safety = SafetyManager(backup_dir=Path(temp_dir))
 
@@ -571,7 +571,7 @@ class TestIntegration:
 
 
 # Import adaptive components for testing
-from reos.reasoning.adaptive import (
+from cairn.reasoning.adaptive import (
     ErrorClassifier,
     ErrorCategory,
     ErrorDiagnosis,
@@ -810,7 +810,7 @@ class TestAdaptiveReplanner:
         )
 
         # Simulate previous attempts
-        from reos.reasoning.adaptive import ResolutionAttempt
+        from cairn.reasoning.adaptive import ResolutionAttempt
 
         for _ in range(3):
             self.memory.resolution_history.append(

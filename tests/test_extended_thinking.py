@@ -7,7 +7,7 @@ import pytest
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-from reos.cairn.extended_thinking import (
+from cairn.cairn.extended_thinking import (
     ThinkingNode,
     FacetCheck,
     Tension,
@@ -381,7 +381,7 @@ class TestCAIRNExtendedThinking:
         ])
 
         # Mock coherence verifier - patch where it's imported
-        with patch("reos.cairn.coherence.CoherenceVerifier") as mock_verifier_class:
+        with patch("cairn.cairn.coherence.CoherenceVerifier") as mock_verifier_class:
             mock_verifier = MagicMock()
             mock_result = MagicMock()
             mock_result.overall_score = 0.8
@@ -444,7 +444,7 @@ class TestExtendedThinkingStoreIntegration:
     @pytest.fixture
     def store(self, tmp_path):
         """Create a temporary CAIRN store."""
-        from reos.cairn.store import CairnStore
+        from cairn.cairn.store import CairnStore
         return CairnStore(tmp_path / "cairn.db")
 
     def test_save_and_retrieve_trace(self, store):

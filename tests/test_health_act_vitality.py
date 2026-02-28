@@ -10,10 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from reos.cairn.health.checks.act_vitality import ActVitalityCheck
-from reos.cairn.health.runner import Severity
-from reos.cairn.models import ActivityType
-from reos.cairn.store import CairnStore
+from cairn.cairn.health.checks.act_vitality import ActVitalityCheck
+from cairn.cairn.health.runner import Severity
+from cairn.cairn.models import ActivityType
+from cairn.cairn.store import CairnStore
 
 
 @pytest.fixture

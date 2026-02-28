@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch, PropertyMock
 
-from reos.db import Database
+from cairn.db import Database
 
 
 @pytest.fixture
@@ -37,7 +37,7 @@ def db(tmp_path: Path) -> Database:
 @pytest.fixture
 def reset_rate_limiter():
     """Reset rate limiter between tests."""
-    from reos.security import get_rate_limiter
+    from cairn.security import get_rate_limiter
     limiter = get_rate_limiter()
     limiter._requests.clear()
     yield
@@ -48,7 +48,7 @@ class TestRpcErrorHandling:
 
     def test_rpc_error_has_code_and_message(self) -> None:
         """RpcError should have code and message."""
-        from reos.ui_rpc_server import RpcError
+        from cairn.ui_rpc_server import RpcError
 
         error = RpcError(code=-32600, message="Invalid Request")
 
@@ -58,7 +58,7 @@ class TestRpcErrorHandling:
 
     def test_rpc_error_can_include_data(self) -> None:
         """RpcError can include additional data for debugging."""
-        from reos.ui_rpc_server import RpcError
+        from cairn.ui_rpc_server import RpcError
 
         error = RpcError(
             code=-32602,
@@ -71,7 +71,7 @@ class TestRpcErrorHandling:
 
     def test_jsonrpc_error_format(self) -> None:
         """Error responses should follow JSON-RPC 2.0 format."""
-        from reos.ui_rpc_server import _jsonrpc_error
+        from cairn.ui_rpc_server import _jsonrpc_error
 
         response = _jsonrpc_error(
             req_id=42,
@@ -88,7 +88,7 @@ class TestRpcErrorHandling:
 
     def test_jsonrpc_result_format(self) -> None:
         """Success responses should follow JSON-RPC 2.0 format."""
-        from reos.ui_rpc_server import _jsonrpc_result
+        from cairn.ui_rpc_server import _jsonrpc_result
 
         response = _jsonrpc_result(
             req_id=42,
@@ -113,11 +113,11 @@ class TestAuthenticationHandlers:
         self, db: Database, reset_rate_limiter
     ) -> None:
         """Login should be rate limited to prevent brute force."""
-        from reos.ui_rpc_server import _handle_auth_login
+        from cairn.ui_rpc_server import _handle_auth_login
 
         # Make many login attempts
         for i in range(10):
-            with patch("reos.ui_rpc_server.auth.login") as mock_login:
+            with patch("cairn.ui_rpc_server.auth.login") as mock_login:
                 mock_login.return_value = {"success": False, "error": "invalid"}
                 _handle_auth_login(username="attacker", password="wrong")
 
@@ -134,9 +134,9 @@ class TestAuthenticationHandlers:
         self, db: Database, reset_rate_limiter
     ) -> None:
         """Successful login should return session token."""
-        from reos.ui_rpc_server import _handle_auth_login
+        from cairn.ui_rpc_server import _handle_auth_login
 
-        with patch("reos.ui_rpc_server.auth.login") as mock_login:
+        with patch("cairn.ui_rpc_server.auth.login") as mock_login:
             mock_login.return_value = {
                 "success": True,
                 "session_token": "secure-token-12345",
@@ -152,9 +152,9 @@ class TestAuthenticationHandlers:
     @pytest.mark.skip(reason="Auth handlers not yet implemented in ui_rpc_server")
     def test_logout_invalidates_session(self) -> None:
         """Logout should invalidate the session."""
-        from reos.ui_rpc_server import _handle_auth_logout
+        from cairn.ui_rpc_server import _handle_auth_logout
 
-        with patch("reos.ui_rpc_server.auth.logout") as mock_logout:
+        with patch("cairn.ui_rpc_server.auth.logout") as mock_logout:
             mock_logout.return_value = {"success": True}
 
             result = _handle_auth_logout(session_token="token-to-destroy")
@@ -165,9 +165,9 @@ class TestAuthenticationHandlers:
     @pytest.mark.skip(reason="Auth handlers not yet implemented in ui_rpc_server")
     def test_validate_session_checks_token(self) -> None:
         """Validate should check if session is still valid."""
-        from reos.ui_rpc_server import _handle_auth_validate
+        from cairn.ui_rpc_server import _handle_auth_validate
 
-        with patch("reos.ui_rpc_server.auth.validate_session") as mock_validate:
+        with patch("cairn.ui_rpc_server.auth.validate_session") as mock_validate:
             mock_validate.return_value = {
                 "valid": True,
                 "username": "testuser",
@@ -185,10 +185,10 @@ class TestToolsHandlers:
 
     def test_tools_list_returns_all_tools(self) -> None:
         """tools/list should return all available tools."""
-        from reos.ui_rpc_server import _tools_list
-        from reos.mcp_tools import Tool
+        from cairn.ui_rpc_server import _tools_list
+        from cairn.mcp_tools import Tool
 
-        with patch("reos.ui_rpc_server.list_tools") as mock_list:
+        with patch("cairn.ui_rpc_server.list_tools") as mock_list:
             mock_list.return_value = [
                 Tool(
                     name="linux_system_info",
@@ -219,9 +219,9 @@ class TestToolsHandlers:
 
     def test_tools_call_executes_tool(self, db: Database) -> None:
         """tools/call should execute the specified tool."""
-        from reos.ui_rpc_server import _handle_tools_call
+        from cairn.ui_rpc_server import _handle_tools_call
 
-        with patch("reos.ui_rpc_server.call_tool") as mock_call:
+        with patch("cairn.ui_rpc_server.call_tool") as mock_call:
             mock_call.return_value = {"hostname": "my-machine", "distro": "Ubuntu"}
 
             result = _handle_tools_call(
@@ -235,10 +235,10 @@ class TestToolsHandlers:
 
     def test_tools_call_error_is_descriptive(self, db: Database) -> None:
         """Tool errors should be wrapped as RpcError with descriptive message."""
-        from reos.ui_rpc_server import _handle_tools_call, RpcError
-        from reos.mcp_tools import ToolError
+        from cairn.ui_rpc_server import _handle_tools_call, RpcError
+        from cairn.mcp_tools import ToolError
 
-        with patch("reos.ui_rpc_server.call_tool") as mock_call:
+        with patch("cairn.ui_rpc_server.call_tool") as mock_call:
             mock_call.side_effect = ToolError(
                 "linux_run_command",
                 "Command blocked: 'rm -rf /' is dangerous"
@@ -264,7 +264,7 @@ class TestPlayHandlers:
     @pytest.fixture(autouse=True)
     def isolate_play_data(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Isolate Play data to prevent tests from polluting real user data."""
-        from reos import play_db
+        from cairn import play_db
 
         # Close any existing connection BEFORE changing env var
         play_db.close_connection()
@@ -279,7 +279,7 @@ class TestPlayHandlers:
 
     def test_play_list_acts_returns_acts(self, db: Database) -> None:
         """play/acts/list should return all acts."""
-        from reos.play_fs import list_acts, create_act
+        from cairn.play_fs import list_acts, create_act
 
         # Create some acts (create_act takes only title, notes)
         create_act(title="Work")
@@ -295,7 +295,7 @@ class TestPlayHandlers:
 
     def test_play_create_act_requires_title(self, db: Database) -> None:
         """Creating an act requires a title."""
-        from reos.play_fs import create_act
+        from cairn.play_fs import create_act
 
         # Empty title should fail with ValueError
         with pytest.raises(ValueError) as exc_info:
@@ -328,10 +328,10 @@ class TestSecurityIntegration:
         self, db: Database, reset_rate_limiter
     ) -> None:
         """Login attempts should be audited."""
-        from reos.ui_rpc_server import _handle_auth_login
+        from cairn.ui_rpc_server import _handle_auth_login
 
-        with patch("reos.ui_rpc_server.auth.login") as mock_login, \
-             patch("reos.ui_rpc_server.audit_log") as mock_audit:
+        with patch("cairn.ui_rpc_server.auth.login") as mock_login, \
+             patch("cairn.ui_rpc_server.audit_log") as mock_audit:
             mock_login.return_value = {"success": True, "session_token": "tok"}
 
             _handle_auth_login(username="testuser", password="pass")
@@ -340,7 +340,7 @@ class TestSecurityIntegration:
         mock_audit.assert_called()
         call_args = mock_audit.call_args[0]
         # First arg is event type
-        from reos.security import AuditEventType
+        from cairn.security import AuditEventType
         assert call_args[0] == AuditEventType.AUTH_LOGIN_SUCCESS
 
     @pytest.mark.skip(reason="Auth handlers not yet implemented in ui_rpc_server")
@@ -348,12 +348,12 @@ class TestSecurityIntegration:
         self, db: Database, reset_rate_limiter
     ) -> None:
         """Rate limit violations should be audited."""
-        from reos.ui_rpc_server import _handle_auth_login
+        from cairn.ui_rpc_server import _handle_auth_login
 
-        with patch("reos.ui_rpc_server.audit_log") as mock_audit:
+        with patch("cairn.ui_rpc_server.audit_log") as mock_audit:
             # Exhaust rate limit
             for _ in range(15):
-                with patch("reos.ui_rpc_server.auth.login") as mock_login:
+                with patch("cairn.ui_rpc_server.auth.login") as mock_login:
                     mock_login.return_value = {"success": False}
                     _handle_auth_login(username="attacker", password="wrong")
 
@@ -371,7 +371,7 @@ class TestJsonRpcProtocol:
 
     def test_response_includes_jsonrpc_version(self) -> None:
         """All responses must include jsonrpc: '2.0'."""
-        from reos.ui_rpc_server import _jsonrpc_result, _jsonrpc_error
+        from cairn.ui_rpc_server import _jsonrpc_result, _jsonrpc_error
 
         result = _jsonrpc_result(req_id=1, result={"ok": True})
         assert result["jsonrpc"] == "2.0"
@@ -381,7 +381,7 @@ class TestJsonRpcProtocol:
 
     def test_response_includes_matching_id(self) -> None:
         """Response ID must match request ID."""
-        from reos.ui_rpc_server import _jsonrpc_result, _jsonrpc_error
+        from cairn.ui_rpc_server import _jsonrpc_result, _jsonrpc_error
 
         # Numeric ID
         result = _jsonrpc_result(req_id=42, result={})
@@ -397,7 +397,7 @@ class TestJsonRpcProtocol:
 
     def test_error_response_has_code_and_message(self) -> None:
         """Error responses must have code and message."""
-        from reos.ui_rpc_server import _jsonrpc_error
+        from cairn.ui_rpc_server import _jsonrpc_error
 
         error = _jsonrpc_error(
             req_id=1,
@@ -420,7 +420,7 @@ class TestJsonRpcProtocol:
         # -32603: Internal error
         # -32000 to -32099: Server error (reserved)
 
-        from reos.ui_rpc_server import _jsonrpc_error
+        from cairn.ui_rpc_server import _jsonrpc_error
 
         parse_error = _jsonrpc_error(req_id=1, code=-32700, message="Parse error")
         assert parse_error["error"]["code"] == -32700
@@ -434,7 +434,7 @@ class TestStdioProtocol:
 
     def test_write_outputs_json_with_newline(self) -> None:
         """_write should output JSON followed by newline."""
-        from reos.ui_rpc_server import _write
+        from cairn.ui_rpc_server import _write
 
         output = StringIO()
         with patch("sys.stdout", output):
@@ -449,7 +449,7 @@ class TestStdioProtocol:
 
     def test_broken_pipe_causes_clean_exit(self) -> None:
         """Broken pipe (UI closed) should exit cleanly, not crash."""
-        from reos.ui_rpc_server import _write
+        from cairn.ui_rpc_server import _write
 
         mock_stdout = MagicMock()
         mock_stdout.write.side_effect = BrokenPipeError()

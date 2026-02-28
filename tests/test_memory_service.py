@@ -19,14 +19,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from reos.play_db import (
+from cairn.play_db import (
     YOUR_STORY_ACT_ID,
     _get_connection,
     _transaction,
     close_connection,
     init_db,
 )
-from reos.services.memory_service import (
+from cairn.services.memory_service import (
     DeduplicationResult,
     Memory,
     MemoryError,
@@ -52,7 +52,7 @@ def mem_db(tmp_path):
 @pytest.fixture()
 def conversation_id(mem_db):
     """Create a conversation and return its ID."""
-    from reos.services.conversation_service import ConversationService
+    from cairn.services.conversation_service import ConversationService
 
     service = ConversationService()
     conv = service.start()
@@ -64,7 +64,7 @@ def conversation_id(mem_db):
 @pytest.fixture()
 def second_conversation_id(mem_db):
     """Create a second conversation (after closing first) and return its ID."""
-    from reos.services.conversation_service import ConversationService
+    from cairn.services.conversation_service import ConversationService
 
     service = ConversationService()
     # Close any active conversation first

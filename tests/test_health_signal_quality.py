@@ -11,15 +11,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from reos.atomic_ops.schema import init_atomic_ops_schema
-from reos.cairn.health.checks.signal_quality import SignalQualityCheck
-from reos.cairn.health.runner import Severity
+from cairn.atomic_ops.schema import init_atomic_ops_schema
+from cairn.cairn.health.checks.signal_quality import SignalQualityCheck
+from cairn.cairn.health.runner import Severity
 
 
 @pytest.fixture
 def db_with_feedback(tmp_path: Path):
     """Create a Database-like object with user_feedback table."""
-    db_path = tmp_path / "reos.db"
+    db_path = tmp_path / "cairn.db"
 
     # Create a mock Database object that returns a real connection
     mock_db = MagicMock()

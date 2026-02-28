@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 import pytest
 
-from reos.atomic_ops.executor import StateCapture, OperationExecutor, ExecutionConfig
+from cairn.atomic_ops.executor import StateCapture, OperationExecutor, ExecutionConfig
 
 
 # =============================================================================

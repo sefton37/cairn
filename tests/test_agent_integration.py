@@ -10,9 +10,9 @@ from typing import Any
 
 import pytest
 
-from reos.agent import ChatAgent, ToolCall
-from reos.db import get_db
-from reos.mcp_tools import ToolError
+from cairn.agent import ChatAgent, ToolCall
+from cairn.db import get_db
+from cairn.mcp_tools import ToolError
 
 
 class FakeOllama:
@@ -108,25 +108,25 @@ class TestChatAgentRespond:
             calls.append({"name": name, "arguments": arguments or {}})
             return {"status": "success", "data": "test_data"}
 
-        import reos.agent as agent_mod
+        import cairn.agent as agent_mod
 
         monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
 
         tool_plan = {
             "tool_calls": [
-                {"name": "linux_system_info", "arguments": {}},
+                {"name": "cairn_play_acts_list", "arguments": {}},
             ]
         }
         ollama = FakeOllama(
             tool_plan_json=json.dumps(tool_plan),
-            answer_text="System info retrieved.",
+            answer_text="Here are your acts.",
         )
         agent = ChatAgent(db=get_db(), llm=ollama)
-        result = agent.respond("What is my system info?")
+        result = agent.respond("What are my acts?")
 
         assert len(calls) == 1
-        assert calls[0]["name"] == "linux_system_info"
-        assert result.answer == "System info retrieved."
+        assert calls[0]["name"] == "cairn_play_acts_list"
+        assert result.answer == "Here are your acts."
         assert len(result.tool_calls) == 1
 
     def test_respond_with_tool_error(
@@ -139,13 +139,13 @@ class TestChatAgentRespond:
         def fake_call_tool(db, *, name: str, arguments: dict[str, Any] | None):  # noqa: ANN001
             raise ToolError(code="TOOL_FAILED", message="Tool execution failed")
 
-        import reos.agent as agent_mod
+        import cairn.agent as agent_mod
 
         monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
 
         tool_plan = {
             "tool_calls": [
-                {"name": "linux_run_command", "arguments": {"command": "test"}},
+                {"name": "cairn_play_acts_list", "arguments": {}},
             ]
         }
         ollama = FakeOllama(
@@ -172,7 +172,7 @@ class TestChatAgentRespond:
             calls.append(name)
             return {"ok": True}
 
-        import reos.agent as agent_mod
+        import cairn.agent as agent_mod
 
         monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
 
@@ -201,7 +201,7 @@ class TestChatAgentRespond:
             calls.append(name)
             return {"ok": True}
 
-        import reos.agent as agent_mod
+        import cairn.agent as agent_mod
 
         monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
 
@@ -316,7 +316,7 @@ class TestChatAgentToolSelection:
         def fake_call_tool(db, *, name: str, arguments: dict[str, Any] | None):  # noqa: ANN001
             return {}
 
-        import reos.agent as agent_mod
+        import cairn.agent as agent_mod
 
         monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
 
@@ -358,7 +358,7 @@ class TestChatAgentToolSelection:
             calls.append(name)
             return {}
 
-        import reos.agent as agent_mod
+        import cairn.agent as agent_mod
 
         monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
 
@@ -500,12 +500,12 @@ class TestChatAgentAnswerGeneration:
         def fake_call_tool(db, *, name: str, arguments: dict[str, Any] | None):  # noqa: ANN001
             return {"output": "tool_output_data"}
 
-        import reos.agent as agent_mod
+        import cairn.agent as agent_mod
 
         monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
 
         tool_plan = {
-            "tool_calls": [{"name": "linux_system_info", "arguments": {}}]
+            "tool_calls": [{"name": "cairn_play_acts_list", "arguments": {}}]
         }
         ollama = FakeOllama(
             tool_plan_json=json.dumps(tool_plan),
@@ -540,7 +540,7 @@ class TestChatAgentAnswerGeneration:
         def fake_call_tool(db, *, name: str, arguments: dict[str, Any] | None):  # noqa: ANN001
             return {}
 
-        import reos.agent as agent_mod
+        import cairn.agent as agent_mod
 
         monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
 

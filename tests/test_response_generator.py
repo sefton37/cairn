@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from reos.cairn.response_generator import ResponseGenerator
+from cairn.cairn.response_generator import ResponseGenerator
 
 # =============================================================================
 # Fixtures

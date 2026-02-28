@@ -15,7 +15,7 @@ import uuid
 
 import pytest
 
-from reos.play_db import (
+from cairn.play_db import (
     SCHEMA_VERSION,
     _get_connection,
     close_connection,

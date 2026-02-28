@@ -11,7 +11,7 @@ Tests cover:
 import pytest
 from datetime import datetime
 
-from reos.quality import (
+from cairn.quality import (
     # Enums and data classes
     QualityLevel,
     DecisionType,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from reos.app import app
+from cairn.app import app
 
 
 def test_health_ok(isolated_db_singleton) -> None:  # noqa: ANN001

@@ -27,7 +27,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     data_dir.mkdir()
     monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.close_connection()
 
@@ -39,8 +39,8 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 def initialized_db(temp_data_dir: Path):
     """Initialize the database."""
-    import reos.play_db as play_db
-    from reos.play import blocks_db, blocks_tree
+    import cairn.play_db as play_db
+    from cairn.play import blocks_db, blocks_tree
 
     play_db.init_db()
     return {"blocks_db": blocks_db, "blocks_tree": blocks_tree}
@@ -49,7 +49,7 @@ def initialized_db(temp_data_dir: Path):
 @pytest.fixture
 def test_act(temp_data_dir: Path) -> str:
     """Create a test act."""
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.init_db()
     _, act_id = play_db.create_act(title="Test Act")
@@ -59,7 +59,7 @@ def test_act(temp_data_dir: Path) -> str:
 @pytest.fixture
 def test_page(test_act: str) -> str:
     """Create a test page."""
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     _, page_id = play_db.create_page(act_id=test_act, title="Test Page")
     return page_id
@@ -88,7 +88,7 @@ class TestAncestorDescendant:
         """Nested block returns correct ancestors."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         grandparent = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         parent = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act, parent_id=grandparent.id)
@@ -115,7 +115,7 @@ class TestAncestorDescendant:
         """Descendants returns all nested blocks depth-first."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         root = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         child1 = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act, parent_id=root.id)
@@ -133,7 +133,7 @@ class TestAncestorDescendant:
         """get_siblings returns blocks with same parent."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         parent = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         child1 = blocks_db.create_block(type="paragraph", act_id=test_act, parent_id=parent.id)
@@ -150,7 +150,7 @@ class TestAncestorDescendant:
         """get_siblings with include_self=True includes the block."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         parent = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         child1 = blocks_db.create_block(type="paragraph", act_id=test_act, parent_id=parent.id)
@@ -175,7 +175,7 @@ class TestMoveOperations:
         """Move a root block into a parent."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         parent = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         child = blocks_db.create_block(type="paragraph", act_id=test_act)
@@ -189,7 +189,7 @@ class TestMoveOperations:
         """Move a nested block to root level."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         parent = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         child = blocks_db.create_block(type="paragraph", act_id=test_act, parent_id=parent.id)
@@ -203,7 +203,7 @@ class TestMoveOperations:
         """Moving a block preserves its rich text and properties."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         parent = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         child = blocks_db.create_block(
@@ -223,7 +223,7 @@ class TestMoveOperations:
         """Cannot move a block into itself."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         block = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
 
@@ -234,7 +234,7 @@ class TestMoveOperations:
         """Cannot move a block into its own descendant."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         parent = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         child = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act, parent_id=parent.id)
@@ -268,7 +268,7 @@ class TestReorderSiblings:
         """Reorder siblings changes positions."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         parent = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         c1 = blocks_db.create_block(type="paragraph", act_id=test_act, parent_id=parent.id)
@@ -290,7 +290,7 @@ class TestReorderSiblings:
         """Reorder with non-siblings raises."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         parent1 = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         parent2 = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
@@ -315,7 +315,7 @@ class TestInsertBlockAt:
         """Insert block after target."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         parent = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         c1 = blocks_db.create_block(type="paragraph", act_id=test_act, parent_id=parent.id)
@@ -335,7 +335,7 @@ class TestInsertBlockAt:
         """Insert block before target."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         parent = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         c1 = blocks_db.create_block(type="paragraph", act_id=test_act, parent_id=parent.id)
@@ -360,7 +360,7 @@ class TestSceneBlockValidation:
 
     def test_validate_scene_block_valid(self, initialized_db, test_act: str) -> None:
         """Valid scene block passes validation."""
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
 
@@ -378,8 +378,8 @@ class TestSceneBlockValidation:
 
     def test_validate_scene_block_wrong_act(self, temp_data_dir: Path) -> None:
         """Scene block in different act fails validation."""
-        import reos.play_db as play_db
-        from reos.play import blocks_db, blocks_tree
+        import cairn.play_db as play_db
+        from cairn.play import blocks_db, blocks_tree
 
         play_db.init_db()
         _, act1_id = play_db.create_act(title="Act 1")
@@ -407,7 +407,7 @@ class TestSceneBlockValidation:
 
     def test_create_scene_block(self, initialized_db, test_act: str) -> None:
         """create_scene_block creates validated block."""
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
         blocks_tree = initialized_db["blocks_tree"]
 
         _, scene_id = play_db.create_scene(act_id=test_act, title="Embedded Scene")
@@ -419,8 +419,8 @@ class TestSceneBlockValidation:
 
     def test_create_scene_block_wrong_act_raises(self, temp_data_dir: Path) -> None:
         """create_scene_block raises for mismatched acts."""
-        import reos.play_db as play_db
-        from reos.play import blocks_tree
+        import cairn.play_db as play_db
+        from cairn.play import blocks_tree
 
         play_db.init_db()
         _, act1_id = play_db.create_act(title="Act 1")
@@ -443,7 +443,7 @@ class TestTreeUtilities:
         """get_block_depth returns correct nesting level."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         root = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         child = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act, parent_id=root.id)
@@ -457,7 +457,7 @@ class TestTreeUtilities:
         """get_root_block returns root ancestor."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         root = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         child = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act, parent_id=root.id)
@@ -472,7 +472,7 @@ class TestTreeUtilities:
         """flatten_tree produces depth-first list."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         root = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         child1 = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act, parent_id=root.id)
@@ -496,7 +496,7 @@ class TestTreeUtilities:
         """build_tree creates tree from flat list."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         root = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         child = blocks_db.create_block(type="paragraph", act_id=test_act, parent_id=root.id)
@@ -561,7 +561,7 @@ class TestBlocksTreeEdgeCases:
         """Root blocks have siblings that share the same page."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         _, page_id = play_db.create_page(act_id=test_act, title="Test Page")
 
@@ -594,7 +594,7 @@ class TestBlocksTreeEdgeCases:
         """Move block specifying new position."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         parent = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         c1 = blocks_db.create_block(type="paragraph", act_id=test_act, parent_id=parent.id)
@@ -612,7 +612,7 @@ class TestBlocksTreeEdgeCases:
         """Reorder with single block."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        from reos.play.blocks_models import BlockType
+        from cairn.play.blocks_models import BlockType
 
         parent = blocks_db.create_block(type=BlockType.BULLETED_LIST, act_id=test_act)
         child = blocks_db.create_block(type="paragraph", act_id=test_act, parent_id=parent.id)
@@ -625,7 +625,7 @@ class TestBlocksTreeEdgeCases:
 
     def test_validate_scene_block_nonexistent_block(self, initialized_db, test_act: str) -> None:
         """validate_scene_block with nonexistent block."""
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
         blocks_tree = initialized_db["blocks_tree"]
 
         _, scene_id = play_db.create_scene(act_id=test_act, title="Test Scene")
@@ -646,7 +646,7 @@ class TestBlocksTreeEdgeCases:
         """Move block to a different page."""
         blocks_db = initialized_db["blocks_db"]
         blocks_tree = initialized_db["blocks_tree"]
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         _, page1_id = play_db.create_page(act_id=test_act, title="Page 1")
         _, page2_id = play_db.create_page(act_id=test_act, title="Page 2")

@@ -19,13 +19,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from reos.play_db import (
+from cairn.play_db import (
     _get_connection,
     _transaction,
     close_connection,
     init_db,
 )
-from reos.services.memory_service import MemoryService
+from cairn.services.memory_service import MemoryService
 
 
 # =============================================================================
@@ -79,7 +79,7 @@ def _make_service_with_real_graph(
     similar_results: list | None = None,
 ) -> MemoryService:
     """MemoryService with a real MemoryGraphStore so SUPERSEDES edges are persisted."""
-    from reos.memory.graph_store import MemoryGraphStore
+    from cairn.memory.graph_store import MemoryGraphStore
 
     return MemoryService(
         provider=_mock_provider(is_match=is_match, merged=merged),
@@ -106,7 +106,7 @@ def _fresh_db(tmp_path, monkeypatch):
 @pytest.fixture()
 def conversation_id():
     """Create a conversation and return its ID."""
-    from reos.services.conversation_service import ConversationService
+    from cairn.services.conversation_service import ConversationService
 
     service = ConversationService()
     conv = service.start()
@@ -117,7 +117,7 @@ def conversation_id():
 @pytest.fixture()
 def second_conversation_id(conversation_id):
     """Create a second conversation after archiving the first."""
-    from reos.services.conversation_service import ConversationService
+    from cairn.services.conversation_service import ConversationService
 
     with _transaction() as conn:
         conn.execute(
@@ -400,7 +400,7 @@ class TestInfluenceLog:
 
     def test_influence_log_returns_entries(self, conversation_id):
         """Inserted classification_memory_references are returned."""
-        from reos.services.memory_service import log_memory_influence
+        from cairn.services.memory_service import log_memory_influence
 
         svc = _make_service()
         mem = svc.store(conversation_id, "Memory that will be referenced.")
@@ -439,7 +439,7 @@ class TestInfluenceLog:
 
     def test_influence_log_respects_limit(self, conversation_id):
         """limit parameter caps the number of returned entries."""
-        from reos.services.memory_service import log_memory_influence
+        from cairn.services.memory_service import log_memory_influence
 
         svc = _make_service()
         mem = svc.store(conversation_id, "Frequently referenced memory.")
@@ -540,7 +540,7 @@ class TestActMemoryGroups:
 
     def test_by_act_groups_your_story(self, conversation_id):
         """Memories with is_your_story=1 group under the Your Story act."""
-        from reos.play_db import YOUR_STORY_ACT_ID
+        from cairn.play_db import YOUR_STORY_ACT_ID
 
         svc = _make_service()
         mem = svc.store(conversation_id, "A personal insight.")
@@ -561,7 +561,7 @@ class TestActMemoryGroups:
         svc.approve(mem1.id)
         svc.approve(mem2.id)
 
-        from reos.play_db import YOUR_STORY_ACT_ID
+        from cairn.play_db import YOUR_STORY_ACT_ID
         groups = svc.get_act_memory_groups(status="approved")
         ys_group = next(g for g in groups if g["act_id"] == YOUR_STORY_ACT_ID)
 
@@ -579,7 +579,7 @@ class TestActMemoryGroups:
 
     def test_by_act_custom_act(self, conversation_id):
         """Memories routed to a custom Act appear in that Act's group."""
-        from reos.play_db import create_act
+        from cairn.play_db import create_act
 
         _, custom_act_id = create_act(title="Career Act")
 
@@ -610,8 +610,8 @@ class TestOpenThreadsRpc:
 
     def test_open_threads_rpc(self, conversation_id):
         """Unresolved state deltas are returned via the open_threads RPC."""
-        from reos.rpc_handlers.memories import handle_memories_open_threads
-        from reos.play_db import _get_connection as _gc
+        from cairn.rpc_handlers.memories import handle_memories_open_threads
+        from cairn.play_db import _get_connection as _gc
         from uuid import uuid4
 
         svc = _make_service()
@@ -635,8 +635,8 @@ class TestOpenThreadsRpc:
 
     def test_open_threads_rpc_excludes_resolved(self, conversation_id):
         """Resolved state deltas (applied=1) are not returned."""
-        from reos.rpc_handlers.memories import handle_memories_open_threads
-        from reos.play_db import _get_connection as _gc
+        from cairn.rpc_handlers.memories import handle_memories_open_threads
+        from cairn.play_db import _get_connection as _gc
         from uuid import uuid4
 
         svc = _make_service()
@@ -668,11 +668,11 @@ class TestResolveThreadRpc:
 
     def test_resolve_thread_rpc(self, conversation_id):
         """Resolving a thread marks the delta as applied and returns result."""
-        from reos.rpc_handlers.memories import (
+        from cairn.rpc_handlers.memories import (
             handle_memories_resolve_thread,
             handle_memories_open_threads,
         )
-        from reos.play_db import _get_connection as _gc
+        from cairn.play_db import _get_connection as _gc
         from uuid import uuid4
 
         svc = _make_service()
@@ -708,8 +708,8 @@ class TestResolveThreadRpc:
 
     def test_resolve_thread_rpc_already_resolved_returns_error(self, conversation_id):
         """Resolving an already-resolved delta returns an error (not raises)."""
-        from reos.rpc_handlers.memories import handle_memories_resolve_thread
-        from reos.play_db import _get_connection as _gc
+        from cairn.rpc_handlers.memories import handle_memories_resolve_thread
+        from cairn.play_db import _get_connection as _gc
         from uuid import uuid4
 
         svc = _make_service()

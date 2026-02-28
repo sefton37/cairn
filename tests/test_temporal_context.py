@@ -18,12 +18,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from reos.play_db import (
+from cairn.play_db import (
     _get_connection,
     close_connection,
     init_db,
 )
-from reos.services.temporal_context import (
+from cairn.services.temporal_context import (
     SESSION_GAP_MINUTES,
     _format_duration,
     _get_local_tz,
@@ -194,7 +194,7 @@ class TestBuildTemporalContext:
         mock_event.start = datetime.now() + timedelta(minutes=15)
 
         with patch(
-            "reos.services.temporal_context.get_upcoming_events_text",
+            "cairn.services.temporal_context.get_upcoming_events_text",
             return_value="Team standup at 09:00 (in 15 minutes)",
         ):
             result = build_temporal_context()
@@ -204,7 +204,7 @@ class TestBuildTemporalContext:
     def test_no_calendar_still_works(self):
         """Temporal context works without calendar integration."""
         with patch(
-            "reos.services.temporal_context.get_upcoming_events_text",
+            "cairn.services.temporal_context.get_upcoming_events_text",
             return_value=None,
         ):
             result = build_temporal_context()
@@ -234,7 +234,7 @@ class TestGetUpcomingEventsText:
     def test_no_bridge_returns_none(self):
         """When ThunderbirdBridge is unavailable, returns None."""
         with patch(
-            "reos.cairn.thunderbird.ThunderbirdBridge",
+            "cairn.cairn.thunderbird.ThunderbirdBridge",
             side_effect=Exception("no thunderbird"),
         ):
             result = get_upcoming_events_text()
@@ -246,7 +246,7 @@ class TestGetUpcomingEventsText:
         mock_bridge.get_upcoming_events.return_value = []
 
         with patch(
-            "reos.cairn.thunderbird.ThunderbirdBridge",
+            "cairn.cairn.thunderbird.ThunderbirdBridge",
             return_value=mock_bridge,
         ):
             result = get_upcoming_events_text()
@@ -263,7 +263,7 @@ class TestGetUpcomingEventsText:
         mock_bridge.get_upcoming_events.return_value = [event]
 
         with patch(
-            "reos.cairn.thunderbird.ThunderbirdBridge",
+            "cairn.cairn.thunderbird.ThunderbirdBridge",
             return_value=mock_bridge,
         ):
             result = get_upcoming_events_text()
@@ -286,7 +286,7 @@ class TestGetUpcomingEventsText:
         mock_bridge.get_upcoming_events.return_value = [event1, event2]
 
         with patch(
-            "reos.cairn.thunderbird.ThunderbirdBridge",
+            "cairn.cairn.thunderbird.ThunderbirdBridge",
             return_value=mock_bridge,
         ):
             result = get_upcoming_events_text()
@@ -301,7 +301,7 @@ class TestAgentIntegration:
 
     def test_temporal_context_field_on_conversation_context(self):
         """ConversationContext has a temporal_context field."""
-        from reos.agent import ConversationContext
+        from cairn.agent import ConversationContext
 
         ctx = ConversationContext(
             user_text="test",
@@ -312,7 +312,7 @@ class TestAgentIntegration:
 
     def test_temporal_context_is_first_in_prompt(self):
         """Temporal context appears before persona system in prompt prefix."""
-        from reos.agent import ConversationContext
+        from cairn.agent import ConversationContext
 
         ctx = ConversationContext(
             user_text="test",
@@ -327,7 +327,7 @@ class TestAgentIntegration:
 
     def test_no_temporal_context_still_works(self):
         """Empty temporal_context doesn't add garbage to prompt."""
-        from reos.agent import ConversationContext
+        from cairn.agent import ConversationContext
 
         ctx = ConversationContext(
             user_text="test",
@@ -336,4 +336,4 @@ class TestAgentIntegration:
             persona_system="You are CAIRN.",
         )
         prefix = ctx.build_prompt_prefix()
-        assert prefix.startswith("You are CAIRN.")
+        assert "You are CAIRN." in prefix

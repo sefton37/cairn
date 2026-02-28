@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import pytest
 
-from reos.rpc.types import RpcError, INVALID_PARAMS
-from reos.rpc.validation import (
+from cairn.rpc.types import RpcError, INVALID_PARAMS
+from cairn.rpc.validation import (
     validate_string,
     validate_identifier,
     validate_path,
@@ -19,7 +19,7 @@ from reos.rpc.validation import (
     validate_command,
     validate_user_input,
 )
-from reos.security import get_rate_limiter
+from cairn.security import get_rate_limiter
 
 
 @pytest.fixture(autouse=True)
@@ -35,7 +35,7 @@ class TestRateLimiting:
 
     def test_rate_limit_blocks_after_threshold(self):
         """Rate limiting should block after threshold is exceeded."""
-        from reos.security import check_rate_limit, RateLimitExceeded
+        from cairn.security import check_rate_limit, RateLimitExceeded
 
         # Auth has limit of 5 per 60 seconds
         for _ in range(5):

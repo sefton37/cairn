@@ -28,7 +28,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     data_dir.mkdir()
     monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.close_connection()
 
@@ -40,7 +40,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 def initialized_db(temp_data_dir: Path):
     """Initialize the database and return the module."""
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.init_db()
     return play_db
@@ -96,7 +96,7 @@ class TestSchemaV14Migration:
     def test_migration_idempotent(self, initialized_db) -> None:
         """Running migration again should not fail."""
         conn = initialized_db._get_connection()
-        from reos.play_db import _migrate_v13_to_v14
+        from cairn.play_db import _migrate_v13_to_v14
 
         _migrate_v13_to_v14(conn)  # Should not raise
 
@@ -157,7 +157,7 @@ class TestSurfacingWithPriority:
     """Test that _rank_and_dedupe respects user priorities."""
 
     def test_priority_within_urgency_tier(self, initialized_db) -> None:
-        from reos.cairn.models import SurfacedItem
+        from cairn.cairn.models import SurfacedItem
 
         items = [
             SurfacedItem(
@@ -180,7 +180,7 @@ class TestSurfacingWithPriority:
         _create_test_scene(conn, "s1", "act-1", "First")
         initialized_db.set_attention_priorities(["s3", "s1"])
 
-        from reos.cairn.surfacing import CairnSurfacer
+        from cairn.cairn.surfacing import CairnSurfacer
 
         surfacer = CairnSurfacer.__new__(CairnSurfacer)
         result = surfacer._rank_and_dedupe(items, max_items=10)
@@ -191,7 +191,7 @@ class TestSurfacingWithPriority:
         assert result[2].entity_id == "s2"
 
     def test_urgency_still_takes_precedence(self, initialized_db) -> None:
-        from reos.cairn.models import SurfacedItem
+        from cairn.cairn.models import SurfacedItem
 
         items = [
             SurfacedItem(
@@ -209,7 +209,7 @@ class TestSurfacingWithPriority:
         _create_test_scene(conn, "low-pri", "act-1", "Low")
         initialized_db.set_attention_priorities(["low-pri"])
 
-        from reos.cairn.surfacing import CairnSurfacer
+        from cairn.cairn.surfacing import CairnSurfacer
 
         surfacer = CairnSurfacer.__new__(CairnSurfacer)
         result = surfacer._rank_and_dedupe(items, max_items=10)
@@ -219,7 +219,7 @@ class TestSurfacingWithPriority:
         assert result[1].entity_id == "low-pri"
 
     def test_user_priority_attached_to_items(self, initialized_db) -> None:
-        from reos.cairn.models import SurfacedItem
+        from cairn.cairn.models import SurfacedItem
 
         items = [
             SurfacedItem(
@@ -232,7 +232,7 @@ class TestSurfacingWithPriority:
         _create_test_scene(conn, "s1", "act-1", "One")
         initialized_db.set_attention_priorities(["s1"])
 
-        from reos.cairn.surfacing import CairnSurfacer
+        from cairn.cairn.surfacing import CairnSurfacer
 
         surfacer = CairnSurfacer.__new__(CairnSurfacer)
         result = surfacer._rank_and_dedupe(items, max_items=10)
@@ -253,7 +253,7 @@ class TestPrioritySignalService:
         _create_test_scene(conn, "sa", "act-1", "Alpha")
         _create_test_scene(conn, "sb", "act-1", "Beta")
 
-        from reos.services.priority_signal_service import PrioritySignalService
+        from cairn.services.priority_signal_service import PrioritySignalService
 
         service = PrioritySignalService()
         result = service.process_reorder(ordered_scene_ids=["sb", "sa"])
@@ -266,7 +266,7 @@ class TestPrioritySignalService:
         assert priorities["sa"] == 1
 
     def test_process_reorder_empty_list(self, initialized_db) -> None:
-        from reos.services.priority_signal_service import PrioritySignalService
+        from cairn.services.priority_signal_service import PrioritySignalService
 
         service = PrioritySignalService()
         result = service.process_reorder(ordered_scene_ids=[])
@@ -277,7 +277,7 @@ class TestPrioritySignalService:
     def test_no_memory_service_dependency(self) -> None:
         """PrioritySignalService should not depend on MemoryService."""
         import inspect
-        from reos.services.priority_signal_service import PrioritySignalService
+        from cairn.services.priority_signal_service import PrioritySignalService
 
         sig = inspect.signature(PrioritySignalService.__init__)
         param_names = list(sig.parameters.keys())
@@ -302,7 +302,7 @@ class TestStateBriefingPriorities:
         _create_test_scene(conn, "s2", "act-1", "Less Important")
         initialized_db.set_attention_priorities(["s1", "s2"])
 
-        from reos.services.state_briefing_service import StateBriefingService
+        from cairn.services.state_briefing_service import StateBriefingService
 
         service = StateBriefingService.__new__(StateBriefingService)
         result = service._get_attention_priorities(limit=5)
@@ -312,7 +312,7 @@ class TestStateBriefingPriorities:
         assert result[1] == "#2: Less Important"
 
     def test_get_attention_priorities_empty(self, initialized_db) -> None:
-        from reos.services.state_briefing_service import StateBriefingService
+        from cairn.services.state_briefing_service import StateBriefingService
 
         service = StateBriefingService.__new__(StateBriefingService)
         result = service._get_attention_priorities()

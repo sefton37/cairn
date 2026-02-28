@@ -21,13 +21,13 @@ from uuid import uuid4
 
 import pytest
 
-from reos.play_db import (
+from cairn.play_db import (
     _get_connection,
     _transaction,
     close_connection,
     init_db,
 )
-from reos.services.memory_service import MemoryError, MemoryService
+from cairn.services.memory_service import MemoryError, MemoryService
 
 # =============================================================================
 # Helpers
@@ -85,6 +85,7 @@ def _make_service(
 def mem_db(tmp_path):
     """Fresh isolated database for each test."""
     os.environ["REOS_DATA_DIR"] = str(tmp_path)
+    close_connection()  # Ensure any prior connection is dropped before reconnecting
     init_db()
     yield tmp_path
     close_connection()
@@ -94,7 +95,7 @@ def mem_db(tmp_path):
 @pytest.fixture()
 def conversation_id(mem_db):
     """Create a conversation and return its ID."""
-    from reos.services.conversation_service import ConversationService
+    from cairn.services.conversation_service import ConversationService
 
     service = ConversationService()
     conv = service.start()
@@ -105,7 +106,7 @@ def conversation_id(mem_db):
 @pytest.fixture()
 def second_conversation_id(mem_db, conversation_id):
     """Create a second conversation (singleton: close first one first)."""
-    from reos.services.conversation_service import ConversationService
+    from cairn.services.conversation_service import ConversationService
 
     # Archive the first conversation to satisfy the singleton constraint
     with _transaction() as conn:
@@ -204,7 +205,7 @@ def _make_service_with_real_graph(
     similar_results: list | None = None,
 ) -> MemoryService:
     """MemoryService with a real MemoryGraphStore so SUPERSEDES edges are persisted."""
-    from reos.memory.graph_store import MemoryGraphStore
+    from cairn.memory.graph_store import MemoryGraphStore
 
     return MemoryService(
         provider=_mock_provider(is_match=is_match, merged=merged),
@@ -491,7 +492,7 @@ class TestRecencyDecayIntegration:
 
     def test_older_memories_scored_lower(self, mem_db):
         """A memory created 60 days ago has lower recency weight than one created now."""
-        from reos.memory.retriever import _compute_recency_weight
+        from cairn.memory.retriever import _compute_recency_weight
 
         now_iso = datetime.now(UTC).isoformat()
         old_iso = (datetime.now(UTC) - timedelta(days=60)).isoformat()
@@ -505,7 +506,7 @@ class TestRecencyDecayIntegration:
 
     def test_recency_weight_is_one_for_current_timestamp(self, mem_db):
         """A memory with timestamp 'now' has recency weight very close to 1.0."""
-        from reos.memory.retriever import _compute_recency_weight
+        from cairn.memory.retriever import _compute_recency_weight
 
         now_iso = datetime.now(UTC).isoformat()
         weight = _compute_recency_weight(now_iso)
@@ -513,7 +514,7 @@ class TestRecencyDecayIntegration:
 
     def test_recency_weight_invalid_date_returns_default(self, mem_db):
         """Unparseable date returns the default fallback (0.5)."""
-        from reos.memory.retriever import _compute_recency_weight
+        from cairn.memory.retriever import _compute_recency_weight
 
         weight = _compute_recency_weight("not-a-date")
         assert weight == 0.5

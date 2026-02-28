@@ -32,7 +32,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[
     monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
     # Close any existing connection before test
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.close_connection()
 
@@ -45,8 +45,8 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[
 @pytest.fixture
 def initialized_fs(temp_data_dir: Path) -> Path:
     """Initialize play filesystem and return data dir."""
-    import reos.play_db as play_db
-    from reos.play_fs import ensure_play_skeleton
+    import cairn.play_db as play_db
+    from cairn.play_fs import ensure_play_skeleton
 
     play_db.init_db()
     ensure_play_skeleton()
@@ -63,7 +63,7 @@ class TestSceneStageEnum:
 
     def test_enum_values(self) -> None:
         """SceneStage should have expected values."""
-        from reos.play_fs import SceneStage
+        from cairn.play_fs import SceneStage
 
         assert SceneStage.PLANNING.value == "planning"
         assert SceneStage.IN_PROGRESS.value == "in_progress"
@@ -76,7 +76,7 @@ class TestActDataclass:
 
     def test_act_creation(self) -> None:
         """Act should store all fields."""
-        from reos.play_fs import Act
+        from cairn.play_fs import Act
 
         act = Act(
             act_id="act-123",
@@ -100,7 +100,7 @@ class TestActDataclass:
 
     def test_act_defaults(self) -> None:
         """Act should have sensible defaults."""
-        from reos.play_fs import Act
+        from cairn.play_fs import Act
 
         act = Act(act_id="act-1", title="Minimal")
 
@@ -115,7 +115,7 @@ class TestSceneDataclass:
 
     def test_scene_creation(self) -> None:
         """Scene should store all fields."""
-        from reos.play_fs import Scene
+        from cairn.play_fs import Scene
 
         scene = Scene(
             scene_id="scene-123",
@@ -145,7 +145,7 @@ class TestFileAttachmentDataclass:
 
     def test_attachment_creation(self) -> None:
         """FileAttachment should store path info."""
-        from reos.play_fs import FileAttachment
+        from cairn.play_fs import FileAttachment
 
         attachment = FileAttachment(
             attachment_id="att-123",
@@ -171,19 +171,19 @@ class TestPlayRoot:
 
     def test_play_root_with_env_var(self, temp_data_dir: Path) -> None:
         """Should use REOS_DATA_DIR if set."""
-        from reos.play_fs import play_root
+        from cairn.play_fs import play_root
 
         root = play_root()
         assert root == temp_data_dir / "play"
 
     def test_play_root_with_crypto_storage(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should use crypto storage path when available."""
-        from reos.play_fs import play_root
+        from cairn.play_fs import play_root
 
         mock_crypto = MagicMock()
         mock_crypto.user_data_root = Path("/secure/user")
 
-        with patch("reos.play_fs.get_current_crypto_storage", return_value=mock_crypto):
+        with patch("cairn.play_fs.get_current_crypto_storage", return_value=mock_crypto):
             root = play_root()
             assert root == Path("/secure/user/play")
 
@@ -193,25 +193,25 @@ class TestActPathHelpers:
 
     def test_acts_path(self, temp_data_dir: Path) -> None:
         """_acts_path should return correct path."""
-        from reos.play_fs import _acts_path, play_root
+        from cairn.play_fs import _acts_path, play_root
 
         assert _acts_path() == play_root() / "acts.json"
 
     def test_me_path(self, temp_data_dir: Path) -> None:
         """_me_path should return correct path."""
-        from reos.play_fs import _me_path, play_root
+        from cairn.play_fs import _me_path, play_root
 
         assert _me_path() == play_root() / "me.md"
 
     def test_act_dir(self, temp_data_dir: Path) -> None:
         """_act_dir should return correct path."""
-        from reos.play_fs import _act_dir, play_root
+        from cairn.play_fs import _act_dir, play_root
 
         assert _act_dir("act-123") == play_root() / "acts" / "act-123"
 
     def test_scenes_path(self, temp_data_dir: Path) -> None:
         """_scenes_path should return correct path."""
-        from reos.play_fs import _scenes_path, play_root
+        from cairn.play_fs import _scenes_path, play_root
 
         assert _scenes_path("act-123") == play_root() / "acts" / "act-123" / "scenes.json"
 
@@ -226,7 +226,7 @@ class TestEnsurePlaySkeleton:
 
     def test_creates_directories(self, temp_data_dir: Path) -> None:
         """Should create play directories."""
-        from reos.play_fs import ensure_play_skeleton, play_root
+        from cairn.play_fs import ensure_play_skeleton, play_root
 
         ensure_play_skeleton()
 
@@ -235,7 +235,7 @@ class TestEnsurePlaySkeleton:
 
     def test_creates_me_md(self, temp_data_dir: Path) -> None:
         """Should create me.md file."""
-        from reos.play_fs import ensure_play_skeleton, _me_path
+        from cairn.play_fs import ensure_play_skeleton, _me_path
 
         ensure_play_skeleton()
 
@@ -246,7 +246,7 @@ class TestEnsurePlaySkeleton:
 
     def test_creates_acts_json(self, temp_data_dir: Path) -> None:
         """Should create acts.json file."""
-        from reos.play_fs import ensure_play_skeleton, _acts_path
+        from cairn.play_fs import ensure_play_skeleton, _acts_path
 
         ensure_play_skeleton()
 
@@ -255,7 +255,7 @@ class TestEnsurePlaySkeleton:
 
     def test_idempotent(self, temp_data_dir: Path) -> None:
         """Should be safe to call multiple times."""
-        from reos.play_fs import ensure_play_skeleton, _me_path
+        from cairn.play_fs import ensure_play_skeleton, _me_path
 
         ensure_play_skeleton()
         content1 = _me_path().read_text()
@@ -271,14 +271,14 @@ class TestMeMarkdown:
 
     def test_read_me_markdown(self, initialized_fs: Path) -> None:
         """Should read me.md content."""
-        from reos.play_fs import read_me_markdown
+        from cairn.play_fs import read_me_markdown
 
         content = read_me_markdown()
         assert "# Me (The Play)" in content
 
     def test_write_me_markdown(self, initialized_fs: Path) -> None:
         """Should write me.md content."""
-        from reos.play_fs import write_me_markdown, read_me_markdown
+        from cairn.play_fs import write_me_markdown, read_me_markdown
 
         write_me_markdown("# Custom Content\n\nMy notes.")
 
@@ -297,7 +297,7 @@ class TestDictConversions:
 
     def test_dict_to_act(self) -> None:
         """Should convert dict to Act."""
-        from reos.play_fs import _dict_to_act
+        from cairn.play_fs import _dict_to_act
 
         data = {
             "act_id": "act-123",
@@ -317,7 +317,7 @@ class TestDictConversions:
 
     def test_dict_to_act_defaults(self) -> None:
         """Should handle missing fields with defaults."""
-        from reos.play_fs import _dict_to_act
+        from cairn.play_fs import _dict_to_act
 
         data = {}
         act = _dict_to_act(data)
@@ -329,7 +329,7 @@ class TestDictConversions:
 
     def test_dict_to_scene(self) -> None:
         """Should convert dict to Scene."""
-        from reos.play_fs import _dict_to_scene, SceneStage
+        from cairn.play_fs import _dict_to_scene, SceneStage
 
         data = {
             "scene_id": "scene-1",
@@ -345,7 +345,7 @@ class TestDictConversions:
 
     def test_dict_to_scene_defaults(self) -> None:
         """Should use PLANNING as default stage."""
-        from reos.play_fs import _dict_to_scene, SceneStage
+        from cairn.play_fs import _dict_to_scene, SceneStage
 
         data = {}
         scene = _dict_to_scene(data)
@@ -363,41 +363,41 @@ class TestValidateId:
 
     def test_valid_id(self) -> None:
         """Should accept valid IDs."""
-        from reos.play_fs import _validate_id
+        from cairn.play_fs import _validate_id
 
         _validate_id(name="test", value="valid-id-123")  # Should not raise
 
     def test_empty_id(self) -> None:
         """Should reject empty IDs."""
-        from reos.play_fs import _validate_id
+        from cairn.play_fs import _validate_id
 
         with pytest.raises(ValueError, match="non-empty string"):
             _validate_id(name="test", value="")
 
     def test_whitespace_id(self) -> None:
         """Should reject whitespace-only IDs."""
-        from reos.play_fs import _validate_id
+        from cairn.play_fs import _validate_id
 
         with pytest.raises(ValueError, match="non-empty string"):
             _validate_id(name="test", value="   ")
 
     def test_id_with_slash(self) -> None:
         """Should reject IDs with path separators."""
-        from reos.play_fs import _validate_id
+        from cairn.play_fs import _validate_id
 
         with pytest.raises(ValueError, match="invalid"):
             _validate_id(name="test", value="path/traversal")
 
     def test_id_with_backslash(self) -> None:
         """Should reject IDs with backslash."""
-        from reos.play_fs import _validate_id
+        from cairn.play_fs import _validate_id
 
         with pytest.raises(ValueError, match="invalid"):
             _validate_id(name="test", value="path\\traversal")
 
     def test_id_with_dotdot(self) -> None:
         """Should reject IDs with parent directory traversal."""
-        from reos.play_fs import _validate_id
+        from cairn.play_fs import _validate_id
 
         with pytest.raises(ValueError, match="invalid"):
             _validate_id(name="test", value="attack..attempt")
@@ -413,14 +413,14 @@ class TestColorPalette:
 
     def test_palette_has_colors(self) -> None:
         """ACT_COLOR_PALETTE should have colors."""
-        from reos.play_fs import ACT_COLOR_PALETTE
+        from cairn.play_fs import ACT_COLOR_PALETTE
 
         assert len(ACT_COLOR_PALETTE) > 0
         assert all(c.startswith("#") for c in ACT_COLOR_PALETTE)
 
     def test_pick_unused_color(self) -> None:
         """Should pick unused color."""
-        from reos.play_fs import _pick_unused_color, Act, ACT_COLOR_PALETTE
+        from cairn.play_fs import _pick_unused_color, Act, ACT_COLOR_PALETTE
 
         existing = []
         color = _pick_unused_color(existing)
@@ -428,7 +428,7 @@ class TestColorPalette:
 
     def test_pick_unused_color_skips_used(self) -> None:
         """Should skip already used colors."""
-        from reos.play_fs import _pick_unused_color, Act, ACT_COLOR_PALETTE
+        from cairn.play_fs import _pick_unused_color, Act, ACT_COLOR_PALETTE
 
         existing = [
             Act(act_id="1", title="1", color=ACT_COLOR_PALETTE[0]),
@@ -438,7 +438,7 @@ class TestColorPalette:
 
     def test_pick_unused_color_wraps(self) -> None:
         """Should wrap around when all colors used."""
-        from reos.play_fs import _pick_unused_color, Act, ACT_COLOR_PALETTE
+        from cairn.play_fs import _pick_unused_color, Act, ACT_COLOR_PALETTE
 
         existing = [
             Act(act_id=str(i), title=str(i), color=c) for i, c in enumerate(ACT_COLOR_PALETTE)
@@ -457,14 +457,14 @@ class TestKbRootFor:
 
     def test_act_level(self, temp_data_dir: Path) -> None:
         """Should return Act-level KB root."""
-        from reos.play_fs import _kb_root_for, play_root
+        from cairn.play_fs import _kb_root_for, play_root
 
         path = _kb_root_for(act_id="act-1")
         assert path == play_root() / "kb" / "acts" / "act-1"
 
     def test_scene_level(self, temp_data_dir: Path) -> None:
         """Should return Scene-level KB root."""
-        from reos.play_fs import _kb_root_for, play_root
+        from cairn.play_fs import _kb_root_for, play_root
 
         path = _kb_root_for(act_id="act-1", scene_id="scene-1")
         assert path == play_root() / "kb" / "acts" / "act-1" / "scenes" / "scene-1"
@@ -475,7 +475,7 @@ class TestResolveKbFile:
 
     def test_resolve_relative_path(self, temp_data_dir: Path) -> None:
         """Should resolve relative paths."""
-        from reos.play_fs import _resolve_kb_file
+        from cairn.play_fs import _resolve_kb_file
 
         kb_root = temp_data_dir / "kb"
         kb_root.mkdir(parents=True)
@@ -485,7 +485,7 @@ class TestResolveKbFile:
 
     def test_reject_absolute_path(self, temp_data_dir: Path) -> None:
         """Should reject absolute paths."""
-        from reos.play_fs import _resolve_kb_file
+        from cairn.play_fs import _resolve_kb_file
 
         kb_root = temp_data_dir / "kb"
 
@@ -494,7 +494,7 @@ class TestResolveKbFile:
 
     def test_reject_path_traversal(self, temp_data_dir: Path) -> None:
         """Should reject path traversal."""
-        from reos.play_fs import _resolve_kb_file
+        from cairn.play_fs import _resolve_kb_file
 
         kb_root = temp_data_dir / "kb"
 
@@ -503,7 +503,7 @@ class TestResolveKbFile:
 
     def test_reject_empty_path(self, temp_data_dir: Path) -> None:
         """Should reject empty paths."""
-        from reos.play_fs import _resolve_kb_file
+        from cairn.play_fs import _resolve_kb_file
 
         kb_root = temp_data_dir / "kb"
 
@@ -516,8 +516,8 @@ class TestKbListFiles:
 
     def test_list_files_creates_default(self, initialized_fs: Path) -> None:
         """Should create default kb.md if missing."""
-        import reos.play_db as play_db
-        from reos.play_fs import kb_list_files
+        import cairn.play_db as play_db
+        from cairn.play_fs import kb_list_files
 
         # Create an act first
         _, act_id = play_db.create_act(title="Test", notes="", color="#000000")
@@ -527,8 +527,8 @@ class TestKbListFiles:
 
     def test_list_files_finds_md_files(self, initialized_fs: Path) -> None:
         """Should find .md and .txt files."""
-        import reos.play_db as play_db
-        from reos.play_fs import kb_list_files, _kb_root_for
+        import cairn.play_db as play_db
+        from cairn.play_fs import kb_list_files, _kb_root_for
 
         _, act_id = play_db.create_act(title="Test", notes="", color="#000000")
 
@@ -549,8 +549,8 @@ class TestKbRead:
 
     def test_read_creates_default(self, initialized_fs: Path) -> None:
         """Should create default kb.md on first read."""
-        import reos.play_db as play_db
-        from reos.play_fs import kb_read
+        import cairn.play_db as play_db
+        from cairn.play_fs import kb_read
 
         _, act_id = play_db.create_act(title="Test", notes="", color="#000000")
 
@@ -559,8 +559,8 @@ class TestKbRead:
 
     def test_read_existing_file(self, initialized_fs: Path) -> None:
         """Should read existing KB file."""
-        import reos.play_db as play_db
-        from reos.play_fs import kb_read, _kb_root_for
+        import cairn.play_db as play_db
+        from cairn.play_fs import kb_read, _kb_root_for
 
         _, act_id = play_db.create_act(title="Test", notes="", color="#000000")
 
@@ -573,8 +573,8 @@ class TestKbRead:
 
     def test_read_nonexistent_raises(self, initialized_fs: Path) -> None:
         """Should raise FileNotFoundError for missing non-default file."""
-        import reos.play_db as play_db
-        from reos.play_fs import kb_read
+        import cairn.play_db as play_db
+        from cairn.play_fs import kb_read
 
         _, act_id = play_db.create_act(title="Test", notes="", color="#000000")
 
@@ -587,8 +587,8 @@ class TestKbWritePreview:
 
     def test_preview_new_file(self, initialized_fs: Path) -> None:
         """Should preview creating new file."""
-        import reos.play_db as play_db
-        from reos.play_fs import kb_write_preview
+        import cairn.play_db as play_db
+        from cairn.play_fs import kb_write_preview
 
         _, act_id = play_db.create_act(title="Test", notes="", color="#000000")
 
@@ -599,8 +599,8 @@ class TestKbWritePreview:
 
     def test_preview_existing_file(self, initialized_fs: Path) -> None:
         """Should show diff for existing file."""
-        import reos.play_db as play_db
-        from reos.play_fs import kb_write_preview, _kb_root_for
+        import cairn.play_db as play_db
+        from cairn.play_fs import kb_write_preview, _kb_root_for
 
         _, act_id = play_db.create_act(title="Test", notes="", color="#000000")
 
@@ -620,8 +620,8 @@ class TestKbWriteApply:
 
     def test_apply_creates_file(self, initialized_fs: Path) -> None:
         """Should create new file."""
-        import reos.play_db as play_db
-        from reos.play_fs import kb_write_apply, kb_write_preview, _kb_root_for
+        import cairn.play_db as play_db
+        from cairn.play_fs import kb_write_apply, kb_write_preview, _kb_root_for
 
         _, act_id = play_db.create_act(title="Test", notes="", color="#000000")
 
@@ -643,8 +643,8 @@ class TestKbWriteApply:
 
     def test_apply_rejects_conflict(self, initialized_fs: Path) -> None:
         """Should reject if file changed since preview."""
-        import reos.play_db as play_db
-        from reos.play_fs import kb_write_apply, _kb_root_for
+        import cairn.play_db as play_db
+        from cairn.play_fs import kb_write_apply, _kb_root_for
 
         _, act_id = play_db.create_act(title="Test", notes="", color="#000000")
 
@@ -671,7 +671,7 @@ class TestActOperations:
 
     def test_create_act(self, initialized_fs: Path) -> None:
         """Should create act with auto color."""
-        from reos.play_fs import create_act, ACT_COLOR_PALETTE
+        from cairn.play_fs import create_act, ACT_COLOR_PALETTE
 
         acts, act_id = create_act(title="My Act", notes="Notes")
 
@@ -683,7 +683,7 @@ class TestActOperations:
 
     def test_create_act_with_custom_color(self, initialized_fs: Path) -> None:
         """Should use provided color."""
-        from reos.play_fs import create_act
+        from cairn.play_fs import create_act
 
         acts, act_id = create_act(title="Custom", color="#ff0000")
 
@@ -692,14 +692,14 @@ class TestActOperations:
 
     def test_create_act_validates_title(self, initialized_fs: Path) -> None:
         """Should reject empty title."""
-        from reos.play_fs import create_act
+        from cairn.play_fs import create_act
 
         with pytest.raises(ValueError, match="title"):
             create_act(title="")
 
     def test_update_act(self, initialized_fs: Path) -> None:
         """Should update act fields."""
-        from reos.play_fs import create_act, update_act
+        from cairn.play_fs import create_act, update_act
 
         acts, act_id = create_act(title="Original")
         acts, _ = update_act(act_id=act_id, title="Updated", notes="New notes")
@@ -710,7 +710,7 @@ class TestActOperations:
 
     def test_delete_act(self, initialized_fs: Path) -> None:
         """Should delete act."""
-        from reos.play_fs import create_act, delete_act
+        from cairn.play_fs import create_act, delete_act
 
         acts, act_id = create_act(title="To Delete")
         acts, _ = delete_act(act_id=act_id)
@@ -720,7 +720,7 @@ class TestActOperations:
 
     def test_delete_your_story_protected(self, initialized_fs: Path) -> None:
         """Should not allow deleting Your Story act."""
-        from reos.play_fs import delete_act, YOUR_STORY_ACT_ID
+        from cairn.play_fs import delete_act, YOUR_STORY_ACT_ID
 
         with pytest.raises(ValueError, match="protected"):
             delete_act(act_id=YOUR_STORY_ACT_ID)
@@ -736,7 +736,7 @@ class TestSceneOperations:
 
     def test_create_scene(self, initialized_fs: Path) -> None:
         """Should create scene."""
-        from reos.play_fs import create_act, create_scene, SceneStage
+        from cairn.play_fs import create_act, create_scene, SceneStage
 
         _, act_id = create_act(title="Act")
         scenes, scene_id = create_scene(act_id=act_id, title="Scene 1")
@@ -748,7 +748,7 @@ class TestSceneOperations:
 
     def test_create_scene_validates_title(self, initialized_fs: Path) -> None:
         """Should reject empty title."""
-        from reos.play_fs import create_act, create_scene
+        from cairn.play_fs import create_act, create_scene
 
         _, act_id = create_act(title="Act")
 
@@ -757,7 +757,7 @@ class TestSceneOperations:
 
     def test_update_scene(self, initialized_fs: Path) -> None:
         """Should update scene fields."""
-        from reos.play_fs import create_act, create_scene, update_scene
+        from cairn.play_fs import create_act, create_scene, update_scene
 
         _, act_id = create_act(title="Act")
         _, scene_id = create_scene(act_id=act_id, title="Original")
@@ -775,7 +775,7 @@ class TestSceneOperations:
 
     def test_delete_scene(self, initialized_fs: Path) -> None:
         """Should delete scene."""
-        from reos.play_fs import create_act, create_scene, delete_scene
+        from cairn.play_fs import create_act, create_scene, delete_scene
 
         _, act_id = create_act(title="Act")
         _, scene_id = create_scene(act_id=act_id, title="To Delete")
@@ -796,7 +796,7 @@ class TestStageDirection:
 
     def test_get_stage_direction_scene_id(self) -> None:
         """Should generate consistent stage direction ID."""
-        from reos.play_fs import _get_stage_direction_scene_id, STAGE_DIRECTION_SCENE_ID_PREFIX
+        from cairn.play_fs import _get_stage_direction_scene_id, STAGE_DIRECTION_SCENE_ID_PREFIX
 
         scene_id = _get_stage_direction_scene_id("act-123456789abc")
         assert scene_id.startswith(STAGE_DIRECTION_SCENE_ID_PREFIX)
@@ -804,7 +804,7 @@ class TestStageDirection:
 
     def test_cannot_delete_stage_direction(self, initialized_fs: Path) -> None:
         """Should not allow deleting Stage Direction scene."""
-        from reos.play_fs import create_act, delete_scene, _get_stage_direction_scene_id
+        from cairn.play_fs import create_act, delete_scene, _get_stage_direction_scene_id
 
         _, act_id = create_act(title="Act")
         stage_dir_id = _get_stage_direction_scene_id(act_id)
@@ -823,7 +823,7 @@ class TestYourStoryAct:
 
     def test_ensure_your_story_creates_act(self, initialized_fs: Path) -> None:
         """Should create Your Story act if missing."""
-        from reos.play_fs import ensure_your_story_act, YOUR_STORY_ACT_ID
+        from cairn.play_fs import ensure_your_story_act, YOUR_STORY_ACT_ID
 
         acts, your_story_id = ensure_your_story_act()
 

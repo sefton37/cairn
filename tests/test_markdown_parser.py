@@ -26,7 +26,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     data_dir.mkdir()
     monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.close_connection()
 
@@ -38,7 +38,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 def test_act(temp_data_dir: Path) -> str:
     """Create a test act."""
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.init_db()
     _, act_id = play_db.create_act(title="Test Act")
@@ -55,8 +55,8 @@ class TestMarkdownParser:
 
     def test_parse_paragraph(self, test_act: str) -> None:
         """Parse a simple paragraph."""
-        from reos.play.markdown_parser import parse_markdown
-        from reos.play.blocks_models import BlockType
+        from cairn.play.markdown_parser import parse_markdown
+        from cairn.play.blocks_models import BlockType
 
         blocks = parse_markdown("Hello world", test_act)
 
@@ -66,8 +66,8 @@ class TestMarkdownParser:
 
     def test_parse_heading_1(self, test_act: str) -> None:
         """Parse a level 1 heading."""
-        from reos.play.markdown_parser import parse_markdown
-        from reos.play.blocks_models import BlockType
+        from cairn.play.markdown_parser import parse_markdown
+        from cairn.play.blocks_models import BlockType
 
         blocks = parse_markdown("# Main Title", test_act)
 
@@ -77,8 +77,8 @@ class TestMarkdownParser:
 
     def test_parse_heading_2(self, test_act: str) -> None:
         """Parse a level 2 heading."""
-        from reos.play.markdown_parser import parse_markdown
-        from reos.play.blocks_models import BlockType
+        from cairn.play.markdown_parser import parse_markdown
+        from cairn.play.blocks_models import BlockType
 
         blocks = parse_markdown("## Sub Title", test_act)
 
@@ -87,8 +87,8 @@ class TestMarkdownParser:
 
     def test_parse_heading_3(self, test_act: str) -> None:
         """Parse a level 3 heading."""
-        from reos.play.markdown_parser import parse_markdown
-        from reos.play.blocks_models import BlockType
+        from cairn.play.markdown_parser import parse_markdown
+        from cairn.play.blocks_models import BlockType
 
         blocks = parse_markdown("### Small Title", test_act)
 
@@ -97,7 +97,7 @@ class TestMarkdownParser:
 
     def test_parse_bold_text(self, test_act: str) -> None:
         """Parse text with bold formatting."""
-        from reos.play.markdown_parser import parse_markdown
+        from cairn.play.markdown_parser import parse_markdown
 
         blocks = parse_markdown("This is **bold** text", test_act)
 
@@ -110,7 +110,7 @@ class TestMarkdownParser:
 
     def test_parse_italic_text(self, test_act: str) -> None:
         """Parse text with italic formatting."""
-        from reos.play.markdown_parser import parse_markdown
+        from cairn.play.markdown_parser import parse_markdown
 
         blocks = parse_markdown("This is *italic* text", test_act)
 
@@ -121,7 +121,7 @@ class TestMarkdownParser:
 
     def test_parse_code_inline(self, test_act: str) -> None:
         """Parse inline code."""
-        from reos.play.markdown_parser import parse_markdown
+        from cairn.play.markdown_parser import parse_markdown
 
         blocks = parse_markdown("Use `print()` function", test_act)
 
@@ -132,7 +132,7 @@ class TestMarkdownParser:
 
     def test_parse_link(self, test_act: str) -> None:
         """Parse a link."""
-        from reos.play.markdown_parser import parse_markdown
+        from cairn.play.markdown_parser import parse_markdown
 
         blocks = parse_markdown("Visit [Example](https://example.com)", test_act)
 
@@ -144,8 +144,8 @@ class TestMarkdownParser:
 
     def test_parse_code_block(self, test_act: str) -> None:
         """Parse a fenced code block."""
-        from reos.play.markdown_parser import parse_markdown
-        from reos.play.blocks_models import BlockType
+        from cairn.play.markdown_parser import parse_markdown
+        from cairn.play.blocks_models import BlockType
 
         markdown = """```python
 def hello():
@@ -160,8 +160,8 @@ def hello():
 
     def test_parse_bulleted_list(self, test_act: str) -> None:
         """Parse a bulleted list."""
-        from reos.play.markdown_parser import parse_markdown
-        from reos.play.blocks_models import BlockType
+        from cairn.play.markdown_parser import parse_markdown
+        from cairn.play.blocks_models import BlockType
 
         markdown = """- Item 1
 - Item 2
@@ -174,8 +174,8 @@ def hello():
 
     def test_parse_numbered_list(self, test_act: str) -> None:
         """Parse a numbered list."""
-        from reos.play.markdown_parser import parse_markdown
-        from reos.play.blocks_models import BlockType
+        from cairn.play.markdown_parser import parse_markdown
+        from cairn.play.blocks_models import BlockType
 
         markdown = """1. First
 2. Second
@@ -188,8 +188,8 @@ def hello():
 
     def test_parse_checkbox_unchecked(self, test_act: str) -> None:
         """Parse unchecked checkbox."""
-        from reos.play.markdown_parser import parse_markdown
-        from reos.play.blocks_models import BlockType
+        from cairn.play.markdown_parser import parse_markdown
+        from cairn.play.blocks_models import BlockType
 
         blocks = parse_markdown("- [ ] Todo item", test_act)
 
@@ -199,8 +199,8 @@ def hello():
 
     def test_parse_checkbox_checked(self, test_act: str) -> None:
         """Parse checked checkbox."""
-        from reos.play.markdown_parser import parse_markdown
-        from reos.play.blocks_models import BlockType
+        from cairn.play.markdown_parser import parse_markdown
+        from cairn.play.blocks_models import BlockType
 
         blocks = parse_markdown("- [x] Completed item", test_act)
 
@@ -210,8 +210,8 @@ def hello():
 
     def test_parse_divider(self, test_act: str) -> None:
         """Parse horizontal rule as divider."""
-        from reos.play.markdown_parser import parse_markdown
-        from reos.play.blocks_models import BlockType
+        from cairn.play.markdown_parser import parse_markdown
+        from cairn.play.blocks_models import BlockType
 
         blocks = parse_markdown("---", test_act)
 
@@ -220,8 +220,8 @@ def hello():
 
     def test_parse_multiple_blocks(self, test_act: str) -> None:
         """Parse document with multiple block types."""
-        from reos.play.markdown_parser import parse_markdown
-        from reos.play.blocks_models import BlockType
+        from cairn.play.markdown_parser import parse_markdown
+        from cairn.play.blocks_models import BlockType
 
         markdown = """# Title
 
@@ -244,7 +244,7 @@ Another paragraph."""
 
     def test_parse_positions_sequential(self, test_act: str) -> None:
         """Blocks have sequential positions."""
-        from reos.play.markdown_parser import parse_markdown
+        from cairn.play.markdown_parser import parse_markdown
 
         markdown = """# One
 ## Two
@@ -265,8 +265,8 @@ class TestMarkdownRenderer:
 
     def test_render_paragraph(self) -> None:
         """Render a paragraph block."""
-        from reos.play.markdown_renderer import render_markdown
-        from reos.play.blocks_models import Block, BlockType, RichTextSpan
+        from cairn.play.markdown_renderer import render_markdown
+        from cairn.play.blocks_models import Block, BlockType, RichTextSpan
 
         block = Block(
             id="b1",
@@ -281,8 +281,8 @@ class TestMarkdownRenderer:
 
     def test_render_heading_1(self) -> None:
         """Render a heading 1 block."""
-        from reos.play.markdown_renderer import render_markdown
-        from reos.play.blocks_models import Block, BlockType, RichTextSpan
+        from cairn.play.markdown_renderer import render_markdown
+        from cairn.play.blocks_models import Block, BlockType, RichTextSpan
 
         block = Block(
             id="b1",
@@ -297,8 +297,8 @@ class TestMarkdownRenderer:
 
     def test_render_heading_2(self) -> None:
         """Render a heading 2 block."""
-        from reos.play.markdown_renderer import render_markdown
-        from reos.play.blocks_models import Block, BlockType, RichTextSpan
+        from cairn.play.markdown_renderer import render_markdown
+        from cairn.play.blocks_models import Block, BlockType, RichTextSpan
 
         block = Block(
             id="b1",
@@ -313,8 +313,8 @@ class TestMarkdownRenderer:
 
     def test_render_bold_text(self) -> None:
         """Render bold formatted text."""
-        from reos.play.markdown_renderer import render_markdown
-        from reos.play.blocks_models import Block, BlockType, RichTextSpan
+        from cairn.play.markdown_renderer import render_markdown
+        from cairn.play.blocks_models import Block, BlockType, RichTextSpan
 
         block = Block(
             id="b1",
@@ -333,8 +333,8 @@ class TestMarkdownRenderer:
 
     def test_render_italic_text(self) -> None:
         """Render italic formatted text."""
-        from reos.play.markdown_renderer import render_markdown
-        from reos.play.blocks_models import Block, BlockType, RichTextSpan
+        from cairn.play.markdown_renderer import render_markdown
+        from cairn.play.blocks_models import Block, BlockType, RichTextSpan
 
         block = Block(
             id="b1",
@@ -349,8 +349,8 @@ class TestMarkdownRenderer:
 
     def test_render_code_inline(self) -> None:
         """Render inline code."""
-        from reos.play.markdown_renderer import render_markdown
-        from reos.play.blocks_models import Block, BlockType, RichTextSpan
+        from cairn.play.markdown_renderer import render_markdown
+        from cairn.play.blocks_models import Block, BlockType, RichTextSpan
 
         block = Block(
             id="b1",
@@ -365,8 +365,8 @@ class TestMarkdownRenderer:
 
     def test_render_link(self) -> None:
         """Render a link."""
-        from reos.play.markdown_renderer import render_markdown
-        from reos.play.blocks_models import Block, BlockType, RichTextSpan
+        from cairn.play.markdown_renderer import render_markdown
+        from cairn.play.blocks_models import Block, BlockType, RichTextSpan
 
         block = Block(
             id="b1",
@@ -389,8 +389,8 @@ class TestMarkdownRenderer:
 
     def test_render_code_block(self) -> None:
         """Render a code block with language."""
-        from reos.play.markdown_renderer import render_markdown
-        from reos.play.blocks_models import Block, BlockType, RichTextSpan
+        from cairn.play.markdown_renderer import render_markdown
+        from cairn.play.blocks_models import Block, BlockType, RichTextSpan
 
         block = Block(
             id="b1",
@@ -408,8 +408,8 @@ class TestMarkdownRenderer:
 
     def test_render_bulleted_list(self) -> None:
         """Render bulleted list items."""
-        from reos.play.markdown_renderer import render_markdown
-        from reos.play.blocks_models import Block, BlockType, RichTextSpan
+        from cairn.play.markdown_renderer import render_markdown
+        from cairn.play.blocks_models import Block, BlockType, RichTextSpan
 
         blocks = [
             Block(
@@ -433,8 +433,8 @@ class TestMarkdownRenderer:
 
     def test_render_numbered_list(self) -> None:
         """Render numbered list items."""
-        from reos.play.markdown_renderer import render_markdown
-        from reos.play.blocks_models import Block, BlockType, RichTextSpan
+        from cairn.play.markdown_renderer import render_markdown
+        from cairn.play.blocks_models import Block, BlockType, RichTextSpan
 
         blocks = [
             Block(
@@ -451,8 +451,8 @@ class TestMarkdownRenderer:
 
     def test_render_todo_unchecked(self) -> None:
         """Render unchecked todo."""
-        from reos.play.markdown_renderer import render_markdown
-        from reos.play.blocks_models import Block, BlockType, RichTextSpan
+        from cairn.play.markdown_renderer import render_markdown
+        from cairn.play.blocks_models import Block, BlockType, RichTextSpan
 
         block = Block(
             id="b1",
@@ -468,8 +468,8 @@ class TestMarkdownRenderer:
 
     def test_render_todo_checked(self) -> None:
         """Render checked todo."""
-        from reos.play.markdown_renderer import render_markdown
-        from reos.play.blocks_models import Block, BlockType, RichTextSpan
+        from cairn.play.markdown_renderer import render_markdown
+        from cairn.play.blocks_models import Block, BlockType, RichTextSpan
 
         block = Block(
             id="b1",
@@ -485,8 +485,8 @@ class TestMarkdownRenderer:
 
     def test_render_divider(self) -> None:
         """Render divider."""
-        from reos.play.markdown_renderer import render_markdown
-        from reos.play.blocks_models import Block, BlockType
+        from cairn.play.markdown_renderer import render_markdown
+        from cairn.play.blocks_models import Block, BlockType
 
         block = Block(id="b1", type=BlockType.DIVIDER, act_id="a1")
 
@@ -505,7 +505,7 @@ class TestRoundTrip:
 
     def _blocks_from_data(self, blocks_data: list) -> list:
         """Convert parsed block data to Block objects for rendering."""
-        from reos.play.blocks_models import Block, RichTextSpan
+        from cairn.play.blocks_models import Block, RichTextSpan
 
         blocks = []
         for i, data in enumerate(blocks_data):
@@ -539,8 +539,8 @@ class TestRoundTrip:
 
     def test_roundtrip_paragraph(self, test_act: str) -> None:
         """Paragraph survives round-trip."""
-        from reos.play.markdown_parser import parse_markdown
-        from reos.play.markdown_renderer import render_markdown
+        from cairn.play.markdown_parser import parse_markdown
+        from cairn.play.markdown_renderer import render_markdown
 
         original = "Hello world"
         blocks_data = parse_markdown(original, test_act)
@@ -551,8 +551,8 @@ class TestRoundTrip:
 
     def test_roundtrip_heading(self, test_act: str) -> None:
         """Heading survives round-trip."""
-        from reos.play.markdown_parser import parse_markdown
-        from reos.play.markdown_renderer import render_markdown
+        from cairn.play.markdown_parser import parse_markdown
+        from cairn.play.markdown_renderer import render_markdown
 
         original = "# Main Title"
         blocks_data = parse_markdown(original, test_act)
@@ -563,8 +563,8 @@ class TestRoundTrip:
 
     def test_roundtrip_code_block(self, test_act: str) -> None:
         """Code block survives round-trip."""
-        from reos.play.markdown_parser import parse_markdown
-        from reos.play.markdown_renderer import render_markdown
+        from cairn.play.markdown_parser import parse_markdown
+        from cairn.play.markdown_renderer import render_markdown
 
         original = """```python
 print("hello")
@@ -578,8 +578,8 @@ print("hello")
 
     def test_roundtrip_checkbox(self, test_act: str) -> None:
         """Checkbox survives round-trip."""
-        from reos.play.markdown_parser import parse_markdown
-        from reos.play.markdown_renderer import render_markdown
+        from cairn.play.markdown_parser import parse_markdown
+        from cairn.play.markdown_renderer import render_markdown
 
         original = "- [x] Completed task"
         blocks_data = parse_markdown(original, test_act)
@@ -591,8 +591,8 @@ print("hello")
 
     def test_roundtrip_complex_document(self, test_act: str) -> None:
         """Complex document survives round-trip."""
-        from reos.play.markdown_parser import parse_markdown
-        from reos.play.markdown_renderer import render_markdown
+        from cairn.play.markdown_parser import parse_markdown
+        from cairn.play.markdown_renderer import render_markdown
 
         original = """# Document Title
 
@@ -629,14 +629,14 @@ class TestEdgeCases:
 
     def test_empty_markdown(self, test_act: str) -> None:
         """Empty markdown produces no blocks."""
-        from reos.play.markdown_parser import parse_markdown
+        from cairn.play.markdown_parser import parse_markdown
 
         blocks = parse_markdown("", test_act)
         assert len(blocks) == 0
 
     def test_whitespace_only(self, test_act: str) -> None:
         """Whitespace-only markdown produces no blocks."""
-        from reos.play.markdown_parser import parse_markdown
+        from cairn.play.markdown_parser import parse_markdown
 
         blocks = parse_markdown("   \n\n   ", test_act)
         # May produce empty blocks or none depending on parser
@@ -648,7 +648,7 @@ class TestEdgeCases:
 
     def test_nested_formatting(self, test_act: str) -> None:
         """Nested formatting is handled."""
-        from reos.play.markdown_parser import parse_markdown
+        from cairn.play.markdown_parser import parse_markdown
 
         blocks = parse_markdown("***bold italic***", test_act)
 
@@ -656,15 +656,15 @@ class TestEdgeCases:
 
     def test_render_empty_blocks(self) -> None:
         """Empty block list renders to empty string."""
-        from reos.play.markdown_renderer import render_markdown
+        from cairn.play.markdown_renderer import render_markdown
 
         result = render_markdown([])
         assert result == ""
 
     def test_code_block_without_language(self, test_act: str) -> None:
         """Code block without language specification."""
-        from reos.play.markdown_parser import parse_markdown
-        from reos.play.blocks_models import BlockType
+        from cairn.play.markdown_parser import parse_markdown
+        from cairn.play.blocks_models import BlockType
 
         blocks = parse_markdown("```\ncode here\n```", test_act)
 
@@ -685,8 +685,8 @@ class TestSceneBlockRendering:
 
     def test_get_scene_snippet(self, temp_data_dir: Path) -> None:
         """get_scene_snippet returns scene data."""
-        import reos.play_db as play_db
-        from reos.play.markdown_renderer import get_scene_snippet
+        import cairn.play_db as play_db
+        from cairn.play.markdown_renderer import get_scene_snippet
 
         play_db.close_connection()
         play_db.init_db()
@@ -709,8 +709,8 @@ class TestSceneBlockRendering:
 
     def test_get_scene_snippet_not_found(self, temp_data_dir: Path) -> None:
         """get_scene_snippet returns None for missing scene."""
-        import reos.play_db as play_db
-        from reos.play.markdown_renderer import get_scene_snippet
+        import cairn.play_db as play_db
+        from cairn.play.markdown_renderer import get_scene_snippet
 
         play_db.close_connection()
         play_db.init_db()
@@ -723,8 +723,8 @@ class TestSceneBlockRendering:
 
     def test_get_scene_snippet_truncates_long_notes(self, temp_data_dir: Path) -> None:
         """get_scene_snippet truncates long notes."""
-        import reos.play_db as play_db
-        from reos.play.markdown_renderer import get_scene_snippet
+        import cairn.play_db as play_db
+        from cairn.play.markdown_renderer import get_scene_snippet
 
         play_db.close_connection()
         play_db.init_db()
@@ -746,7 +746,7 @@ class TestSceneBlockRendering:
 
     def test_render_scene_block(self) -> None:
         """render_scene_block formats scene nicely."""
-        from reos.play.markdown_renderer import render_scene_block
+        from cairn.play.markdown_renderer import render_scene_block
 
         snippet = {
             "scene_id": "scene-123",
@@ -766,7 +766,7 @@ class TestSceneBlockRendering:
 
     def test_render_scene_block_with_calendar(self) -> None:
         """render_scene_block includes calendar info."""
-        from reos.play.markdown_renderer import render_scene_block
+        from cairn.play.markdown_renderer import render_scene_block
 
         snippet = {
             "scene_id": "scene-123",
@@ -784,9 +784,9 @@ class TestSceneBlockRendering:
 
     def test_render_scene_in_markdown(self, temp_data_dir: Path) -> None:
         """Scene block renders with details in markdown output."""
-        import reos.play_db as play_db
-        from reos.play.markdown_renderer import render_markdown
-        from reos.play.blocks_models import Block, BlockType
+        import cairn.play_db as play_db
+        from cairn.play.markdown_renderer import render_markdown
+        from cairn.play.blocks_models import Block, BlockType
 
         play_db.close_connection()
         play_db.init_db()
@@ -814,8 +814,8 @@ class TestSceneBlockRendering:
 
     def test_render_scene_missing(self) -> None:
         """Scene block with missing scene shows ID."""
-        from reos.play.markdown_renderer import render_markdown
-        from reos.play.blocks_models import Block, BlockType
+        from cairn.play.markdown_renderer import render_markdown
+        from cairn.play.blocks_models import Block, BlockType
 
         block = Block(
             id="b1",

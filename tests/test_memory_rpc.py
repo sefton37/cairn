@@ -28,7 +28,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     data_dir.mkdir()
     monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
     play_db.close_connection()
 
     yield data_dir
@@ -39,12 +39,12 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 def initialized_db(temp_data_dir: Path):
     """Initialize the database and return the play_db module."""
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.init_db()
 
     # Reset memory RPC singletons to ensure test isolation
-    import reos.rpc_handlers.memory as memory_rpc
+    import cairn.rpc_handlers.memory as memory_rpc
     memory_rpc._graph_store = None
     memory_rpc._retriever = None
     memory_rpc._extractor = None
@@ -67,7 +67,7 @@ def test_act(initialized_db) -> str:
 @pytest.fixture
 def test_blocks(test_act: str, initialized_db) -> list[str]:
     """Create test blocks and return their IDs."""
-    from reos.play.blocks_db import create_block
+    from cairn.play.blocks_db import create_block
 
     block_ids = []
     for i in range(5):
@@ -84,7 +84,7 @@ def test_blocks(test_act: str, initialized_db) -> list[str]:
 @pytest.fixture
 def mock_embedding_service(monkeypatch):
     """Create a mock embedding service."""
-    from reos.memory import embeddings as emb_mod
+    from cairn.memory import embeddings as emb_mod
 
     mock = Mock()
     mock.is_available = True
@@ -131,7 +131,7 @@ class TestRelationshipCreateHandler:
 
     def test_create_relationship(self, initialized_db, test_blocks) -> None:
         """Create relationship returns relationship data."""
-        from reos.rpc_handlers.memory import handle_memory_relationships_create
+        from cairn.rpc_handlers.memory import handle_memory_relationships_create
 
         result = handle_memory_relationships_create(
             initialized_db,
@@ -148,7 +148,7 @@ class TestRelationshipCreateHandler:
 
     def test_create_relationship_with_options(self, initialized_db, test_blocks) -> None:
         """Create relationship accepts confidence and source."""
-        from reos.rpc_handlers.memory import handle_memory_relationships_create
+        from cairn.rpc_handlers.memory import handle_memory_relationships_create
 
         result = handle_memory_relationships_create(
             initialized_db,
@@ -164,8 +164,8 @@ class TestRelationshipCreateHandler:
 
     def test_create_duplicate_relationship_fails(self, initialized_db, test_blocks) -> None:
         """Create duplicate relationship raises error."""
-        from reos.rpc_handlers.memory import handle_memory_relationships_create
-        from reos.rpc_handlers import RpcError
+        from cairn.rpc_handlers.memory import handle_memory_relationships_create
+        from cairn.rpc_handlers import RpcError
 
         # Create first
         handle_memory_relationships_create(
@@ -190,7 +190,7 @@ class TestRelationshipListHandler:
 
     def test_list_relationships(self, initialized_db, test_blocks) -> None:
         """List relationships returns edges for block."""
-        from reos.rpc_handlers.memory import (
+        from cairn.rpc_handlers.memory import (
             handle_memory_relationships_create,
             handle_memory_relationships_list,
         )
@@ -221,7 +221,7 @@ class TestRelationshipListHandler:
         self, initialized_db, test_blocks
     ) -> None:
         """List relationships filters by direction."""
-        from reos.rpc_handlers.memory import (
+        from cairn.rpc_handlers.memory import (
             handle_memory_relationships_create,
             handle_memory_relationships_list,
         )
@@ -255,7 +255,7 @@ class TestRelationshipListHandler:
         self, initialized_db, test_blocks
     ) -> None:
         """List relationships filters by type."""
-        from reos.rpc_handlers.memory import (
+        from cairn.rpc_handlers.memory import (
             handle_memory_relationships_create,
             handle_memory_relationships_list,
         )
@@ -291,7 +291,7 @@ class TestRelationshipUpdateHandler:
 
     def test_update_relationship(self, initialized_db, test_blocks) -> None:
         """Update relationship modifies confidence."""
-        from reos.rpc_handlers.memory import (
+        from cairn.rpc_handlers.memory import (
             handle_memory_relationships_create,
             handle_memory_relationships_update,
         )
@@ -318,8 +318,8 @@ class TestRelationshipUpdateHandler:
 
     def test_update_nonexistent_relationship(self, initialized_db) -> None:
         """Update nonexistent relationship raises error."""
-        from reos.rpc_handlers.memory import handle_memory_relationships_update
-        from reos.rpc_handlers import RpcError
+        from cairn.rpc_handlers.memory import handle_memory_relationships_update
+        from cairn.rpc_handlers import RpcError
 
         with pytest.raises(RpcError):
             handle_memory_relationships_update(
@@ -334,7 +334,7 @@ class TestRelationshipDeleteHandler:
 
     def test_delete_relationship(self, initialized_db, test_blocks) -> None:
         """Delete relationship removes it."""
-        from reos.rpc_handlers.memory import (
+        from cairn.rpc_handlers.memory import (
             handle_memory_relationships_create,
             handle_memory_relationships_delete,
             handle_memory_relationships_list,
@@ -377,7 +377,7 @@ class TestMemorySearchHandler:
         self, initialized_db, test_blocks, mock_embedding_service, test_act
     ) -> None:
         """Search returns memory context."""
-        from reos.rpc_handlers.memory import (
+        from cairn.rpc_handlers.memory import (
             handle_memory_index_block,
             handle_memory_search,
         )
@@ -400,7 +400,7 @@ class TestMemorySearchHandler:
         self, initialized_db, test_blocks, mock_embedding_service, test_act
     ) -> None:
         """Search respects max_results parameter."""
-        from reos.rpc_handlers.memory import (
+        from cairn.rpc_handlers.memory import (
             handle_memory_index_block,
             handle_memory_search,
         )
@@ -423,7 +423,7 @@ class TestMemoryRelatedHandler:
 
     def test_related_returns_traversal(self, initialized_db, test_blocks) -> None:
         """Related returns graph traversal result."""
-        from reos.rpc_handlers.memory import (
+        from cairn.rpc_handlers.memory import (
             handle_memory_relationships_create,
             handle_memory_related,
         )
@@ -453,7 +453,7 @@ class TestMemoryPathHandler:
 
     def test_path_finds_connection(self, initialized_db, test_blocks) -> None:
         """Path finds path between blocks."""
-        from reos.rpc_handlers.memory import (
+        from cairn.rpc_handlers.memory import (
             handle_memory_relationships_create,
             handle_memory_path,
         )
@@ -483,7 +483,7 @@ class TestMemoryPathHandler:
 
     def test_path_not_found(self, initialized_db, test_blocks) -> None:
         """Path returns not found when no connection."""
-        from reos.rpc_handlers.memory import handle_memory_path
+        from cairn.rpc_handlers.memory import handle_memory_path
 
         result = handle_memory_path(
             initialized_db,
@@ -506,7 +506,7 @@ class TestMemoryIndexBlockHandler:
         self, initialized_db, test_blocks, mock_embedding_service
     ) -> None:
         """Index block stores embedding."""
-        from reos.rpc_handlers.memory import handle_memory_index_block
+        from cairn.rpc_handlers.memory import handle_memory_index_block
 
         result = handle_memory_index_block(
             initialized_db,
@@ -520,8 +520,8 @@ class TestMemoryIndexBlockHandler:
         self, initialized_db, mock_embedding_service
     ) -> None:
         """Index nonexistent block raises error."""
-        from reos.rpc_handlers.memory import handle_memory_index_block
-        from reos.rpc_handlers import RpcError
+        from cairn.rpc_handlers.memory import handle_memory_index_block
+        from cairn.rpc_handlers import RpcError
 
         with pytest.raises(RpcError):
             handle_memory_index_block(
@@ -537,7 +537,7 @@ class TestMemoryIndexBatchHandler:
         self, initialized_db, test_blocks, mock_embedding_service
     ) -> None:
         """Index batch indexes multiple blocks."""
-        from reos.rpc_handlers.memory import handle_memory_index_batch
+        from cairn.rpc_handlers.memory import handle_memory_index_batch
 
         result = handle_memory_index_batch(
             initialized_db,
@@ -557,7 +557,7 @@ class TestMemoryIndexRemoveHandler:
         self, initialized_db, test_blocks, mock_embedding_service
     ) -> None:
         """Remove index deletes embedding."""
-        from reos.rpc_handlers.memory import (
+        from cairn.rpc_handlers.memory import (
             handle_memory_index_block,
             handle_memory_remove_index,
         )
@@ -586,8 +586,8 @@ class TestMemoryExtractHandler:
         self, initialized_db, test_act, mock_embedding_service
     ) -> None:
         """Extract analyzes chain content."""
-        from reos.play.blocks_db import create_block
-        from reos.rpc_handlers.memory import handle_memory_extract_relationships
+        from cairn.play.blocks_db import create_block
+        from cairn.rpc_handlers.memory import handle_memory_extract_relationships
 
         chain = create_block(
             type="reasoning_chain",
@@ -610,8 +610,8 @@ class TestMemoryLearnHandler:
 
     def test_learn_from_feedback(self, initialized_db, test_act) -> None:
         """Learn from feedback processes rating."""
-        from reos.play.blocks_db import create_block
-        from reos.rpc_handlers.memory import handle_memory_learn_from_feedback
+        from cairn.play.blocks_db import create_block
+        from cairn.rpc_handlers.memory import handle_memory_learn_from_feedback
 
         chain = create_block(
             type="reasoning_chain",
@@ -635,7 +635,7 @@ class TestMemoryAutoLinkHandler:
         self, initialized_db, test_blocks, test_act, mock_embedding_service
     ) -> None:
         """Auto link creates similarity relationships."""
-        from reos.rpc_handlers.memory import (
+        from cairn.rpc_handlers.memory import (
             handle_memory_index_batch,
             handle_memory_auto_link,
         )
@@ -664,7 +664,7 @@ class TestMemoryStatsHandler:
         self, initialized_db, test_blocks, mock_embedding_service
     ) -> None:
         """Stats returns system statistics."""
-        from reos.rpc_handlers.memory import (
+        from cairn.rpc_handlers.memory import (
             handle_memory_relationships_create,
             handle_memory_index_block,
             handle_memory_stats,
@@ -700,10 +700,10 @@ class TestReasoningFeedbackMemoryIntegration:
         self, initialized_db, test_act
     ) -> None:
         """Positive feedback via reasoning/feedback strengthens memory relationships."""
-        from reos.play.blocks_db import create_block
-        from reos.play.blocks_models import BlockType
-        from reos.rpc_handlers.reasoning import handle_reasoning_feedback
-        from reos.rpc_handlers.memory import handle_memory_relationships_create
+        from cairn.play.blocks_db import create_block
+        from cairn.play.blocks_models import BlockType
+        from cairn.rpc_handlers.reasoning import handle_reasoning_feedback
+        from cairn.rpc_handlers.memory import handle_memory_relationships_create
 
         # Create a reasoning chain
         chain = create_block(
@@ -745,9 +745,9 @@ class TestReasoningFeedbackMemoryIntegration:
         self, initialized_db, test_act
     ) -> None:
         """Negative feedback via reasoning/feedback triggers memory learning."""
-        from reos.play.blocks_db import create_block
-        from reos.play.blocks_models import BlockType
-        from reos.rpc_handlers.reasoning import handle_reasoning_feedback
+        from cairn.play.blocks_db import create_block
+        from cairn.play.blocks_models import BlockType
+        from cairn.rpc_handlers.reasoning import handle_reasoning_feedback
 
         # Create a reasoning chain
         chain = create_block(

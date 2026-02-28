@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from reos.cairn.health.checks.context_freshness import ContextFreshnessCheck
-from reos.cairn.health.runner import Severity
-from reos.cairn.store import CairnStore
+from cairn.cairn.health.checks.context_freshness import ContextFreshnessCheck
+from cairn.cairn.health.runner import Severity
+from cairn.cairn.store import CairnStore
 
 
 @pytest.fixture

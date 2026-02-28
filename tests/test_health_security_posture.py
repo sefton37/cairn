@@ -9,8 +9,8 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
-from reos.cairn.health.checks.security_posture import SecurityPostureCheck
-from reos.cairn.health.runner import Severity
+from cairn.cairn.health.checks.security_posture import SecurityPostureCheck
+from cairn.cairn.health.runner import Severity
 
 
 def test_no_cloud_api_keys_returns_healthy(monkeypatch, tmp_path: Path):
@@ -187,7 +187,7 @@ def test_no_data_dir_configured_returns_healthy(monkeypatch):
     # The implementation catches Exception, so any exception during settings import is caught
     # We can just mock sys.modules to make the import fail
     import sys
-    with patch.dict(sys.modules, {"reos.settings": None}):
+    with patch.dict(sys.modules, {"cairn.settings": None}):
         results = check.run()
 
     # Should return combined healthy result (all checks pass)

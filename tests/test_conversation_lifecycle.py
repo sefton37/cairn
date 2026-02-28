@@ -23,7 +23,7 @@ def conv_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     data_dir.mkdir()
     monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.close_connection()
     play_db.init_db()
@@ -36,7 +36,7 @@ def conv_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 def service(conv_db):
     """Get a ConversationService with fresh database."""
-    from reos.services.conversation_service import ConversationService
+    from cairn.services.conversation_service import ConversationService
 
     return ConversationService()
 
@@ -51,7 +51,7 @@ class TestConversationSingleton:
 
     def test_start_first_conversation(self, service):
         """Starting a conversation when none exists returns an active conversation."""
-        from reos.services.conversation_service import ConversationService
+        from cairn.services.conversation_service import ConversationService
 
         conv = service.start()
 
@@ -62,7 +62,7 @@ class TestConversationSingleton:
 
     def test_singleton_enforcement(self, service):
         """Starting a second conversation while one is active raises ConversationError."""
-        from reos.services.conversation_service import ConversationError
+        from cairn.services.conversation_service import ConversationError
 
         service.start()
 
@@ -103,7 +103,7 @@ class TestConversationSingleton:
 
     def test_second_start_does_not_create_orphan(self, service):
         """A rejected start() call must not persist a partial conversation row."""
-        from reos.services.conversation_service import ConversationError
+        from cairn.services.conversation_service import ConversationError
 
         service.start()
 
@@ -171,7 +171,7 @@ class TestStateTransitions:
 
     def test_cannot_close_archived_conversation(self, service):
         """close() on an archived conversation raises ConversationError."""
-        from reos.services.conversation_service import ConversationError
+        from cairn.services.conversation_service import ConversationError
 
         conv = service.start()
         service.close(conv.id)
@@ -183,7 +183,7 @@ class TestStateTransitions:
 
     def test_cannot_skip_active_to_compressing(self, service):
         """start_compression() on an active conversation raises ConversationError."""
-        from reos.services.conversation_service import ConversationError
+        from cairn.services.conversation_service import ConversationError
 
         conv = service.start()
 
@@ -192,7 +192,7 @@ class TestStateTransitions:
 
     def test_cannot_skip_active_to_archived(self, service):
         """archive() on an active conversation raises ConversationError."""
-        from reos.services.conversation_service import ConversationError
+        from cairn.services.conversation_service import ConversationError
 
         conv = service.start()
 
@@ -201,7 +201,7 @@ class TestStateTransitions:
 
     def test_cannot_transition_nonexistent_conversation(self, service):
         """close() on an unknown ID raises ConversationError with 'not found'."""
-        from reos.services.conversation_service import ConversationError
+        from cairn.services.conversation_service import ConversationError
 
         with pytest.raises(ConversationError, match="not found"):
             service.close("nonexistent-id")
@@ -290,7 +290,7 @@ class TestMessages:
 
     def test_cannot_add_message_to_ready_to_close_conversation(self, service):
         """add_message raises ConversationError when conversation is ready_to_close."""
-        from reos.services.conversation_service import ConversationError
+        from cairn.services.conversation_service import ConversationError
 
         conv = service.start()
         service.close(conv.id)
@@ -300,7 +300,7 @@ class TestMessages:
 
     def test_cannot_add_message_to_nonexistent_conversation(self, service):
         """add_message raises ConversationError with 'not found' for unknown IDs."""
-        from reos.services.conversation_service import ConversationError
+        from cairn.services.conversation_service import ConversationError
 
         with pytest.raises(ConversationError, match="not found"):
             service.add_message("bad-id", "user", "Hello")
@@ -363,7 +363,7 @@ class TestMessages:
 
     def test_cannot_add_message_to_compressing_conversation(self, service):
         """add_message raises ConversationError when conversation is compressing."""
-        from reos.services.conversation_service import ConversationError
+        from cairn.services.conversation_service import ConversationError
 
         conv = service.start()
         service.close(conv.id)
@@ -374,7 +374,7 @@ class TestMessages:
 
     def test_cannot_add_message_to_archived_conversation(self, service):
         """add_message raises ConversationError when conversation is archived."""
-        from reos.services.conversation_service import ConversationError
+        from cairn.services.conversation_service import ConversationError
 
         conv = service.start()
         service.close(conv.id)
@@ -433,7 +433,7 @@ class TestPauseUnpause:
 
     def test_cannot_pause_ready_to_close_conversation(self, service):
         """pause() raises ConversationError when conversation is not active."""
-        from reos.services.conversation_service import ConversationError
+        from cairn.services.conversation_service import ConversationError
 
         conv = service.start()
         service.close(conv.id)
@@ -443,7 +443,7 @@ class TestPauseUnpause:
 
     def test_cannot_pause_nonexistent_conversation(self, service):
         """pause() raises ConversationError for unknown conversation IDs."""
-        from reos.services.conversation_service import ConversationError
+        from cairn.services.conversation_service import ConversationError
 
         with pytest.raises(ConversationError, match="not found"):
             service.pause("ghost-id")
@@ -538,7 +538,7 @@ class TestBlockIntegration:
 
     def test_conversation_creates_block_row(self, service, conv_db):
         """start() inserts a block row with type='conversation' in the blocks table."""
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         conv = service.start()
         conn = play_db._get_connection()
@@ -554,7 +554,7 @@ class TestBlockIntegration:
 
     def test_message_creates_block_row(self, service, conv_db):
         """add_message() inserts a block row with type='message' as child of the conversation block."""
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         conv = service.start()
         msg = service.add_message(conv.id, "user", "Test")
@@ -584,7 +584,7 @@ class TestBlockIntegration:
 
     def test_multiple_messages_each_get_unique_block(self, service, conv_db):
         """Each message receives its own unique block_id."""
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         conv = service.start()
         msg1 = service.add_message(conv.id, "user", "First")
@@ -602,7 +602,7 @@ class TestBlockIntegration:
 
     def test_conversation_block_uses_archived_conversations_act(self, service, conv_db):
         """The conversation block is parented to the archived-conversations system act."""
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         conv = service.start()
         conn = play_db._get_connection()

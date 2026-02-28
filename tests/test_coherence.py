@@ -16,7 +16,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
-from reos.cairn.coherence import (
+from cairn.cairn.coherence import (
     AttentionDemand,
     CoherenceCheck,
     CoherenceResult,
@@ -453,9 +453,9 @@ class TestIdentityExtraction:
 
     def test_load_anti_patterns(self, tmp_path):
         """Test loading anti-patterns from file."""
-        from reos.cairn.identity import load_anti_patterns, _anti_patterns_path
+        from cairn.cairn.identity import load_anti_patterns, _anti_patterns_path
 
-        with patch("reos.cairn.identity._anti_patterns_path") as mock_path:
+        with patch("cairn.cairn.identity._anti_patterns_path") as mock_path:
             mock_path.return_value = tmp_path / "anti_patterns.json"
 
             # No file - empty list
@@ -472,9 +472,9 @@ class TestIdentityExtraction:
 
     def test_add_anti_pattern(self, tmp_path):
         """Test adding an anti-pattern."""
-        from reos.cairn.identity import add_anti_pattern, load_anti_patterns
+        from cairn.cairn.identity import add_anti_pattern, load_anti_patterns
 
-        with patch("reos.cairn.identity._anti_patterns_path") as mock_path:
+        with patch("cairn.cairn.identity._anti_patterns_path") as mock_path:
             mock_path.return_value = tmp_path / "anti_patterns.json"
 
             patterns = add_anti_pattern("spam", "I don't want spam")
@@ -486,9 +486,9 @@ class TestIdentityExtraction:
 
     def test_remove_anti_pattern(self, tmp_path):
         """Test removing an anti-pattern."""
-        from reos.cairn.identity import add_anti_pattern, remove_anti_pattern
+        from cairn.cairn.identity import add_anti_pattern, remove_anti_pattern
 
-        with patch("reos.cairn.identity._anti_patterns_path") as mock_path:
+        with patch("cairn.cairn.identity._anti_patterns_path") as mock_path:
             mock_path.return_value = tmp_path / "anti_patterns.json"
 
             add_anti_pattern("spam")
@@ -548,7 +548,7 @@ class TestCoherenceIntegration:
 
     def test_trace_creation_and_storage(self):
         """Test that traces are correctly created."""
-        from reos.cairn.identity import get_identity_hash
+        from cairn.cairn.identity import get_identity_hash
 
         identity = IdentityModel(
             core="Test identity",

@@ -22,7 +22,7 @@ import pytest
 @pytest.fixture
 def mock_embedding_service(monkeypatch):
     """Create an embedding service with mocked model loading."""
-    from reos.memory.embeddings import EmbeddingService
+    from cairn.memory.embeddings import EmbeddingService
 
     # Reset singleton
     EmbeddingService._instance = None
@@ -65,7 +65,7 @@ class TestEmbeddingServiceSingleton:
 
     def test_singleton_returns_same_instance(self) -> None:
         """Multiple calls return the same instance."""
-        from reos.memory.embeddings import EmbeddingService
+        from cairn.memory.embeddings import EmbeddingService
 
         # Reset singleton
         EmbeddingService._instance = None
@@ -77,7 +77,7 @@ class TestEmbeddingServiceSingleton:
 
     def test_get_embedding_service_returns_singleton(self) -> None:
         """get_embedding_service returns the singleton."""
-        from reos.memory.embeddings import get_embedding_service, EmbeddingService
+        from cairn.memory.embeddings import get_embedding_service, EmbeddingService
 
         # Reset singleton
         EmbeddingService._instance = None
@@ -294,7 +294,7 @@ class TestContentHash:
 
     def test_content_hash_deterministic(self) -> None:
         """Same text produces same hash."""
-        from reos.memory.embeddings import content_hash
+        from cairn.memory.embeddings import content_hash
 
         hash1 = content_hash("Hello world")
         hash2 = content_hash("Hello world")
@@ -303,7 +303,7 @@ class TestContentHash:
 
     def test_content_hash_different_texts(self) -> None:
         """Different texts produce different hashes."""
-        from reos.memory.embeddings import content_hash
+        from cairn.memory.embeddings import content_hash
 
         hash1 = content_hash("Hello world")
         hash2 = content_hash("Goodbye world")
@@ -312,7 +312,7 @@ class TestContentHash:
 
     def test_content_hash_case_insensitive(self) -> None:
         """Hash is case-insensitive."""
-        from reos.memory.embeddings import content_hash
+        from cairn.memory.embeddings import content_hash
 
         hash1 = content_hash("Hello World")
         hash2 = content_hash("hello world")
@@ -321,7 +321,7 @@ class TestContentHash:
 
     def test_content_hash_strips_whitespace(self) -> None:
         """Hash ignores leading/trailing whitespace."""
-        from reos.memory.embeddings import content_hash
+        from cairn.memory.embeddings import content_hash
 
         hash1 = content_hash("  Hello world  ")
         hash2 = content_hash("Hello world")
@@ -330,7 +330,7 @@ class TestContentHash:
 
     def test_content_hash_length(self) -> None:
         """Hash is 16 characters (hex prefix)."""
-        from reos.memory.embeddings import content_hash
+        from cairn.memory.embeddings import content_hash
 
         result = content_hash("Test text")
 
@@ -348,7 +348,7 @@ class TestUtilityFunctions:
 
     def test_embedding_to_array(self) -> None:
         """embedding_to_array converts bytes to float list."""
-        from reos.memory.embeddings import embedding_to_array
+        from cairn.memory.embeddings import embedding_to_array
 
         original = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32)
         embedding_bytes = original.tobytes()
@@ -361,7 +361,7 @@ class TestUtilityFunctions:
 
     def test_array_to_embedding(self) -> None:
         """array_to_embedding converts float list to bytes."""
-        from reos.memory.embeddings import array_to_embedding
+        from cairn.memory.embeddings import array_to_embedding
 
         array = [1.0, 2.0, 3.0, 4.0]
 
@@ -372,7 +372,7 @@ class TestUtilityFunctions:
 
     def test_roundtrip_conversion(self) -> None:
         """Conversion roundtrip preserves data."""
-        from reos.memory.embeddings import embedding_to_array, array_to_embedding
+        from cairn.memory.embeddings import embedding_to_array, array_to_embedding
 
         original = [1.5, 2.5, 3.5, 4.5]
 
@@ -392,7 +392,7 @@ class TestGracefulDegradation:
 
     def test_is_available_without_model(self) -> None:
         """is_available returns False when model can't load."""
-        from reos.memory.embeddings import EmbeddingService
+        from cairn.memory.embeddings import EmbeddingService
 
         # Reset singleton
         EmbeddingService._instance = None

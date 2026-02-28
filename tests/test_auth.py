@@ -19,7 +19,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from reos.auth import (
+from cairn.auth import (
     Session,
     SessionStore,
     get_session_store,
@@ -373,9 +373,9 @@ class TestLoginFunction:
 
     def test_login_with_valid_credentials(self) -> None:
         """Login with valid credentials should return session."""
-        from reos.auth import login
+        from cairn.auth import login
 
-        with patch("reos.auth.authenticate_polkit") as mock_polkit:
+        with patch("cairn.auth.authenticate_polkit") as mock_polkit:
             mock_polkit.return_value = True
 
             result = login("testuser", "password123")
@@ -386,9 +386,9 @@ class TestLoginFunction:
 
     def test_login_with_invalid_credentials(self) -> None:
         """Login with invalid credentials should fail gracefully."""
-        from reos.auth import login
+        from cairn.auth import login
 
-        with patch("reos.auth.authenticate_polkit") as mock_polkit:
+        with patch("cairn.auth.authenticate_polkit") as mock_polkit:
             mock_polkit.return_value = False
 
             result = login("testuser", "wrongpassword")
@@ -402,7 +402,7 @@ class TestLogoutFunction:
 
     def test_logout_invalidates_session(self) -> None:
         """Logout should invalidate the session."""
-        from reos.auth import logout, get_session_store, Session
+        from cairn.auth import logout, get_session_store, Session
 
         store = get_session_store()
 
@@ -424,7 +424,7 @@ class TestLogoutFunction:
 
     def test_logout_nonexistent_session(self) -> None:
         """Logout of nonexistent session should not error."""
-        from reos.auth import logout
+        from cairn.auth import logout
 
         result = logout("nonexistent-token-xyz")
 
@@ -437,7 +437,7 @@ class TestValidateSession:
 
     def test_validate_valid_session(self) -> None:
         """Valid session should pass validation."""
-        from reos.auth import validate_session, get_session_store, Session
+        from cairn.auth import validate_session, get_session_store, Session
 
         store = get_session_store()
         session = Session(
@@ -456,7 +456,7 @@ class TestValidateSession:
 
     def test_validate_expired_session(self) -> None:
         """Expired session should fail validation."""
-        from reos.auth import validate_session, get_session_store, Session
+        from cairn.auth import validate_session, get_session_store, Session
 
         store = get_session_store()
         expired = Session(
@@ -474,7 +474,7 @@ class TestValidateSession:
 
     def test_validate_nonexistent_session(self) -> None:
         """Nonexistent session should fail validation."""
-        from reos.auth import validate_session
+        from cairn.auth import validate_session
 
         result = validate_session("does-not-exist-token")
 
@@ -486,7 +486,7 @@ class TestRefreshSession:
 
     def test_refresh_valid_session(self) -> None:
         """Refreshing valid session should succeed."""
-        from reos.auth import refresh_session, get_session_store, Session
+        from cairn.auth import refresh_session, get_session_store, Session
 
         store = get_session_store()
         session = Session(

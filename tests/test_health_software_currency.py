@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from reos.cairn.health.checks.software_currency import SoftwareCurrencyCheck
-from reos.cairn.health.runner import Severity
+from cairn.cairn.health.checks.software_currency import SoftwareCurrencyCheck
+from cairn.cairn.health.runner import Severity
 
 
 def test_provider_available_returns_healthy():
@@ -17,7 +17,7 @@ def test_provider_available_returns_healthy():
 
     mock_health = {"available": True}
     with patch(
-        "reos.providers.factory.check_provider_health",
+        "cairn.providers.factory.check_provider_health",
         return_value=mock_health,
     ):
         results = check.run()
@@ -34,7 +34,7 @@ def test_provider_unavailable_returns_warning():
 
     mock_health = {"available": False, "error": "Connection refused"}
     with patch(
-        "reos.providers.factory.check_provider_health",
+        "cairn.providers.factory.check_provider_health",
         return_value=mock_health,
     ):
         results = check.run()
@@ -52,7 +52,7 @@ def test_provider_unavailable_without_error_message():
 
     mock_health = {"available": False}
     with patch(
-        "reos.providers.factory.check_provider_health",
+        "cairn.providers.factory.check_provider_health",
         return_value=mock_health,
     ):
         results = check.run()
@@ -68,7 +68,7 @@ def test_import_error_returns_healthy():
 
     # Mock the import statement itself to raise ImportError
     import sys
-    with patch.dict(sys.modules, {"reos.providers.factory": None}):
+    with patch.dict(sys.modules, {"cairn.providers.factory": None}):
         results = check.run()
 
     assert len(results) == 1
@@ -82,7 +82,7 @@ def test_generic_exception_returns_warning():
     check = SoftwareCurrencyCheck()
 
     with patch(
-        "reos.providers.factory.check_provider_health",
+        "cairn.providers.factory.check_provider_health",
         side_effect=RuntimeError("Unexpected error"),
     ):
         results = check.run()
@@ -106,7 +106,7 @@ def test_run_returns_list():
 
     mock_health = {"available": True}
     with patch(
-        "reos.providers.factory.check_provider_health",
+        "cairn.providers.factory.check_provider_health",
         return_value=mock_health,
     ):
         results = check.run()
@@ -121,7 +121,7 @@ def test_check_uses_factory_check_provider_health():
 
     mock_check = MagicMock(return_value={"available": True})
     with patch(
-        "reos.providers.factory.check_provider_health",
+        "cairn.providers.factory.check_provider_health",
         mock_check,
     ):
         check.run()

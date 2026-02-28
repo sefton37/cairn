@@ -18,8 +18,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from reos.play_db import _get_connection, close_connection, init_db
-from reos.services.state_briefing_service import StateBriefing, StateBriefingService
+from cairn.play_db import _get_connection, close_connection, init_db
+from cairn.services.state_briefing_service import StateBriefing, StateBriefingService
 
 
 # =============================================================================
@@ -97,8 +97,8 @@ class TestGenerate:
 
         # Store an approved memory via the ConversationService so FK constraints
         # are satisfied automatically.
-        from reos.services.conversation_service import ConversationService
-        from reos.services.memory_service import MemoryService
+        from cairn.services.conversation_service import ConversationService
+        from cairn.services.memory_service import MemoryService
 
         cs = ConversationService()
         conv = cs.start()
@@ -174,7 +174,7 @@ class TestCaching:
     def test_get_current_returns_none_for_stale_briefing(self, briefing_db):
         """A briefing older than 24 hours is treated as stale."""
         stale_ts = (datetime.now(UTC) - timedelta(hours=25)).isoformat()
-        from reos.play_db import _transaction
+        from cairn.play_db import _transaction
         with _transaction() as conn:
             conn.execute(
                 """INSERT INTO state_briefings (id, generated_at, content, token_count, trigger)
@@ -197,7 +197,7 @@ class TestCaching:
     def test_get_or_generate_regenerates_stale(self, briefing_db):
         """If the stored briefing is stale, get_or_generate() generates a new one."""
         stale_ts = (datetime.now(UTC) - timedelta(hours=25)).isoformat()
-        from reos.play_db import _transaction
+        from cairn.play_db import _transaction
         with _transaction() as conn:
             conn.execute(
                 """INSERT INTO state_briefings (id, generated_at, content, token_count, trigger)
@@ -213,7 +213,7 @@ class TestCaching:
     def test_get_or_generate_fresh_briefing_not_regenerated(self, briefing_db):
         """A briefing 1 hour old is fresh and should not trigger regeneration."""
         fresh_ts = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
-        from reos.play_db import _transaction
+        from cairn.play_db import _transaction
         with _transaction() as conn:
             conn.execute(
                 """INSERT INTO state_briefings (id, generated_at, content, token_count, trigger)
@@ -239,10 +239,10 @@ class TestRpcHandlers:
 
     def test_rpc_get_handler_returns_none_when_no_briefing(self, briefing_db):
         """handle_briefing_get returns {'briefing': None} when cache is empty."""
-        from reos.rpc_handlers.briefing import handle_briefing_get
+        from cairn.rpc_handlers.briefing import handle_briefing_get
 
         # Reset singleton so it uses the fresh test DB
-        import reos.rpc_handlers.briefing as bmod
+        import cairn.rpc_handlers.briefing as bmod
         bmod._service = None
 
         result = handle_briefing_get(db=MagicMock())
@@ -250,7 +250,7 @@ class TestRpcHandlers:
 
     def test_rpc_get_handler_returns_cached_briefing(self, briefing_db):
         """handle_briefing_get returns the cached briefing dict."""
-        from reos.play_db import _transaction
+        from cairn.play_db import _transaction
         fresh_ts = datetime.now(UTC).isoformat()
         with _transaction() as conn:
             conn.execute(
@@ -259,8 +259,8 @@ class TestRpcHandlers:
                 (fresh_ts,),
             )
 
-        from reos.rpc_handlers.briefing import handle_briefing_get
-        import reos.rpc_handlers.briefing as bmod
+        from cairn.rpc_handlers.briefing import handle_briefing_get
+        import cairn.rpc_handlers.briefing as bmod
         bmod._service = None
 
         result = handle_briefing_get(db=MagicMock())
@@ -270,8 +270,8 @@ class TestRpcHandlers:
 
     def test_rpc_generate_handler_creates_briefing(self, briefing_db):
         """handle_briefing_generate calls generate() and returns the new briefing."""
-        from reos.rpc_handlers.briefing import handle_briefing_generate
-        import reos.rpc_handlers.briefing as bmod
+        from cairn.rpc_handlers.briefing import handle_briefing_generate
+        import cairn.rpc_handlers.briefing as bmod
 
         mock_service = MagicMock()
         mock_service.generate.return_value = StateBriefing(
@@ -289,8 +289,8 @@ class TestRpcHandlers:
 
     def test_rpc_generate_handler_default_trigger(self, briefing_db):
         """handle_briefing_generate uses 'manual' trigger by default."""
-        from reos.rpc_handlers.briefing import handle_briefing_generate
-        import reos.rpc_handlers.briefing as bmod
+        from cairn.rpc_handlers.briefing import handle_briefing_generate
+        import cairn.rpc_handlers.briefing as bmod
 
         mock_service = MagicMock()
         mock_service.generate.return_value = StateBriefing(

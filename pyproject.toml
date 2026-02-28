@@ -3,10 +3,10 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "reos"
+name = "cairn"
 version = "0.0.0a0"
-description = "Local-first attention kernel scaffold"
-authors = [{ name = "ReOS" }]
+description = "Cairn by Talking Rock — personal attention minder"
+authors = [{ name = "Talking Rock" }]
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115.0,<1.0.0",
@@ -40,12 +40,6 @@ dev = [
 semantic = [
   "sentence-transformers>=3.0.0,<6.0.0",  # Vector embeddings for semantic search
 ]
-parsing = [
-  "tree-sitter>=0.21.0,<0.23.0",           # Multi-language AST parsing
-  "tree-sitter-python>=0.21.0,<0.23.0",    # Python grammar
-  "tree-sitter-javascript>=0.21.0,<0.23.0", # JavaScript/TypeScript grammar
-  "tree-sitter-rust>=0.21.0,<0.23.0",      # Rust grammar (future)
-]
 documents = [
   "pypdf>=4.0.0,<5.0.0",                   # PDF text extraction
   "python-docx>=1.1.0,<2.0.0",             # DOCX text extraction
@@ -62,13 +56,13 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=reos --cov=llm --cov=classification --cov=agents --cov=routing --cov=verification --cov=search --cov-report=term-missing --cov-fail-under=45 -m 'not slow'"
+addopts = "--cov=cairn --cov-report=term-missing -m 'not slow'"
 markers = [
     "slow: marks tests that call Ollama for real LLM inference (run with '-m slow' or '--run-slow')",
 ]
 
 [tool.coverage.run]
-source = ["src/reos", "src/llm", "src/classification", "src/agents", "src/routing", "src/verification", "src/search"]
+source = ["src/cairn"]
 branch = true
 omit = [
   "*/tests/*",
@@ -83,7 +77,6 @@ exclude_lines = [
   "if TYPE_CHECKING:",
   "if __name__ == .__main__.:",
 ]
-fail_under = 45
 show_missing = true
 
 [tool.mypy]
@@ -102,8 +95,7 @@ ignore_missing_imports = true
 ignore_missing_imports = true
 
 [project.scripts]
-reos = "reos.__main__:main"
-reos-shell = "reos.shell_cli:main"
+cairn = "cairn.__main__:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

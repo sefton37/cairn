@@ -22,7 +22,7 @@ class TestRelationshipType:
 
     def test_relationship_type_values(self) -> None:
         """RelationshipType has expected values."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # Logical
         assert RelationshipType.REFERENCES.value == "references"
@@ -50,7 +50,7 @@ class TestRelationshipType:
 
     def test_relationship_type_from_string(self) -> None:
         """RelationshipType can be created from string value."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         assert RelationshipType("references") == RelationshipType.REFERENCES
         assert RelationshipType("follows_from") == RelationshipType.FOLLOWS_FROM
@@ -58,7 +58,7 @@ class TestRelationshipType:
 
     def test_relationship_type_is_str_subclass(self) -> None:
         """RelationshipType is a str subclass for JSON serialization."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         assert isinstance(RelationshipType.REFERENCES, str)
         # Value is the string representation for JSON
@@ -68,14 +68,14 @@ class TestRelationshipType:
 
     def test_relationship_type_invalid_value(self) -> None:
         """RelationshipType raises ValueError for invalid value."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         with pytest.raises(ValueError):
             RelationshipType("invalid_type")
 
     def test_all_relationship_types_count(self) -> None:
         """RelationshipType has expected number of members."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # 4 logical + 3 semantic + 2 causal + 3 feedback + 2 temporal = 14
         assert len(RelationshipType) == 14
@@ -91,7 +91,7 @@ class TestRelationshipSource:
 
     def test_relationship_source_values(self) -> None:
         """RelationshipSource has expected values."""
-        from reos.memory.relationships import RelationshipSource
+        from cairn.memory.relationships import RelationshipSource
 
         assert RelationshipSource.USER.value == "user"
         assert RelationshipSource.CAIRN.value == "cairn"
@@ -101,7 +101,7 @@ class TestRelationshipSource:
 
     def test_relationship_source_from_string(self) -> None:
         """RelationshipSource can be created from string value."""
-        from reos.memory.relationships import RelationshipSource
+        from cairn.memory.relationships import RelationshipSource
 
         assert RelationshipSource("user") == RelationshipSource.USER
         assert RelationshipSource("cairn") == RelationshipSource.CAIRN
@@ -109,7 +109,7 @@ class TestRelationshipSource:
 
     def test_relationship_source_is_str_subclass(self) -> None:
         """RelationshipSource is a str subclass for JSON serialization."""
-        from reos.memory.relationships import RelationshipSource
+        from cairn.memory.relationships import RelationshipSource
 
         assert isinstance(RelationshipSource.USER, str)
         # Value is the string representation for JSON
@@ -119,7 +119,7 @@ class TestRelationshipSource:
 
     def test_all_relationship_sources_count(self) -> None:
         """RelationshipSource has expected number of members."""
-        from reos.memory.relationships import RelationshipSource
+        from cairn.memory.relationships import RelationshipSource
 
         assert len(RelationshipSource) == 5
 
@@ -134,7 +134,7 @@ class TestRelationshipCategories:
 
     def test_logical_relationships(self) -> None:
         """LOGICAL_RELATIONSHIPS contains correct types."""
-        from reos.memory.relationships import (
+        from cairn.memory.relationships import (
             LOGICAL_RELATIONSHIPS,
             RelationshipType,
         )
@@ -149,7 +149,7 @@ class TestRelationshipCategories:
 
     def test_semantic_relationships(self) -> None:
         """SEMANTIC_RELATIONSHIPS contains correct types."""
-        from reos.memory.relationships import (
+        from cairn.memory.relationships import (
             SEMANTIC_RELATIONSHIPS,
             RelationshipType,
         )
@@ -163,7 +163,7 @@ class TestRelationshipCategories:
 
     def test_causal_relationships(self) -> None:
         """CAUSAL_RELATIONSHIPS contains correct types."""
-        from reos.memory.relationships import (
+        from cairn.memory.relationships import (
             CAUSAL_RELATIONSHIPS,
             RelationshipType,
         )
@@ -176,7 +176,7 @@ class TestRelationshipCategories:
 
     def test_feedback_relationships(self) -> None:
         """FEEDBACK_RELATIONSHIPS contains correct types."""
-        from reos.memory.relationships import (
+        from cairn.memory.relationships import (
             FEEDBACK_RELATIONSHIPS,
             RelationshipType,
         )
@@ -190,7 +190,7 @@ class TestRelationshipCategories:
 
     def test_temporal_relationships(self) -> None:
         """TEMPORAL_RELATIONSHIPS contains correct types."""
-        from reos.memory.relationships import (
+        from cairn.memory.relationships import (
             TEMPORAL_RELATIONSHIPS,
             RelationshipType,
         )
@@ -203,7 +203,7 @@ class TestRelationshipCategories:
 
     def test_categories_cover_all_types(self) -> None:
         """All relationship types are covered by categories."""
-        from reos.memory.relationships import (
+        from cairn.memory.relationships import (
             RelationshipType,
             LOGICAL_RELATIONSHIPS,
             SEMANTIC_RELATIONSHIPS,
@@ -225,7 +225,7 @@ class TestRelationshipCategories:
 
     def test_categories_are_disjoint(self) -> None:
         """Relationship categories don't overlap."""
-        from reos.memory.relationships import (
+        from cairn.memory.relationships import (
             LOGICAL_RELATIONSHIPS,
             SEMANTIC_RELATIONSHIPS,
             CAUSAL_RELATIONSHIPS,
@@ -256,7 +256,7 @@ class TestGetInverseRelationship:
 
     def test_causes_caused_by_inverse(self) -> None:
         """CAUSES and CAUSED_BY are inverses."""
-        from reos.memory.relationships import (
+        from cairn.memory.relationships import (
             get_inverse_relationship,
             RelationshipType,
         )
@@ -266,7 +266,7 @@ class TestGetInverseRelationship:
 
     def test_follows_from_supports_inverse(self) -> None:
         """FOLLOWS_FROM and SUPPORTS are inverses."""
-        from reos.memory.relationships import (
+        from cairn.memory.relationships import (
             get_inverse_relationship,
             RelationshipType,
         )
@@ -276,7 +276,7 @@ class TestGetInverseRelationship:
 
     def test_responds_to_preceded_by_inverse(self) -> None:
         """RESPONDS_TO and PRECEDED_BY are inverses."""
-        from reos.memory.relationships import (
+        from cairn.memory.relationships import (
             get_inverse_relationship,
             RelationshipType,
         )
@@ -286,7 +286,7 @@ class TestGetInverseRelationship:
 
     def test_no_inverse_returns_none(self) -> None:
         """Types without inverses return None."""
-        from reos.memory.relationships import (
+        from cairn.memory.relationships import (
             get_inverse_relationship,
             RelationshipType,
         )
@@ -299,7 +299,7 @@ class TestGetInverseRelationship:
 
     def test_inverse_is_symmetric(self) -> None:
         """Inverse relationship is symmetric."""
-        from reos.memory.relationships import (
+        from cairn.memory.relationships import (
             get_inverse_relationship,
             RelationshipType,
         )

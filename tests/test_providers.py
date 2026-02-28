@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 from unittest.mock import MagicMock, patch
 
-from reos.providers.base import LLMError, LLMProvider, ModelInfo, ProviderHealth
-from reos.providers.ollama import OllamaProvider, check_ollama_installed, get_ollama_install_command
-from reos.providers.factory import (
+from cairn.providers.base import LLMError, LLMProvider, ModelInfo, ProviderHealth
+from cairn.providers.ollama import OllamaProvider, check_ollama_installed, get_ollama_install_command
+from cairn.providers.factory import (
     get_provider,
     get_provider_or_none,
     get_current_provider_type,
@@ -16,7 +16,7 @@ from reos.providers.factory import (
     get_provider_info,
     AVAILABLE_PROVIDERS,
 )
-from reos.providers.secrets import (
+from cairn.providers.secrets import (
     SERVICE_NAME,
     check_keyring_available,
     get_keyring_backend_name,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def _rpc(db: object, *, req_id: int, method: str, params: dict | None = None) -> dict:
-    import reos.ui_rpc_server as ui
+    import cairn.ui_rpc_server as ui
 
     req: dict = {"jsonrpc": "2.0", "id": req_id, "method": method}
     if params is not None:
@@ -16,7 +16,7 @@ def test_play_rpc_me_and_acts_defaults(tmp_path, monkeypatch, isolated_db_single
     # Keep test data out of the repo-local `.reos-data/`.
     monkeypatch.setenv("REOS_DATA_DIR", str(tmp_path / "data"))
 
-    from reos.db import get_db
+    from cairn.db import get_db
 
     db = get_db()
 
@@ -36,7 +36,7 @@ def test_play_rpc_set_active_unknown_act_silently_ignored(tmp_path, monkeypatch,
     """Setting an unknown act_id is silently ignored (no error, no act becomes active)."""
     monkeypatch.setenv("REOS_DATA_DIR", str(tmp_path / "data"))
 
-    from reos.db import get_db
+    from cairn.db import get_db
 
     db = get_db()
 
@@ -50,7 +50,7 @@ def test_play_rpc_create_scene_and_kb_write_flow(tmp_path, monkeypatch, isolated
     """Test the 2-tier structure: Acts → Scenes (Scenes are todo/calendar items)."""
     monkeypatch.setenv("REOS_DATA_DIR", str(tmp_path / "data"))
 
-    from reos.db import get_db
+    from cairn.db import get_db
 
     db = get_db()
 
@@ -121,7 +121,7 @@ def test_play_rpc_create_scene_and_kb_write_flow(tmp_path, monkeypatch, isolated
 def test_play_rpc_kb_rejects_path_traversal(tmp_path, monkeypatch, isolated_db_singleton: object) -> None:
     monkeypatch.setenv("REOS_DATA_DIR", str(tmp_path / "data"))
 
-    from reos.db import get_db
+    from cairn.db import get_db
 
     db = get_db()
 
@@ -142,7 +142,7 @@ def test_play_rpc_kb_rejects_path_traversal(tmp_path, monkeypatch, isolated_db_s
 def test_play_rpc_kb_apply_conflict_is_error(tmp_path, monkeypatch, isolated_db_singleton: object) -> None:
     monkeypatch.setenv("REOS_DATA_DIR", str(tmp_path / "data"))
 
-    from reos.db import get_db
+    from cairn.db import get_db
 
     db = get_db()
 
@@ -192,7 +192,7 @@ def test_rpc_invalid_scene_id_returns_error(tmp_path, monkeypatch, isolated_db_s
     """Getting a scene with invalid ID returns error or null."""
     monkeypatch.setenv("REOS_DATA_DIR", str(tmp_path / "data"))
 
-    from reos.db import get_db
+    from cairn.db import get_db
 
     db = get_db()
 
@@ -215,7 +215,7 @@ def test_rpc_invalid_stage_value_accepted(tmp_path, monkeypatch, isolated_db_sin
     """Invalid stage value is accepted (free-form field for flexibility)."""
     monkeypatch.setenv("REOS_DATA_DIR", str(tmp_path / "data"))
 
-    from reos.db import get_db
+    from cairn.db import get_db
 
     db = get_db()
 
@@ -255,7 +255,7 @@ def test_rpc_missing_required_params_returns_error(tmp_path, monkeypatch, isolat
     """Missing required parameters return appropriate error."""
     monkeypatch.setenv("REOS_DATA_DIR", str(tmp_path / "data"))
 
-    from reos.db import get_db
+    from cairn.db import get_db
 
     db = get_db()
 
@@ -275,7 +275,7 @@ def test_rpc_minimal_title_accepted(tmp_path, monkeypatch, isolated_db_singleton
     """Minimal title is accepted."""
     monkeypatch.setenv("REOS_DATA_DIR", str(tmp_path / "data"))
 
-    from reos.db import get_db
+    from cairn.db import get_db
 
     db = get_db()
 
@@ -291,7 +291,7 @@ def test_rpc_unicode_in_title_and_notes(tmp_path, monkeypatch, isolated_db_singl
     """Unicode characters in title and notes work correctly."""
     monkeypatch.setenv("REOS_DATA_DIR", str(tmp_path / "data"))
 
-    from reos.db import get_db
+    from cairn.db import get_db
 
     db = get_db()
 
@@ -323,7 +323,7 @@ def test_rpc_create_multiple_scenes(tmp_path, monkeypatch, isolated_db_singleton
     """Creating multiple scenes in an act works correctly."""
     monkeypatch.setenv("REOS_DATA_DIR", str(tmp_path / "data"))
 
-    from reos.db import get_db
+    from cairn.db import get_db
 
     db = get_db()
 
@@ -347,7 +347,7 @@ def test_rpc_update_scene_partial_params(tmp_path, monkeypatch, isolated_db_sing
     """Partial update only changes specified fields."""
     monkeypatch.setenv("REOS_DATA_DIR", str(tmp_path / "data"))
 
-    from reos.db import get_db
+    from cairn.db import get_db
 
     db = get_db()
 
@@ -399,7 +399,7 @@ def test_rpc_list_all_scenes_returns_list(tmp_path, monkeypatch, isolated_db_sin
     """List all scenes returns a list."""
     monkeypatch.setenv("REOS_DATA_DIR", str(tmp_path / "data"))
 
-    from reos.db import get_db
+    from cairn.db import get_db
 
     db = get_db()
 

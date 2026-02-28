@@ -29,7 +29,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     data_dir.mkdir()
     monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
     play_db.close_connection()
 
     yield data_dir
@@ -40,7 +40,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 def initialized_db(temp_data_dir: Path):
     """Initialize the database and return the play_db module."""
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.init_db()
     return play_db
@@ -56,7 +56,7 @@ def test_act(initialized_db) -> str:
 @pytest.fixture
 def mock_embedding_service():
     """Create a mock embedding service."""
-    from reos.memory.embeddings import EmbeddingService
+    from cairn.memory.embeddings import EmbeddingService
 
     mock = Mock(spec=EmbeddingService)
     mock.is_available = True
@@ -93,7 +93,7 @@ def mock_embedding_service():
 @pytest.fixture
 def test_blocks(test_act: str, initialized_db) -> list[str]:
     """Create test blocks with content and return their IDs."""
-    from reos.play.blocks_db import create_block
+    from cairn.play.blocks_db import create_block
 
     blocks_data = [
         "How to configure authentication in the system",
@@ -125,7 +125,7 @@ class TestMemoryMatch:
 
     def test_memory_match_to_dict(self) -> None:
         """MemoryMatch.to_dict serializes correctly."""
-        from reos.memory.retriever import MemoryMatch
+        from cairn.memory.retriever import MemoryMatch
 
         match = MemoryMatch(
             block_id="block-123",
@@ -149,7 +149,7 @@ class TestMemoryMatch:
 
     def test_memory_match_default_values(self) -> None:
         """MemoryMatch has sensible defaults."""
-        from reos.memory.retriever import MemoryMatch
+        from cairn.memory.retriever import MemoryMatch
 
         match = MemoryMatch(
             block_id="block-123",
@@ -174,7 +174,7 @@ class TestMemoryContext:
 
     def test_memory_context_to_dict(self) -> None:
         """MemoryContext.to_dict serializes correctly."""
-        from reos.memory.retriever import MemoryContext, MemoryMatch
+        from cairn.memory.retriever import MemoryContext, MemoryMatch
 
         match = MemoryMatch(
             block_id="block-1",
@@ -198,7 +198,7 @@ class TestMemoryContext:
 
     def test_memory_context_to_markdown_empty(self) -> None:
         """MemoryContext.to_markdown returns empty for no matches."""
-        from reos.memory.retriever import MemoryContext
+        from cairn.memory.retriever import MemoryContext
 
         context = MemoryContext(query="test query")
 
@@ -208,7 +208,7 @@ class TestMemoryContext:
 
     def test_memory_context_to_markdown_with_matches(self) -> None:
         """MemoryContext.to_markdown formats matches."""
-        from reos.memory.retriever import MemoryContext, MemoryMatch
+        from cairn.memory.retriever import MemoryContext, MemoryMatch
 
         matches = [
             MemoryMatch(
@@ -258,7 +258,7 @@ class TestMemoryRetriever:
 
     def test_retriever_initialization(self, initialized_db) -> None:
         """MemoryRetriever initializes correctly."""
-        from reos.memory.retriever import MemoryRetriever
+        from cairn.memory.retriever import MemoryRetriever
 
         retriever = MemoryRetriever()
 
@@ -269,8 +269,8 @@ class TestMemoryRetriever:
         self, initialized_db, mock_embedding_service
     ) -> None:
         """MemoryRetriever accepts custom services."""
-        from reos.memory.retriever import MemoryRetriever
-        from reos.memory.graph_store import MemoryGraphStore
+        from cairn.memory.retriever import MemoryRetriever
+        from cairn.memory.graph_store import MemoryGraphStore
 
         graph_store = MemoryGraphStore()
 
@@ -290,7 +290,7 @@ class TestRetrieverRetrieve:
         self, initialized_db, mock_embedding_service, test_act
     ) -> None:
         """retrieve() returns empty context when no embeddings stored."""
-        from reos.memory.retriever import MemoryRetriever
+        from cairn.memory.retriever import MemoryRetriever
 
         retriever = MemoryRetriever(embedding_service=mock_embedding_service)
 
@@ -303,14 +303,14 @@ class TestRetrieverRetrieve:
         self, initialized_db, mock_embedding_service, test_act, test_blocks
     ) -> None:
         """retrieve() finds semantically similar blocks."""
-        from reos.memory.retriever import MemoryRetriever
-        from reos.memory.graph_store import MemoryGraphStore
+        from cairn.memory.retriever import MemoryRetriever
+        from cairn.memory.graph_store import MemoryGraphStore
 
         # Store embeddings for test blocks
         graph_store = MemoryGraphStore()
         for block_id in test_blocks:
             # Get block content and embed it
-            from reos.play.blocks_db import get_block
+            from cairn.play.blocks_db import get_block
             block = get_block(block_id)
             content = block.rich_text[0].content if block.rich_text else ""
             embedding = mock_embedding_service.embed(content)
@@ -336,12 +336,12 @@ class TestRetrieverRetrieve:
         self, initialized_db, mock_embedding_service, test_act, test_blocks
     ) -> None:
         """retrieve() respects semantic_threshold."""
-        from reos.memory.retriever import MemoryRetriever
-        from reos.memory.graph_store import MemoryGraphStore
+        from cairn.memory.retriever import MemoryRetriever
+        from cairn.memory.graph_store import MemoryGraphStore
 
         graph_store = MemoryGraphStore()
         for block_id in test_blocks:
-            from reos.play.blocks_db import get_block
+            from cairn.play.blocks_db import get_block
             block = get_block(block_id)
             content = block.rich_text[0].content if block.rich_text else ""
             embedding = mock_embedding_service.embed(content)
@@ -373,12 +373,12 @@ class TestRetrieverRetrieve:
         self, initialized_db, mock_embedding_service, test_act, test_blocks
     ) -> None:
         """retrieve() limits results to max_results."""
-        from reos.memory.retriever import MemoryRetriever
-        from reos.memory.graph_store import MemoryGraphStore
+        from cairn.memory.retriever import MemoryRetriever
+        from cairn.memory.graph_store import MemoryGraphStore
 
         graph_store = MemoryGraphStore()
         for block_id in test_blocks:
-            from reos.play.blocks_db import get_block
+            from cairn.play.blocks_db import get_block
             block = get_block(block_id)
             content = block.rich_text[0].content if block.rich_text else ""
             embedding = mock_embedding_service.embed(content)
@@ -406,15 +406,15 @@ class TestRetrieverGraphExpansion:
         self, initialized_db, mock_embedding_service, test_act, test_blocks
     ) -> None:
         """retrieve() expands via graph relationships."""
-        from reos.memory.retriever import MemoryRetriever
-        from reos.memory.graph_store import MemoryGraphStore
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.retriever import MemoryRetriever
+        from cairn.memory.graph_store import MemoryGraphStore
+        from cairn.memory.relationships import RelationshipType
 
         graph_store = MemoryGraphStore()
 
         # Store embeddings
         for block_id in test_blocks:
-            from reos.play.blocks_db import get_block
+            from cairn.play.blocks_db import get_block
             block = get_block(block_id)
             content = block.rich_text[0].content if block.rich_text else ""
             embedding = mock_embedding_service.embed(content)
@@ -447,13 +447,13 @@ class TestRetrieverGraphExpansion:
         self, initialized_db, mock_embedding_service, test_act, test_blocks
     ) -> None:
         """retrieve() can disable graph expansion."""
-        from reos.memory.retriever import MemoryRetriever
-        from reos.memory.graph_store import MemoryGraphStore
+        from cairn.memory.retriever import MemoryRetriever
+        from cairn.memory.graph_store import MemoryGraphStore
 
         graph_store = MemoryGraphStore()
 
         for block_id in test_blocks:
-            from reos.play.blocks_db import get_block
+            from cairn.play.blocks_db import get_block
             block = get_block(block_id)
             content = block.rich_text[0].content if block.rich_text else ""
             embedding = mock_embedding_service.embed(content)
@@ -481,8 +481,8 @@ class TestRetrieverIndexing:
         self, initialized_db, mock_embedding_service, test_act, test_blocks
     ) -> None:
         """index_block() stores embedding for a block."""
-        from reos.memory.retriever import MemoryRetriever
-        from reos.memory.graph_store import MemoryGraphStore
+        from cairn.memory.retriever import MemoryRetriever
+        from cairn.memory.graph_store import MemoryGraphStore
 
         graph_store = MemoryGraphStore()
         retriever = MemoryRetriever(
@@ -499,9 +499,9 @@ class TestRetrieverIndexing:
         self, initialized_db, mock_embedding_service, test_act
     ) -> None:
         """index_block() returns False for empty content."""
-        from reos.memory.retriever import MemoryRetriever
-        from reos.memory.graph_store import MemoryGraphStore
-        from reos.play.blocks_db import create_block
+        from cairn.memory.retriever import MemoryRetriever
+        from cairn.memory.graph_store import MemoryGraphStore
+        from cairn.play.blocks_db import create_block
 
         # Create block with empty content
         block = create_block(
@@ -524,14 +524,14 @@ class TestRetrieverIndexing:
         self, initialized_db, mock_embedding_service, test_act, test_blocks
     ) -> None:
         """index_block() skips if embedding is up-to-date."""
-        from reos.memory.retriever import MemoryRetriever
-        from reos.memory.graph_store import MemoryGraphStore
-        from reos.memory.embeddings import content_hash
+        from cairn.memory.retriever import MemoryRetriever
+        from cairn.memory.graph_store import MemoryGraphStore
+        from cairn.memory.embeddings import content_hash
 
         graph_store = MemoryGraphStore()
 
         # Pre-store embedding with current content hash
-        from reos.play.blocks_db import get_block
+        from cairn.play.blocks_db import get_block
         block = get_block(test_blocks[0])
         content = block.rich_text[0].content
         current_hash = content_hash(content)
@@ -552,8 +552,8 @@ class TestRetrieverIndexing:
         self, initialized_db, mock_embedding_service, test_act, test_blocks
     ) -> None:
         """remove_block_index() removes embedding."""
-        from reos.memory.retriever import MemoryRetriever
-        from reos.memory.graph_store import MemoryGraphStore
+        from cairn.memory.retriever import MemoryRetriever
+        from cairn.memory.graph_store import MemoryGraphStore
 
         graph_store = MemoryGraphStore()
 
@@ -579,7 +579,7 @@ class TestRetrieverRanking:
         self, initialized_db, mock_embedding_service, test_act
     ) -> None:
         """Ranking applies type weights (reasoning_chain > paragraph)."""
-        from reos.memory.retriever import MemoryRetriever, MemoryMatch
+        from cairn.memory.retriever import MemoryRetriever, MemoryMatch
 
         retriever = MemoryRetriever(embedding_service=mock_embedding_service)
 
@@ -609,7 +609,7 @@ class TestRetrieverRanking:
         self, initialized_db, mock_embedding_service, test_act
     ) -> None:
         """Ranking applies source bonus (both > semantic > graph)."""
-        from reos.memory.retriever import MemoryRetriever, MemoryMatch
+        from cairn.memory.retriever import MemoryRetriever, MemoryMatch
 
         retriever = MemoryRetriever(embedding_service=mock_embedding_service)
 
@@ -639,7 +639,7 @@ class TestRetrieverRanking:
         self, initialized_db, mock_embedding_service, test_act
     ) -> None:
         """Ranking clamps scores to [0, 1]."""
-        from reos.memory.retriever import MemoryRetriever, MemoryMatch
+        from cairn.memory.retriever import MemoryRetriever, MemoryMatch
 
         retriever = MemoryRetriever(embedding_service=mock_embedding_service)
 

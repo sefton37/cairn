@@ -8,8 +8,8 @@ Talking Rock is an AI assistant that runs entirely on your computer. Not a thin 
 
 **This is our competitive advantage.** Local inference isn't just about privacy (though you get that too). It's about economics:
 
-- **Cloud AI costs money per token.** Every verification pass, every repo analysis, every safety check—they all cost the provider money. So they minimize them.
-- **Local inference is essentially free.** Once you have the model, compute costs nothing extra. So we can verify every line of code. Analyze every repository. Check every command. Do things that subscription services can't afford at scale.
+- **Cloud AI costs money per token.** Every verification pass, every analysis, every safety check—they all cost the provider money. So they minimize them.
+- **Local inference is essentially free.** Once you have the model, compute costs nothing extra. So we can verify every decision, analyze every context, check every action. Do things that subscription services can't afford at scale.
 
 Big tech wants AI to be a subscription you pay forever. They collect your data, train on your conversations, and can change the rules anytime.
 
@@ -37,48 +37,33 @@ The only report goes to the only stakeholder that matters: you.
 
 True democratization means running on hardware people actually have. A 70B model that needs a $2000 GPU isn't democratized—it's just a different kind of paywall.
 
-**Our target: 1-3B parameter models.** These run on 8GB RAM, integrated graphics, and five-year-old laptops. If your computer can run a web browser, it should be able to run Talking Rock.
+**Our target: 1B parameter models.** These run on 8GB RAM, integrated graphics, and five-year-old laptops. If your computer can run a web browser, it should be able to run Talking Rock.
 
 ### Current Priorities
 
 | Priority | Agent | Target Model Size | Status |
 |----------|-------|-------------------|--------|
 | **1** | CAIRN | 1B parameters | Active development |
-| **2** | ReOS | 1-3B parameters | Active development |
-| **3** | RIVA | 7-8B+ parameters | Frozen (NOL backend ready) |
 
-**Why this order:**
+**Why 1B is the right target:**
 
-1. **CAIRN (Attention Minder)** — Surfacing tasks, managing priorities, and routing requests are achievable at 1B. The model needs to understand intent and match patterns, not generate complex code. This is where we can deliver real value on minimal hardware.
+CAIRN is an attention minder and life organizer. Surfacing tasks, managing priorities, understanding your context, and helping you focus are achievable at 1B parameters. The model needs to understand intent and match patterns, not generate complex code. This is where we deliver real value on minimal hardware.
 
-2. **ReOS (System Helper)** — Natural language to shell commands is more constrained than open-ended coding. The Parse Gate provides structure, and most system commands follow predictable patterns. Targeting 1-3B parameters.
-
-3. **RIVA (Code Agent)** — Multi-layer verification with LLM judges, code generation, and intent alignment genuinely requires more capable reasoning. RIVA's NOL integration infrastructure is complete (bridge, translator, verification layer, 73 tests), but development is frozen while CAIRN and ReOS prove small-model viability. 7-8B+ models when active.
-
-**The honest reality:** Not everything can be democratized immediately. Code generation with verification is harder than attention management. We're prioritizing what we can ship on accessible hardware today, not what sounds impressive in a README.
+**The honest reality:** We're prioritizing what we can ship on accessible hardware today, not what sounds impressive in a README.
 
 ---
 
 ## What Talking Rock Does
 
-Talking Rock is three specialized agents working together:
+Talking Rock is CAIRN: a personal attention minder that helps you focus on what matters without overwhelming you.
 
-| Agent | Purpose | Model Target | Status |
-|-------|---------|--------------|--------|
-| **CAIRN** | Manages your attention and life | 1B | Active |
-| **ReOS** | Controls your Linux system | 1-3B | Active |
-| **RIVA** | Writes and verifies code | 7-8B+ | Frozen (NOL ready) |
+You talk to CAIRN about your life—your projects, your priorities, what you're waiting on, what's coming up. CAIRN surfaces what needs your attention, keeps track of your context across conversations, and helps you see where you actually are without judging you for where you aren't.
 
-You talk to CAIRN by default. It routes to the right agent when needed:
-- Life/planning → CAIRN handles it directly
-- System question → Routes to ReOS (with your approval)
-- Code question → Routes to RIVA (with your approval)
-
-**Why local matters here:** Because routing and verification happen locally, every request can be analyzed, checked, and validated without cost concerns. Cloud services charge per token—we don't.
+**Why local matters here:** Because analysis and reasoning happen locally, every request can be examined and validated without cost concerns. Cloud services charge per token—we don't.
 
 ---
 
-## CAIRN: The Attention Minder (Priority 1)
+## CAIRN: The Attention Minder
 
 **Thesis:** CAIRN helps you focus on what matters without overwhelming you. It shows you the next thing, not everything—and never guilt-trips you about what you haven't done.
 
@@ -122,16 +107,6 @@ Waiting for you when ready:
 - Test coverage improvements
 ```
 
-**Step 4: Routing When Needed**
-
-If you ask something outside CAIRN's domain:
-```
-You: "What's using all my memory?"
-
-CAIRN: That's a system question. Want me to hand off to ReOS?
-       [Approve handoff? y/n]
-```
-
 ### The Play: Your Life Structure
 
 CAIRN organizes everything with deliberate simplicity—just two levels:
@@ -164,146 +139,6 @@ CAIRN is a calm, non-judgmental life organizer. It respects your attention by sh
 
 ---
 
-## ReOS: The System Helper (Priority 2)
-
-**Thesis:** ReOS lets you control your Linux system through natural language while never obstructing normal terminal operation. It enhances your command line—it doesn't replace it.
-
-**Target: 1-3B parameter models.** Shell commands are constrained and predictable. The Parse Gate provides structure that smaller models can work within.
-
-### How ReOS Works: The Journey of a Command
-
-**Step 1: You Type Naturally**
-```
-$ what's using all my memory?
-```
-
-**Step 2: Parse Gate Analysis**
-
-ReOS analyzes your intent and checks system state:
-```
-[Parse Gate]
-├─ Intent: Query memory usage
-├─ Verb detected: "using" (diagnostic)
-├─ System check: ps, top available
-└─ Proposal: Show top memory consumers
-```
-
-**Step 3: Context-Aware Response**
-```
-Here are the top memory users:
-1. Chrome (2.3 GB)
-2. Docker (1.8 GB)
-3. VS Code (890 MB)
-```
-
-**Step 4: Follow-Up Actions**
-```
-You: stop all docker containers
-
-ReOS: I'll stop these containers:
-      - nextcloud-app
-      - nextcloud-redis
-      - nextcloud-db
-
-      Proceed? [y/n]: y
-      Done! All containers stopped.
-```
-
-### The Parse Gate: Smart Command Proposals
-
-ReOS checks your system before proposing commands:
-
-```
-$ run gimp                    # gimp IS installed
-→ Proposal: gimp              # Just run it
-
-$ run gimp                    # gimp NOT installed
-→ Proposal: sudo apt install gimp   # Offer to install
-
-$ picture editor              # Natural language
-→ Found: GIMP (GNU Image Manipulation Program)
-→ Proposal: gimp
-```
-
-**How Parse Gate works:**
-1. **Intent Analysis** — Detects verbs: run, install, start, stop, etc.
-2. **System Check** — Queries PATH, packages, services
-3. **Semantic Search** — Finds programs by description ("picture editor" → GIMP)
-4. **Smart Proposal** — Context-aware command suggestion
-
-### Never Obstruct Linux
-
-ReOS follows one core principle: **enhance, don't replace**.
-
-When apt asks `Do you want to continue? [Y/n]`, you type Y. That's how Linux works. ReOS never breaks this flow:
-
-- Commands run with full terminal access (stdin/stdout/stderr connected)
-- Interactive prompts work normally
-- Valid shell commands execute directly—ReOS only activates on unknown commands
-
-### Core Capabilities
-
-- **Process monitoring** — Memory, CPU, what's running
-- **Service management** — Start, stop, restart systemd services
-- **Package management** — Install, remove, search packages
-- **Container control** — Docker and Podman management
-- **File operations** — With safety checks
-- **Shell commands** — Natural language to bash
-
-### Conclusion
-
-ReOS makes Linux approachable through conversation while respecting how Linux actually works. All system control happens locally—no cloud service sees your system state, your installed packages, or your running processes.
-
----
-
-## RIVA: The Code Verification Engine (Frozen — NOL Backend Ready)
-
-> **Status: Frozen (NOL backend ready).** RIVA's infrastructure for generating code as NoLang assembly is complete and tested (73 integration tests). The NOL bridge, intent-to-NOL translator, and structural verification layer are implemented but not wired into production code paths. Development is paused while CAIRN and ReOS prove small-model viability on 1-3B parameter models. When RIVA unfreezes, the LLM will generate fixed-width NoLang instructions and the verifier will confirm correctness before execution.
-
-**Thesis:** RIVA trades compute time for correctness. Because local inference is cheap, it can verify every line of code through multiple layers before you see it—catching errors that cloud-based assistants can't afford to check for.
-
-### What's Built
-
-RIVA has significant infrastructure already built:
-
-- **3-layer verification** — Syntax (tree-sitter), Semantic (static analysis), Behavioral (pytest)
-- **Intent verification framework** — Ready for LLM integration when we return
-- **Pattern learning** — Trust scoring with temporal decay
-- **Fast paths** — ADD_IMPORT, CREATE_FUNCTION, ADD_TEST handlers
-- **Repo analysis** — Convention extraction at 300x cheaper than cloud
-- **Test-first development** — Contract system with test generation
-- **Self-debugging loop** — Decomposition and reflection
-
-### NOL Integration
-
-RIVA now uses [NoLang](https://github.com/sefton37/nol) as its code generation backend:
-
-1. **LLM generates NoLang assembly** — Canonical form means low variance (temperature=0.1)
-2. **`nolang verify`** — Structural verification (types, stack balance, exhaustion, hashes) before execution
-3. **`nolang run --sandbox`** — Sandboxed execution restricts file I/O to the target directory
-4. **Hash memoization** — Previously-verified programs with matching content hashes skip re-verification
-
-Key components:
-- `NolBridge` — Python wrapper around the `nolang` CLI binary
-- `IntentToNolTranslator` — Converts RIVA intentions into NOL function signatures with PRE/POST contracts
-- `NOL_STRUCTURAL` — New verification layer that runs before SYNTAX in the multi-layer pipeline
-
-### Current State & Next Steps
-
-Completed:
-1. NOL bridge with assemble/verify/run pipeline
-2. NOL_STRUCTURAL verification layer
-3. Intent-to-NOL translation with contract generation
-4. Hash memoization for verified programs
-
-Next steps:
-1. End-to-end LLM → NOL generation (currently template-based)
-2. LoRA fine-tuning on NOL I/O corpus (see nolang-ml Phase 9)
-3. Explore whether fine-tuned 3-5B models can generate valid NOL
-4. Witness-based testing integration (NoLang Layer 3)
-
----
-
 ## Safety: You're Always in Control
 
 **Thesis:** Talking Rock has safety limits that can be tuned but not disabled. You approve every change, and everything runs locally where you can see exactly what's happening.
@@ -321,9 +156,7 @@ Next steps:
 |------------|---------|---------------|
 | Max iterations per task | 10 | 3-50 |
 | Max run time | 5 minutes | 1-30 minutes |
-| Sudo commands per session | 10 | 1-20 |
 | Auth attempts (rate limit) | 5/minute | N/A |
-| Command max length | 8KB | 1-16KB |
 
 ### Privacy by Architecture
 
@@ -344,15 +177,15 @@ Because Talking Rock runs locally:
 ```bash
 # 1. Install Ollama (runs AI models locally)
 curl -fsSL https://ollama.com/install.sh | sh
-ollama pull llama3.2:1b  # Start with 1B for CAIRN
+ollama pull llama3.2:1b
 
 # 2. Clone and install Talking Rock
-git clone https://github.com/sefton37/ReOS
-cd ReOS
+git clone https://github.com/sefton37/talking-rock
+cd talking-rock
 pip install -e .
 
 # 3. Run the app
-cd apps/reos-tauri
+cd apps/cairn-tauri
 npm install
 npm run tauri:dev
 ```
@@ -375,14 +208,14 @@ ollama pull llama3.2:1b
 
 ```bash
 # Clone the code
-git clone https://github.com/sefton37/ReOS
-cd ReOS
+git clone https://github.com/sefton37/talking-rock
+cd talking-rock
 
 # Install Python dependencies
 pip install -e .
 
 # Install the desktop app
-cd apps/reos-tauri
+cd apps/cairn-tauri
 npm install
 ```
 
@@ -401,28 +234,17 @@ A window will open. Start talking to CAIRN!
 Talking Rock is for you if:
 - You want an AI assistant that respects your privacy
 - You're tired of subscription fatigue
-- You want to learn Linux with a patient helper
+- You want a calm, non-judgmental organizer for your life
 - You have modest hardware (8GB RAM, no GPU required)
 - You believe software should work for users, not advertisers
 
 ### Requirements
 
-**Minimum (CAIRN only):**
 - Linux (Ubuntu, Fedora, Mint, Arch, etc.)
 - Python 3.12+
 - 8GB RAM
 - 10GB disk space
 - No GPU required
-
-**Recommended (CAIRN + ReOS):**
-- 16GB RAM
-- GPU optional (faster inference)
-
-**RIVA (frozen — NOL backend ready):**
-- 16GB+ RAM
-- GPU recommended
-- 7-8B parameter models (LLM generation phase)
-- `nolang` binary in PATH (see [NoLang](https://github.com/sefton37/nol))
 
 ### How It Compares
 
@@ -432,10 +254,9 @@ Talking Rock is for you if:
 | Your data stays private | No | No | **Yes** |
 | Free forever | No | No | **Yes** |
 | Open source | No | No | **Yes** |
-| Runs on 8GB RAM | N/A | N/A | **Yes (CAIRN)** |
+| Runs on 8GB RAM | N/A | N/A | **Yes** |
 | Life organization | No | No | **Yes** |
 | Learns from conversations | No | No | **Yes** |
-| Linux system control | No | No | **Yes** |
 
 ---
 
@@ -449,39 +270,14 @@ Talking Rock is for you if:
 - [x] Document knowledge base (PDF, DOCX, TXT, MD, CSV, XLSX)
 - [x] Coherence Kernel for distraction filtering
 - [x] 45 MCP tools
-- [ ] Conversation lifecycle (singleton constraint, closure, compression pipeline)
-- [ ] Memory architecture (extraction, routing, Your Story, semantic search)
-- [ ] Memory-augmented reasoning (memories inform classification, decomposition, verification)
+- [x] Conversation lifecycle (singleton constraint, closure, compression pipeline)
+- [x] Memory architecture (extraction, routing, Your Story, semantic search)
+- [x] Memory-augmented reasoning (memories inform classification, decomposition, verification)
 - [ ] 1B model optimization and testing
 
-### ReOS (System Agent) — Active Development
-- [x] Natural language system control
-- [x] Parse Gate with FTS5 search (vector embeddings optional)
-- [x] Service, package, container management (apt, dnf, pacman, zypper)
-- [x] Docker/Podman container management
-- [x] Safety layer with command blocking, rate limiting, audit logging
-- [ ] 1-3B model optimization and testing
-
-### RIVA (Code Agent) — Frozen (NOL Backend Ready)
-- [x] 3-layer verification (syntax → semantic → behavioral)
-- [ ] Intent verification layer (framework ready, paused)
-- [x] Tree-sitter parsing for Python, JavaScript/TypeScript
-- [x] Pattern learning with trust scoring
-- [x] Fast paths: ADD_IMPORT, CREATE_FUNCTION, ADD_TEST
-- [ ] Fast path: FIX_IMPORT (paused)
-- [x] Repo analysis with convention extraction
-- [x] Test-first development with contract building
-- [x] Self-debugging loop
-- [x] Git integration
-- [x] NOL bridge (subprocess wrapper for `nolang` CLI)
-- [x] NOL structural verification layer (pre-SYNTAX)
-- [x] Intent-to-NOL translator with hash memoization
-- [x] 73 NOL integration tests passing
-
 ### Infrastructure
-- [x] Seamless agent handoffs with approval
-- [x] Context preservation across agents
 - [x] Automatic backups and undo
+- [x] Context preservation across conversations
 
 ---
 
@@ -491,8 +287,7 @@ Talking Rock is for you if:
 
 - **[Foundation](docs/FOUNDATION.md)** — Core philosophy and architecture overview
 - [Atomic Operations](docs/atomic-operations.md) — 3x2x3 classification taxonomy
-- [Verification Layers](docs/verification-layers.md) — 5-layer verification system
-- [RLHF Learning](docs/rlhf-learning.md) — Feedback and learning loop
+- [Verification Layers](docs/verification-layers.md) — Verification system
 
 ### Getting Started
 
@@ -501,18 +296,14 @@ Talking Rock is for you if:
 
 ### Agent Architecture
 
-- [CAIRN Architecture](docs/cairn_architecture.md) — Attention minder (generates atomic operations for life management)
+- [CAIRN Architecture](docs/cairn_architecture.md) — Attention minder design
 - [Conversation Lifecycle](docs/CONVERSATION_LIFECYCLE_SPEC.md) — Conversation lifecycle, memory extraction, and Your Story
-- [Parse Gate](docs/parse-gate.md) — ReOS system helper (generates atomic operations for shell commands)
-- [RIVA Architecture](docs/archive/code_mode_architecture.md) — Code agent (frozen, NOL backend ready)
 - [The Play](docs/the-play.md) — Life organization system
 
 ### Reference
 
 - [Security Design](docs/security.md) — How we protect your system
-- [Verification Layers](docs/verification-layers.md) — 5-layer verification pipeline
 - [Classification](docs/classification.md) — LLM-native 3x2x3 taxonomy
-- [Migration Guide](docs/migration-new-packages.md) — New package structure
 - [Technical Roadmap](docs/tech-roadmap.md) — Development plans
 
 ---
@@ -521,7 +312,7 @@ Talking Rock is for you if:
 
 Talking Rock is open source (MIT license). We welcome:
 - Bug reports and feature requests
-- Code contributions (especially CAIRN and ReOS optimization)
+- Code contributions (especially CAIRN optimization)
 - Documentation improvements
 - Testing on different Linux distributions
 - Small model benchmarking and optimization
@@ -530,9 +321,8 @@ See [CONTRIBUTING.md](.github/CONTRIBUTING.md) for guidelines.
 
 **Current focus areas:**
 1. CAIRN performance on 1B models
-2. ReOS accuracy on 1-3B models
-3. Prompt engineering for small models
-4. Hardware compatibility testing
+2. Prompt engineering for small models
+3. Hardware compatibility testing
 
 ---
 

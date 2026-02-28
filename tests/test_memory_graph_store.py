@@ -28,7 +28,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
     # Close any existing connection before test
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
     play_db.close_connection()
 
     yield data_dir
@@ -40,7 +40,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 def initialized_db(temp_data_dir: Path):
     """Initialize the database and return the play_db module."""
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.init_db()
     return play_db
@@ -49,7 +49,7 @@ def initialized_db(temp_data_dir: Path):
 @pytest.fixture
 def graph_store(initialized_db):
     """Create a MemoryGraphStore with initialized database."""
-    from reos.memory.graph_store import MemoryGraphStore
+    from cairn.memory.graph_store import MemoryGraphStore
 
     return MemoryGraphStore()
 
@@ -64,7 +64,7 @@ def test_act(initialized_db) -> str:
 @pytest.fixture
 def test_blocks(test_act: str, initialized_db) -> list[str]:
     """Create test blocks and return their IDs."""
-    from reos.play.blocks_db import create_block
+    from cairn.play.blocks_db import create_block
 
     block_ids = []
     for i in range(5):
@@ -88,8 +88,8 @@ class TestGraphEdge:
 
     def test_graph_edge_to_dict(self) -> None:
         """GraphEdge.to_dict serializes correctly."""
-        from reos.memory.graph_store import GraphEdge
-        from reos.memory.relationships import RelationshipType, RelationshipSource
+        from cairn.memory.graph_store import GraphEdge
+        from cairn.memory.relationships import RelationshipType, RelationshipSource
 
         edge = GraphEdge(
             id="rel-123",
@@ -113,8 +113,8 @@ class TestGraphEdge:
 
     def test_graph_edge_default_values(self) -> None:
         """GraphEdge has sensible defaults."""
-        from reos.memory.graph_store import GraphEdge
-        from reos.memory.relationships import RelationshipType, RelationshipSource
+        from cairn.memory.graph_store import GraphEdge
+        from cairn.memory.relationships import RelationshipType, RelationshipSource
 
         edge = GraphEdge(
             id="rel-123",
@@ -138,8 +138,8 @@ class TestTraversalResult:
 
     def test_traversal_result_to_dict(self) -> None:
         """TraversalResult.to_dict serializes correctly."""
-        from reos.memory.graph_store import TraversalResult, GraphEdge
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.graph_store import TraversalResult, GraphEdge
+        from cairn.memory.relationships import RelationshipType
 
         result = TraversalResult(start_block_id="block-start")
         result.visited_blocks = {"block-start", "block-1", "block-2"}
@@ -163,7 +163,7 @@ class TestRelationshipCRUD:
 
     def test_create_relationship(self, graph_store, test_blocks) -> None:
         """create_relationship creates a new relationship."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         rel_id = graph_store.create_relationship(
             test_blocks[0],
@@ -176,7 +176,7 @@ class TestRelationshipCRUD:
 
     def test_create_relationship_with_options(self, graph_store, test_blocks) -> None:
         """create_relationship accepts confidence and source."""
-        from reos.memory.relationships import RelationshipType, RelationshipSource
+        from cairn.memory.relationships import RelationshipType, RelationshipSource
 
         rel_id = graph_store.create_relationship(
             test_blocks[0],
@@ -196,7 +196,7 @@ class TestRelationshipCRUD:
 
     def test_create_self_relationship_fails(self, graph_store, test_blocks) -> None:
         """create_relationship rejects self-referential relationships."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         rel_id = graph_store.create_relationship(
             test_blocks[0],
@@ -208,7 +208,7 @@ class TestRelationshipCRUD:
 
     def test_create_duplicate_relationship_fails(self, graph_store, test_blocks) -> None:
         """create_relationship rejects duplicate relationships."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # Create first relationship
         rel_id1 = graph_store.create_relationship(
@@ -229,7 +229,7 @@ class TestRelationshipCRUD:
 
     def test_create_different_type_relationship_ok(self, graph_store, test_blocks) -> None:
         """Same blocks can have different relationship types."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         rel_id1 = graph_store.create_relationship(
             test_blocks[0],
@@ -248,7 +248,7 @@ class TestRelationshipCRUD:
 
     def test_get_relationship(self, graph_store, test_blocks) -> None:
         """get_relationship returns edge by ID."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         rel_id = graph_store.create_relationship(
             test_blocks[0],
@@ -271,7 +271,7 @@ class TestRelationshipCRUD:
 
     def test_get_relationships_outgoing(self, graph_store, test_blocks) -> None:
         """get_relationships returns outgoing edges."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # Create outgoing relationships from block 0
         graph_store.create_relationship(
@@ -292,7 +292,7 @@ class TestRelationshipCRUD:
 
     def test_get_relationships_incoming(self, graph_store, test_blocks) -> None:
         """get_relationships returns incoming edges."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # Create incoming relationships to block 0
         graph_store.create_relationship(
@@ -313,7 +313,7 @@ class TestRelationshipCRUD:
 
     def test_get_relationships_both_directions(self, graph_store, test_blocks) -> None:
         """get_relationships with direction='both' returns all edges."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         graph_store.create_relationship(
             test_blocks[0], test_blocks[1], RelationshipType.REFERENCES
@@ -328,7 +328,7 @@ class TestRelationshipCRUD:
 
     def test_get_relationships_filter_by_type(self, graph_store, test_blocks) -> None:
         """get_relationships can filter by relationship type."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         graph_store.create_relationship(
             test_blocks[0], test_blocks[1], RelationshipType.REFERENCES
@@ -352,7 +352,7 @@ class TestRelationshipCRUD:
 
     def test_update_relationship(self, graph_store, test_blocks) -> None:
         """update_relationship modifies confidence and weight."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         rel_id = graph_store.create_relationship(
             test_blocks[0],
@@ -375,7 +375,7 @@ class TestRelationshipCRUD:
 
     def test_delete_relationship(self, graph_store, test_blocks) -> None:
         """delete_relationship removes a relationship."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         rel_id = graph_store.create_relationship(
             test_blocks[0], test_blocks[1], RelationshipType.REFERENCES
@@ -393,7 +393,7 @@ class TestRelationshipCRUD:
 
     def test_delete_relationships_for_block(self, graph_store, test_blocks) -> None:
         """delete_relationships_for_block removes all relationships for a block."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # Create relationships involving block 0
         graph_store.create_relationship(
@@ -437,7 +437,7 @@ class TestGraphTraversal:
 
     def test_traverse_depth_one(self, graph_store, test_blocks) -> None:
         """traverse() finds immediate neighbors at depth 1."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # Create: block_0 -> block_1 -> block_2
         graph_store.create_relationship(
@@ -456,7 +456,7 @@ class TestGraphTraversal:
 
     def test_traverse_depth_two(self, graph_store, test_blocks) -> None:
         """traverse() finds nodes at depth 2."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # Create: block_0 -> block_1 -> block_2
         graph_store.create_relationship(
@@ -475,7 +475,7 @@ class TestGraphTraversal:
 
     def test_traverse_respects_max_nodes(self, graph_store, test_blocks) -> None:
         """traverse() limits nodes visited."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # Create many connections from block_0
         for i in range(1, 5):
@@ -493,7 +493,7 @@ class TestGraphTraversal:
 
     def test_traverse_filter_by_type(self, graph_store, test_blocks) -> None:
         """traverse() filters by relationship type."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # Create different relationship types to different blocks
         graph_store.create_relationship(
@@ -530,7 +530,7 @@ class TestGraphTraversal:
 
     def test_traverse_bidirectional(self, graph_store, test_blocks) -> None:
         """traverse() follows edges in both directions."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # block_1 -> block_0 -> block_2
         graph_store.create_relationship(
@@ -547,7 +547,7 @@ class TestGraphTraversal:
 
     def test_find_path_direct(self, graph_store, test_blocks) -> None:
         """find_path() finds direct path."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         graph_store.create_relationship(
             test_blocks[0], test_blocks[1], RelationshipType.REFERENCES
@@ -561,7 +561,7 @@ class TestGraphTraversal:
 
     def test_find_path_two_hops(self, graph_store, test_blocks) -> None:
         """find_path() finds two-hop path."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         graph_store.create_relationship(
             test_blocks[0], test_blocks[1], RelationshipType.REFERENCES
@@ -661,7 +661,7 @@ class TestEmbeddingStorage:
         # Create another act
         _, other_act_id = initialized_db.create_act(title="Other Act")
 
-        from reos.play.blocks_db import create_block
+        from cairn.play.blocks_db import create_block
 
         other_block = create_block(
             type="paragraph",

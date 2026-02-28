@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from reos.cairn.health.anti_nag import (
+from cairn.cairn.health.anti_nag import (
     DEFAULT_CHECK_CONFIG,
     AntiNagProtocol,
     init_health_check_defaults,

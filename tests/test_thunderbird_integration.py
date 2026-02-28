@@ -14,9 +14,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from reos.cairn.store import CairnStore
-from reos.cairn.surfacing import get_integration_context
-from reos.cairn.thunderbird import (
+from cairn.cairn.store import CairnStore
+from cairn.cairn.surfacing import get_integration_context
+from cairn.cairn.thunderbird import (
     ThunderbirdAccount,
     ThunderbirdBridge,
     ThunderbirdConfig,
@@ -173,7 +173,7 @@ class TestProfileDiscovery:
     ) -> None:
         """Discovers profiles from profiles.ini."""
         with patch(
-            "reos.cairn.thunderbird._get_thunderbird_base_paths",
+            "cairn.cairn.thunderbird._get_thunderbird_base_paths",
             return_value=[temp_thunderbird_dir],
         ):
             profiles = discover_all_profiles()
@@ -188,7 +188,7 @@ class TestProfileDiscovery:
     ) -> None:
         """Falls back to directory scanning when no profiles.ini."""
         with patch(
-            "reos.cairn.thunderbird._get_thunderbird_base_paths",
+            "cairn.cairn.thunderbird._get_thunderbird_base_paths",
             return_value=[temp_thunderbird_dir],
         ):
             profiles = discover_all_profiles()
@@ -202,7 +202,7 @@ class TestProfileDiscovery:
     ) -> None:
         """Correctly identifies default profile."""
         with patch(
-            "reos.cairn.thunderbird._get_thunderbird_base_paths",
+            "cairn.cairn.thunderbird._get_thunderbird_base_paths",
             return_value=[temp_thunderbird_dir],
         ):
             profiles = discover_all_profiles()
@@ -262,7 +262,7 @@ class TestIntegrationState:
     def test_integration_state_not_installed(self) -> None:
         """Returns not installed state when Thunderbird not found."""
         with patch(
-            "reos.cairn.thunderbird.check_thunderbird_installation",
+            "cairn.cairn.thunderbird.check_thunderbird_installation",
             return_value=(False, "sudo apt install thunderbird"),
         ):
             state = get_thunderbird_integration_state()
@@ -276,11 +276,11 @@ class TestIntegrationState:
     ) -> None:
         """Returns profiles when Thunderbird is installed."""
         with patch(
-            "reos.cairn.thunderbird.check_thunderbird_installation",
+            "cairn.cairn.thunderbird.check_thunderbird_installation",
             return_value=(True, None),
         ):
             with patch(
-                "reos.cairn.thunderbird._get_thunderbird_base_paths",
+                "cairn.cairn.thunderbird._get_thunderbird_base_paths",
                 return_value=[temp_thunderbird_dir],
             ):
                 state = get_thunderbird_integration_state()
@@ -656,7 +656,7 @@ class TestEdgeCases:
                 (profile2 / "prefs.js").write_text("")
 
                 with patch(
-                    "reos.cairn.thunderbird._get_thunderbird_base_paths",
+                    "cairn.cairn.thunderbird._get_thunderbird_base_paths",
                     return_value=[base1, base2],
                 ):
                     profiles = discover_all_profiles()

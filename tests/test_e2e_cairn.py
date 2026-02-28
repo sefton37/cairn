@@ -43,7 +43,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from reos.cairn.coherence import (
+from cairn.cairn.coherence import (
     AttentionDemand,
     CoherenceCheck,
     CoherenceResult,
@@ -52,16 +52,16 @@ from reos.cairn.coherence import (
     IdentityFacet,
     IdentityModel,
 )
-from reos.cairn.models import (
+from cairn.cairn.models import (
     ActivityType,
     CairnMetadata,
     ContactRelationship,
     KanbanState,
     SurfaceContext,
 )
-from reos.cairn.store import CairnStore
-from reos.cairn.surfacing import CairnSurfacer
-from reos.cairn.thunderbird import (
+from cairn.cairn.store import CairnStore
+from cairn.cairn.surfacing import CairnSurfacer
+from cairn.cairn.thunderbird import (
     CalendarEvent,
     CalendarTodo,
     ThunderbirdBridge,
@@ -455,7 +455,7 @@ class TestPlayKnowledgeBaseE2E:
 
     def test_read_me_markdown_with_real_structure(self, temp_play_root: Path) -> None:
         """Test reading me.md from a real Play structure."""
-        from reos import play_fs
+        from cairn import play_fs
 
         with patch.object(play_fs, "play_root", return_value=temp_play_root):
             content = play_fs.read_me_markdown()
@@ -469,7 +469,7 @@ class TestPlayKnowledgeBaseE2E:
     @pytest.mark.skip(reason="play_fs.list_acts now reads from play_db, not JSON files")
     def test_list_acts_with_code_mode(self, temp_play_root: Path) -> None:
         """Test listing acts including code mode configuration."""
-        from reos import play_fs
+        from cairn import play_fs
 
         with patch.object(play_fs, "play_root", return_value=temp_play_root):
             acts, active_id = play_fs.list_acts()
@@ -485,7 +485,7 @@ class TestPlayKnowledgeBaseE2E:
     @pytest.mark.skip(reason="play_fs.list_scenes now reads from play_db, not JSON files")
     def test_list_scenes_for_act(self, temp_play_root: Path) -> None:
         """Test listing scenes within an act."""
-        from reos import play_fs
+        from cairn import play_fs
 
         with patch.object(play_fs, "play_root", return_value=temp_play_root):
             scenes = play_fs.list_scenes(act_id="talking-rock")
@@ -497,7 +497,7 @@ class TestPlayKnowledgeBaseE2E:
 
     def test_kb_list_and_read_files(self, temp_play_root: Path) -> None:
         """Test listing and reading KB files."""
-        from reos import play_fs
+        from cairn import play_fs
 
         with patch.object(play_fs, "play_root", return_value=temp_play_root):
             kb_files = play_fs.kb_list_files(act_id="talking-rock")
@@ -510,8 +510,8 @@ class TestPlayKnowledgeBaseE2E:
 
     def test_identity_extraction_from_play(self, temp_play_root: Path) -> None:
         """Test building IdentityModel from real Play structure."""
-        from reos import play_fs
-        from reos.cairn.identity import build_identity_model
+        from cairn import play_fs
+        from cairn.cairn.identity import build_identity_model
 
         with patch.object(play_fs, "play_root", return_value=temp_play_root):
             identity = build_identity_model(include_kb=True)
@@ -782,7 +782,7 @@ class TestCoherenceRecursionE2E:
 
     def test_coherence_trace_creation(self, complex_identity: IdentityModel) -> None:
         """Test that coherence traces are properly created."""
-        from reos.cairn.identity import get_identity_hash
+        from cairn.cairn.identity import get_identity_hash
 
         verifier = CoherenceVerifier(complex_identity, llm=None)
 
@@ -836,7 +836,7 @@ class TestCoherenceTraceStorageE2E:
         complex_identity: IdentityModel,
     ) -> None:
         """Test saving and retrieving coherence traces."""
-        from reos.cairn.identity import get_identity_hash
+        from cairn.cairn.identity import get_identity_hash
 
         verifier = CoherenceVerifier(complex_identity, llm=None)
 
@@ -874,7 +874,7 @@ class TestCoherenceTraceStorageE2E:
         complex_identity: IdentityModel,
     ) -> None:
         """Test recording user override of coherence decision."""
-        from reos.cairn.identity import get_identity_hash
+        from cairn.cairn.identity import get_identity_hash
 
         verifier = CoherenceVerifier(complex_identity, llm=None)
 
@@ -911,7 +911,7 @@ class TestCoherenceTraceStorageE2E:
         complex_identity: IdentityModel,
     ) -> None:
         """Test listing traces for a specific demand."""
-        from reos.cairn.identity import get_identity_hash
+        from cairn.cairn.identity import get_identity_hash
 
         verifier = CoherenceVerifier(complex_identity, llm=None)
         identity_hash = get_identity_hash(complex_identity)
@@ -1077,8 +1077,8 @@ class TestCoherenceEnabledSurfacingE2E:
         temp_play_root: Path,
     ) -> None:
         """Test that coherence filtering affects surfacing results."""
-        from reos import play_fs
-        from reos.cairn.identity import add_anti_pattern
+        from cairn import play_fs
+        from cairn.cairn.identity import add_anti_pattern
 
         # Create items
         cairn_store.get_or_create_metadata("act", "coherent-item")
@@ -1183,7 +1183,7 @@ class TestFullCAIRNFlowE2E:
         complex_identity: IdentityModel,
     ) -> None:
         """Simulate: rejecting an incoherent demand and recording override."""
-        from reos.cairn.identity import get_identity_hash
+        from cairn.cairn.identity import get_identity_hash
 
         verifier = CoherenceVerifier(complex_identity, llm=None)
 
@@ -1277,7 +1277,7 @@ class TestMCPToolsE2E:
 
     def test_list_tools_returns_tools(self) -> None:
         """Test that list_tools returns tool definitions."""
-        from reos.cairn.mcp_tools import list_tools
+        from cairn.cairn.mcp_tools import list_tools
 
         tools = list_tools()
 
@@ -1293,7 +1293,7 @@ class TestMCPToolsE2E:
 
     def test_tool_names_exist(self) -> None:
         """Test that expected tool names are defined."""
-        from reos.cairn.mcp_tools import list_tools
+        from cairn.cairn.mcp_tools import list_tools
 
         tools = list_tools()
         tool_names = {t.name for t in tools}
@@ -1364,7 +1364,7 @@ class TestPlayKanbanWorkflowE2E:
         data_dir.mkdir()
         monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         play_db.close_connection()
         play_db.init_db()
@@ -1417,7 +1417,7 @@ class TestPlayKanbanWorkflowE2E:
 
     def test_overdue_detection_workflow(self, play_db_setup) -> None:
         """Test overdue detection — non-recurring scenes auto-complete."""
-        from reos.play_computed import is_overdue, compute_effective_stage
+        from cairn.play_computed import is_overdue, compute_effective_stage
 
         play_db = play_db_setup
 
@@ -1475,7 +1475,7 @@ class TestCalendarIntegrationE2E:
         data_dir.mkdir()
         monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         play_db.close_connection()
         play_db.init_db()
@@ -1581,7 +1581,7 @@ class TestUIRPCIntegrationE2E:
         data_dir.mkdir()
         monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
-        import reos.play_db as play_db
+        import cairn.play_db as play_db
 
         play_db.close_connection()
         play_db.init_db()
@@ -1592,7 +1592,7 @@ class TestUIRPCIntegrationE2E:
 
     def test_list_all_scenes_includes_computed_fields(self, play_db_setup) -> None:
         """Test list_all_scenes includes computed display fields."""
-        from reos.play_computed import enrich_scene_for_display
+        from cairn.play_computed import enrich_scene_for_display
 
         play_db = play_db_setup
 
@@ -1625,7 +1625,7 @@ class TestUIRPCIntegrationE2E:
 
     def test_scene_update_triggers_effective_stage_recalc(self, play_db_setup) -> None:
         """Test scene update triggers effective_stage recalculation."""
-        from reos.play_computed import compute_effective_stage
+        from cairn.play_computed import compute_effective_stage
 
         play_db = play_db_setup
 
@@ -1665,7 +1665,7 @@ class TestUIRPCIntegrationE2E:
 
     def test_batch_scene_retrieval_for_kanban(self, play_db_setup) -> None:
         """Test batch retrieval of scenes for Kanban board display."""
-        from reos.play_computed import enrich_scene_for_display
+        from cairn.play_computed import enrich_scene_for_display
 
         play_db = play_db_setup
 

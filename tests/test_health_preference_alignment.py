@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from reos.cairn.health.checks.preference_alignment import PreferenceAlignmentCheck
-from reos.cairn.health.runner import Severity
-from reos.cairn.store import CairnStore
+from cairn.cairn.health.checks.preference_alignment import PreferenceAlignmentCheck
+from cairn.cairn.health.runner import Severity
+from cairn.cairn.store import CairnStore
 
 
 @pytest.fixture

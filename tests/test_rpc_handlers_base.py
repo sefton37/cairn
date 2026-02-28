@@ -12,15 +12,15 @@ from typing import Any
 
 import pytest
 
-from reos.db import Database
-from reos.errors import (
+from cairn.db import Database
+from cairn.errors import (
     TalkingRockError,
     ValidationError,
     NotFoundError,
     get_error_code,
 )
-from reos.rpc_handlers import RpcError
-from reos.rpc_handlers._base import rpc_handler, require_params
+from cairn.rpc_handlers import RpcError
+from cairn.rpc_handlers._base import rpc_handler, require_params
 
 
 @pytest.fixture

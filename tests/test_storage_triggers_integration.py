@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from reos.models import Event
-from reos.storage import append_event
+from cairn.models import Event
+from cairn.storage import append_event
 
 
 def _count_kind(db_rows: list[dict[str, object]], kind: str) -> int:
@@ -21,18 +21,18 @@ def test_append_event_does_not_emit_triggers_for_single_file_change(
     repo = temp_git_repo
 
     # Create a big change in a single file.
-    big = repo / "src" / "reos" / "example.py"
+    big = repo / "src" / "cairn" / "example.py"
     big.write_text(big.read_text(encoding="utf-8") + ("\n".join(["x = 1"] * 200) + "\n"), encoding="utf-8")
 
     # Ensure storage looks at our temp repo.
-    import reos.storage as storage_mod
+    import cairn.storage as storage_mod
 
     monkeypatch.setattr(storage_mod, "get_default_repo_path", lambda: repo)
 
     # Append an event; should not emit any triggers for this scenario.
     append_event(Event(source="test", ts=datetime.now(UTC), payload_metadata={"kind": "smoke"}))
 
-    from reos.db import get_db
+    from cairn.db import get_db
 
     db = get_db()
     rows = db.iter_events_recent(limit=50)

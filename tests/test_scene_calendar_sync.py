@@ -33,7 +33,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
     # Close any existing connection before test
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.close_connection()
     play_db.init_db()
@@ -63,7 +63,7 @@ class TestPlaceholderDate:
 
     def test_get_placeholder_date_returns_dec_31(self) -> None:
         """get_placeholder_date returns Dec 31 of current year."""
-        from reos.cairn.scene_calendar_sync import get_placeholder_date
+        from cairn.cairn.scene_calendar_sync import get_placeholder_date
 
         placeholder = get_placeholder_date()
         current_year = datetime.now().year
@@ -74,7 +74,7 @@ class TestPlaceholderDate:
 
     def test_placeholder_date_changes_with_year(self) -> None:
         """PLACEHOLDER_DATE constant is set at import time."""
-        from reos.cairn.scene_calendar_sync import PLACEHOLDER_DATE
+        from cairn.cairn.scene_calendar_sync import PLACEHOLDER_DATE
 
         # PLACEHOLDER_DATE should match current year at import time
         # This is a snapshot, so just verify it's Dec 31 of some year
@@ -100,7 +100,7 @@ class TestGetNextOccurrence:
     @pytest.mark.skipif(not HAS_DATEUTIL, reason="dateutil not installed")
     def test_weekly_recurrence(self) -> None:
         """Compute next occurrence for weekly event."""
-        from reos.cairn.scene_calendar_sync import get_next_occurrence
+        from cairn.cairn.scene_calendar_sync import get_next_occurrence
 
         dtstart = datetime(2026, 1, 1, 10, 0)  # Thursday
         rrule = "RRULE:FREQ=WEEKLY;BYDAY=WE"
@@ -115,7 +115,7 @@ class TestGetNextOccurrence:
     @pytest.mark.skipif(not HAS_DATEUTIL, reason="dateutil not installed")
     def test_monthly_recurrence(self) -> None:
         """Compute next occurrence for monthly event."""
-        from reos.cairn.scene_calendar_sync import get_next_occurrence
+        from cairn.cairn.scene_calendar_sync import get_next_occurrence
 
         dtstart = datetime(2026, 1, 15, 14, 0)
         rrule = "RRULE:FREQ=MONTHLY;BYMONTHDAY=15"
@@ -130,7 +130,7 @@ class TestGetNextOccurrence:
     @pytest.mark.skipif(not HAS_DATEUTIL, reason="dateutil not installed")
     def test_yearly_recurrence(self) -> None:
         """Compute next occurrence for yearly event (birthday/holiday)."""
-        from reos.cairn.scene_calendar_sync import get_next_occurrence
+        from cairn.cairn.scene_calendar_sync import get_next_occurrence
 
         dtstart = datetime(2026, 3, 17, 0, 0)  # St. Patrick's Day
         rrule = "RRULE:FREQ=YEARLY"
@@ -146,7 +146,7 @@ class TestGetNextOccurrence:
     @pytest.mark.skipif(not HAS_DATEUTIL, reason="dateutil not installed")
     def test_rrule_without_prefix(self) -> None:
         """RRULE without 'RRULE:' prefix still works."""
-        from reos.cairn.scene_calendar_sync import get_next_occurrence
+        from cairn.cairn.scene_calendar_sync import get_next_occurrence
 
         dtstart = datetime(2026, 1, 1, 10, 0)
         rrule = "FREQ=DAILY"  # No "RRULE:" prefix
@@ -160,7 +160,7 @@ class TestGetNextOccurrence:
     @pytest.mark.skipif(not HAS_DATEUTIL, reason="dateutil not installed")
     def test_default_after_is_now(self) -> None:
         """When after is None, uses current time."""
-        from reos.cairn.scene_calendar_sync import get_next_occurrence
+        from cairn.cairn.scene_calendar_sync import get_next_occurrence
 
         dtstart = datetime.now() - timedelta(days=1)
         rrule = "RRULE:FREQ=DAILY"
@@ -173,7 +173,7 @@ class TestGetNextOccurrence:
 
     def test_invalid_rrule_returns_none(self) -> None:
         """Invalid RRULE returns None."""
-        from reos.cairn.scene_calendar_sync import get_next_occurrence
+        from cairn.cairn.scene_calendar_sync import get_next_occurrence
 
         dtstart = datetime(2026, 1, 1)
         rrule = "INVALID:NOT_A_RULE"
@@ -184,7 +184,7 @@ class TestGetNextOccurrence:
     @pytest.mark.skipif(not HAS_DATEUTIL, reason="dateutil not installed")
     def test_rrule_with_until_limit(self) -> None:
         """RRULE with UNTIL returns None after end date."""
-        from reos.cairn.scene_calendar_sync import get_next_occurrence
+        from cairn.cairn.scene_calendar_sync import get_next_occurrence
 
         dtstart = datetime(2026, 1, 1, 10, 0)
         # Event ends on Jan 15
@@ -207,14 +207,14 @@ class TestGetBaseEventId:
 
     def test_base_id_returned_unchanged(self) -> None:
         """Base event ID without occurrence suffix returned as-is."""
-        from reos.cairn.scene_calendar_sync import _get_base_event_id
+        from cairn.cairn.scene_calendar_sync import _get_base_event_id
 
         assert _get_base_event_id("event123") == "event123"
         assert _get_base_event_id("cal-event-abc") == "cal-event-abc"
 
     def test_occurrence_suffix_stripped(self) -> None:
         """Occurrence suffix is stripped from expanded event IDs."""
-        from reos.cairn.scene_calendar_sync import _get_base_event_id
+        from cairn.cairn.scene_calendar_sync import _get_base_event_id
 
         # Expanded recurring events have IDs like "event123_202501131000"
         assert _get_base_event_id("event123_202501131000") == "event123"
@@ -222,7 +222,7 @@ class TestGetBaseEventId:
 
     def test_multiple_underscores(self) -> None:
         """Only the last underscore is treated as occurrence separator."""
-        from reos.cairn.scene_calendar_sync import _get_base_event_id
+        from cairn.cairn.scene_calendar_sync import _get_base_event_id
 
         # If base ID has underscore, only last one is stripped
         assert _get_base_event_id("my_event_id_202501131000") == "my_event_id"
@@ -238,8 +238,8 @@ class TestDeduplicateAnnualEvents:
 
     def test_single_event_unchanged(self) -> None:
         """Single event is returned unchanged."""
-        from reos.cairn.scene_calendar_sync import _deduplicate_annual_events
-        from reos.cairn.thunderbird import CalendarEvent
+        from cairn.cairn.scene_calendar_sync import _deduplicate_annual_events
+        from cairn.cairn.thunderbird import CalendarEvent
 
         events = [
             CalendarEvent(
@@ -256,8 +256,8 @@ class TestDeduplicateAnnualEvents:
 
     def test_annual_holiday_deduplicated(self) -> None:
         """Annual holidays (same title, same month/day) are deduplicated."""
-        from reos.cairn.scene_calendar_sync import _deduplicate_annual_events
-        from reos.cairn.thunderbird import CalendarEvent
+        from cairn.cairn.scene_calendar_sync import _deduplicate_annual_events
+        from cairn.cairn.thunderbird import CalendarEvent
 
         # Christmas appears multiple years
         events = [
@@ -292,8 +292,8 @@ class TestDeduplicateAnnualEvents:
 
     def test_different_titles_not_deduplicated(self) -> None:
         """Events with different titles are not deduplicated."""
-        from reos.cairn.scene_calendar_sync import _deduplicate_annual_events
-        from reos.cairn.thunderbird import CalendarEvent
+        from cairn.cairn.scene_calendar_sync import _deduplicate_annual_events
+        from cairn.cairn.thunderbird import CalendarEvent
 
         events = [
             CalendarEvent(
@@ -315,8 +315,8 @@ class TestDeduplicateAnnualEvents:
 
     def test_same_title_different_dates_not_deduplicated(self) -> None:
         """Events with same title but different month/day are not deduplicated."""
-        from reos.cairn.scene_calendar_sync import _deduplicate_annual_events
-        from reos.cairn.thunderbird import CalendarEvent
+        from cairn.cairn.scene_calendar_sync import _deduplicate_annual_events
+        from cairn.cairn.thunderbird import CalendarEvent
 
         # "Team Meeting" on different days of the month
         events = [
@@ -356,8 +356,8 @@ class TestRefreshRecurringScenes:
     @pytest.mark.skipif(not HAS_DATEUTIL, reason="dateutil not installed")
     def test_refresh_updates_next_occurrence(self, temp_data_dir: Path) -> None:
         """_refresh_all_recurring_scenes_in_db updates next_occurrence."""
-        from reos.cairn.scene_calendar_sync import _refresh_all_recurring_scenes_in_db
-        import reos.play_db as play_db
+        from cairn.cairn.scene_calendar_sync import _refresh_all_recurring_scenes_in_db
+        import cairn.play_db as play_db
 
         # Create act and scene with recurrence rule
         _, act_id = play_db.create_act(title="Test Act")
@@ -384,8 +384,8 @@ class TestRefreshRecurringScenes:
 
     def test_refresh_skips_scenes_without_rrule(self, temp_data_dir: Path) -> None:
         """Scenes without recurrence_rule are skipped."""
-        from reos.cairn.scene_calendar_sync import _refresh_all_recurring_scenes_in_db
-        import reos.play_db as play_db
+        from cairn.cairn.scene_calendar_sync import _refresh_all_recurring_scenes_in_db
+        import cairn.play_db as play_db
 
         # Create scene without recurrence rule
         _, act_id = play_db.create_act(title="Test Act")
@@ -419,9 +419,9 @@ class TestSyncCalendarToScenes:
         self, temp_data_dir: Path, mock_thunderbird_bridge: MagicMock
     ) -> None:
         """sync_calendar_to_scenes creates Scene for new calendar event."""
-        from reos.cairn.scene_calendar_sync import sync_calendar_to_scenes
-        from reos.cairn.thunderbird import CalendarEvent
-        import reos.play_db as play_db
+        from cairn.cairn.scene_calendar_sync import sync_calendar_to_scenes
+        from cairn.cairn.thunderbird import CalendarEvent
+        import cairn.play_db as play_db
 
         # Ensure Your Story act exists
         play_db.ensure_your_story_act()
@@ -435,7 +435,7 @@ class TestSyncCalendarToScenes:
         )
 
         with patch(
-            "reos.cairn.scene_calendar_sync.get_base_calendar_events",
+            "cairn.cairn.scene_calendar_sync.get_base_calendar_events",
             return_value=[event],
         ):
             # Create mock store (not used in new implementation)
@@ -458,9 +458,9 @@ class TestSyncCalendarToScenes:
         self, temp_data_dir: Path, mock_thunderbird_bridge: MagicMock
     ) -> None:
         """sync_calendar_to_scenes updates calendar data for existing scene."""
-        from reos.cairn.scene_calendar_sync import sync_calendar_to_scenes
-        from reos.cairn.thunderbird import CalendarEvent
-        import reos.play_db as play_db
+        from cairn.cairn.scene_calendar_sync import sync_calendar_to_scenes
+        from cairn.cairn.thunderbird import CalendarEvent
+        import cairn.play_db as play_db
 
         # Create existing scene with calendar_event_id
         _, act_id = play_db.create_act(title="Test Act")
@@ -480,7 +480,7 @@ class TestSyncCalendarToScenes:
         )
 
         with patch(
-            "reos.cairn.scene_calendar_sync.get_base_calendar_events",
+            "cairn.cairn.scene_calendar_sync.get_base_calendar_events",
             return_value=[event],
         ):
             mock_store = MagicMock()
@@ -500,9 +500,9 @@ class TestSyncCalendarToScenes:
         self, temp_data_dir: Path, mock_thunderbird_bridge: MagicMock
     ) -> None:
         """sync_calendar_to_scenes sets next_occurrence for recurring events."""
-        from reos.cairn.scene_calendar_sync import sync_calendar_to_scenes
-        from reos.cairn.thunderbird import CalendarEvent
-        import reos.play_db as play_db
+        from cairn.cairn.scene_calendar_sync import sync_calendar_to_scenes
+        from cairn.cairn.thunderbird import CalendarEvent
+        import cairn.play_db as play_db
 
         # Ensure Your Story act exists
         play_db.ensure_your_story_act()
@@ -518,7 +518,7 @@ class TestSyncCalendarToScenes:
         )
 
         with patch(
-            "reos.cairn.scene_calendar_sync.get_base_calendar_events",
+            "cairn.cairn.scene_calendar_sync.get_base_calendar_events",
             return_value=[event],
         ):
             mock_store = MagicMock()
@@ -546,7 +546,7 @@ class TestOutboundSync:
 
     def test_is_outbound_sync_available_false_when_not_installed(self) -> None:
         """is_outbound_sync_available returns False when bridge not available."""
-        from reos.cairn.scene_calendar_sync import is_outbound_sync_available
+        from cairn.cairn.scene_calendar_sync import is_outbound_sync_available
 
         # The function should return False when the bridge module can't be imported
         # We can test by checking current state (likely False in test environment)
@@ -556,7 +556,7 @@ class TestOutboundSync:
 
     def test_sync_scene_to_calendar_returns_none_when_bridge_unavailable(self) -> None:
         """sync_scene_to_calendar returns None when bridge is not available."""
-        from reos.cairn.scene_calendar_sync import sync_scene_to_calendar
+        from cairn.cairn.scene_calendar_sync import sync_scene_to_calendar
 
         # In test environment without Thunderbird bridge, should return None
         result = sync_scene_to_calendar(
@@ -573,7 +573,7 @@ class TestOutboundSync:
         self,
     ) -> None:
         """update_scene_calendar_event returns False when bridge is not available."""
-        from reos.cairn.scene_calendar_sync import update_scene_calendar_event
+        from cairn.cairn.scene_calendar_sync import update_scene_calendar_event
 
         result = update_scene_calendar_event(
             thunderbird_event_id="tb-event-789",
@@ -587,7 +587,7 @@ class TestOutboundSync:
         self,
     ) -> None:
         """delete_scene_calendar_event returns False when bridge is not available."""
-        from reos.cairn.scene_calendar_sync import delete_scene_calendar_event
+        from cairn.cairn.scene_calendar_sync import delete_scene_calendar_event
 
         result = delete_scene_calendar_event("tb-event-to-delete")
 
@@ -605,18 +605,18 @@ class TestCreateDeleteWithCalendarSync:
 
     def test_create_scene_with_outbound_sync(self, temp_data_dir: Path) -> None:
         """create_scene_with_calendar_sync creates Thunderbird event when enabled."""
-        from reos.cairn.scene_calendar_sync import create_scene_with_calendar_sync
-        import reos.play_db as play_db
+        from cairn.cairn.scene_calendar_sync import create_scene_with_calendar_sync
+        import cairn.play_db as play_db
 
         # Create an act first
         _, act_id = play_db.create_act(title="Test Act")
 
         with patch(
-            "reos.cairn.scene_calendar_sync.is_outbound_sync_available",
+            "cairn.cairn.scene_calendar_sync.is_outbound_sync_available",
             return_value=True,
         ):
             with patch(
-                "reos.cairn.scene_calendar_sync.sync_scene_to_calendar",
+                "cairn.cairn.scene_calendar_sync.sync_scene_to_calendar",
                 return_value="tb-synced-event",
             ):
                 scenes, tb_event_id = create_scene_with_calendar_sync(
@@ -630,13 +630,13 @@ class TestCreateDeleteWithCalendarSync:
 
     def test_create_scene_skips_sync_when_disabled(self, temp_data_dir: Path) -> None:
         """create_scene_with_calendar_sync skips sync when disabled."""
-        from reos.cairn.scene_calendar_sync import create_scene_with_calendar_sync
-        import reos.play_db as play_db
+        from cairn.cairn.scene_calendar_sync import create_scene_with_calendar_sync
+        import cairn.play_db as play_db
 
         _, act_id = play_db.create_act(title="Test Act")
 
         with patch(
-            "reos.cairn.scene_calendar_sync.sync_scene_to_calendar"
+            "cairn.cairn.scene_calendar_sync.sync_scene_to_calendar"
         ) as mock_sync:
             scenes, tb_event_id = create_scene_with_calendar_sync(
                 act_id=act_id,
@@ -651,17 +651,17 @@ class TestCreateDeleteWithCalendarSync:
         self, temp_data_dir: Path
     ) -> None:
         """create_scene_with_calendar_sync skips outbound sync when inbound event ID exists."""
-        from reos.cairn.scene_calendar_sync import create_scene_with_calendar_sync
-        import reos.play_db as play_db
+        from cairn.cairn.scene_calendar_sync import create_scene_with_calendar_sync
+        import cairn.play_db as play_db
 
         _, act_id = play_db.create_act(title="Test Act")
 
         with patch(
-            "reos.cairn.scene_calendar_sync.is_outbound_sync_available",
+            "cairn.cairn.scene_calendar_sync.is_outbound_sync_available",
             return_value=True,
         ):
             with patch(
-                "reos.cairn.scene_calendar_sync.sync_scene_to_calendar"
+                "cairn.cairn.scene_calendar_sync.sync_scene_to_calendar"
             ) as mock_sync:
                 scenes, tb_event_id = create_scene_with_calendar_sync(
                     act_id=act_id,
@@ -676,8 +676,8 @@ class TestCreateDeleteWithCalendarSync:
 
     def test_delete_scene_with_calendar_sync(self, temp_data_dir: Path) -> None:
         """delete_scene_with_calendar_sync deletes Thunderbird event."""
-        from reos.cairn.scene_calendar_sync import delete_scene_with_calendar_sync
-        import reos.play_db as play_db
+        from cairn.cairn.scene_calendar_sync import delete_scene_with_calendar_sync
+        import cairn.play_db as play_db
 
         # Create scene with thunderbird_event_id
         _, act_id = play_db.create_act(title="Test Act")
@@ -688,7 +688,7 @@ class TestCreateDeleteWithCalendarSync:
         )
 
         with patch(
-            "reos.cairn.scene_calendar_sync.delete_scene_calendar_event",
+            "cairn.cairn.scene_calendar_sync.delete_scene_calendar_event",
             return_value=True,
         ) as mock_delete:
             remaining = delete_scene_with_calendar_sync(

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from reos.knowledge_store import (
+from cairn.knowledge_store import (
     Archive,
     LearnedEntry,
     LearnedKnowledge,

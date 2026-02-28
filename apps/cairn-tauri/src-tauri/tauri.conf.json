@@ -1,0 +1,25 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Cairn by Talking Rock",
+  "identifier": "dev.cairn.app",
+  "version": "0.0.0",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Cairn",
+        "width": 1920,
+        "height": 1080
+      }
+    ],
+    "security": {
+      "csp": null,
+      "capabilities": ["main-capability"]
+    }
+  }
+}

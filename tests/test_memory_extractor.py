@@ -28,7 +28,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     data_dir.mkdir()
     monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
     play_db.close_connection()
 
     yield data_dir
@@ -39,7 +39,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 def initialized_db(temp_data_dir: Path):
     """Initialize the database and return the play_db module."""
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.init_db()
     return play_db
@@ -55,7 +55,7 @@ def test_act(initialized_db) -> str:
 @pytest.fixture
 def mock_embedding_service(monkeypatch):
     """Create a mock embedding service."""
-    from reos.memory import embeddings as emb_mod
+    from cairn.memory import embeddings as emb_mod
 
     mock = Mock()
     mock.is_available = True
@@ -95,7 +95,7 @@ def mock_embedding_service(monkeypatch):
 @pytest.fixture
 def extractor(initialized_db, mock_embedding_service):
     """Create a RelationshipExtractor with initialized database."""
-    from reos.memory.extractor import RelationshipExtractor
+    from cairn.memory.extractor import RelationshipExtractor
 
     return RelationshipExtractor()
 
@@ -103,7 +103,7 @@ def extractor(initialized_db, mock_embedding_service):
 @pytest.fixture
 def test_blocks(test_act: str, initialized_db) -> list[str]:
     """Create test blocks and return their IDs."""
-    from reos.play.blocks_db import create_block
+    from cairn.play.blocks_db import create_block
 
     blocks_data = [
         "Authentication requires valid credentials",
@@ -135,7 +135,7 @@ class TestLogicalPatternDetection:
 
     def test_detect_follows_from_patterns(self, extractor) -> None:
         """Detects FOLLOWS_FROM indicators."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         test_texts = [
             "Therefore, we should implement caching.",
@@ -151,7 +151,7 @@ class TestLogicalPatternDetection:
 
     def test_detect_caused_by_patterns(self, extractor) -> None:
         """Detects CAUSED_BY indicators."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         test_texts = [
             "Because the server crashed, we lost data.",
@@ -165,7 +165,7 @@ class TestLogicalPatternDetection:
 
     def test_detect_supports_patterns(self, extractor) -> None:
         """Detects SUPPORTS indicators."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         test_texts = [
             "For example, the login page uses OAuth.",
@@ -179,7 +179,7 @@ class TestLogicalPatternDetection:
 
     def test_detect_contradicts_patterns(self, extractor) -> None:
         """Detects CONTRADICTS indicators."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         test_texts = [
             "However, this approach has drawbacks.",
@@ -194,7 +194,7 @@ class TestLogicalPatternDetection:
 
     def test_detect_elaborates_patterns(self, extractor) -> None:
         """Detects ELABORATES indicators."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         test_texts = [
             "Specifically, we use JWT tokens.",
@@ -209,7 +209,7 @@ class TestLogicalPatternDetection:
 
     def test_detect_multiple_patterns(self, extractor) -> None:
         """Detects multiple patterns in same text."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         text = "Therefore, we changed the API. However, this caused some issues."
 
@@ -239,9 +239,9 @@ class TestExtractFromChain:
         self, extractor, test_act, test_blocks
     ) -> None:
         """extract_from_chain creates SIMILAR_TO relationships."""
-        from reos.play.blocks_db import create_block
-        from reos.memory.graph_store import MemoryGraphStore
-        from reos.memory.relationships import RelationshipType
+        from cairn.play.blocks_db import create_block
+        from cairn.memory.graph_store import MemoryGraphStore
+        from cairn.memory.relationships import RelationshipType
 
         # Create a chain block
         chain_block = create_block(
@@ -254,7 +254,7 @@ class TestExtractFromChain:
         graph_store = MemoryGraphStore()
         mock_service = extractor._embedding_service
         for block_id in test_blocks:
-            from reos.play.blocks_db import get_block
+            from cairn.play.blocks_db import get_block
             block = get_block(block_id)
             content = block.rich_text[0].content if block.rich_text else ""
             emb = mock_service.embed(content)
@@ -274,7 +274,7 @@ class TestExtractFromChain:
 
     def test_extract_handles_empty_content(self, extractor, test_act) -> None:
         """extract_from_chain handles empty content gracefully."""
-        from reos.play.blocks_db import create_block
+        from cairn.play.blocks_db import create_block
 
         chain_block = create_block(
             type="reasoning_chain",
@@ -297,8 +297,8 @@ class TestExtractFromConversation:
 
     def test_extract_creates_responds_to(self, extractor, test_act) -> None:
         """extract_from_conversation creates RESPONDS_TO relationship."""
-        from reos.play.blocks_db import create_block
-        from reos.memory.graph_store import MemoryGraphStore
+        from cairn.play.blocks_db import create_block
+        from cairn.memory.graph_store import MemoryGraphStore
 
         # Create two message blocks
         msg1 = create_block(
@@ -325,7 +325,7 @@ class TestExtractFromConversation:
 
     def test_extract_no_previous_message(self, extractor, test_act) -> None:
         """extract_from_conversation works without previous message."""
-        from reos.play.blocks_db import create_block
+        from cairn.play.blocks_db import create_block
 
         msg = create_block(
             type="paragraph",
@@ -356,13 +356,13 @@ class TestExtractFromFeedback:
         self, extractor, test_act, test_blocks
     ) -> None:
         """Positive feedback (rating >= 4) strengthens relationships."""
-        from reos.memory.graph_store import MemoryGraphStore
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.graph_store import MemoryGraphStore
+        from cairn.memory.relationships import RelationshipType
 
         graph_store = MemoryGraphStore()
 
         # Create a chain with relationships
-        from reos.play.blocks_db import create_block
+        from cairn.play.blocks_db import create_block
 
         chain = create_block(
             type="reasoning_chain",
@@ -392,13 +392,13 @@ class TestExtractFromFeedback:
         self, extractor, test_act, test_blocks
     ) -> None:
         """Negative feedback with correction creates CORRECTS relationship."""
-        from reos.memory.graph_store import MemoryGraphStore
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.graph_store import MemoryGraphStore
+        from cairn.memory.relationships import RelationshipType
 
         graph_store = MemoryGraphStore()
         extractor._graph_store = graph_store
 
-        from reos.play.blocks_db import create_block
+        from cairn.play.blocks_db import create_block
 
         # Original chain
         original = create_block(
@@ -437,7 +437,7 @@ class TestExtractFromFeedback:
 
     def test_neutral_feedback_no_changes(self, extractor, test_act) -> None:
         """Neutral feedback (rating 3) makes no changes."""
-        from reos.play.blocks_db import create_block
+        from cairn.play.blocks_db import create_block
 
         chain = create_block(
             type="reasoning_chain",
@@ -460,8 +460,8 @@ class TestConnectSequentialBlocks:
 
     def test_connect_sequential_blocks(self, extractor, test_act, test_blocks) -> None:
         """connect_sequential_blocks creates chain of relationships."""
-        from reos.memory.graph_store import MemoryGraphStore
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.graph_store import MemoryGraphStore
+        from cairn.memory.relationships import RelationshipType
 
         graph_store = MemoryGraphStore()
         extractor._graph_store = graph_store
@@ -482,8 +482,8 @@ class TestConnectSequentialBlocks:
         self, extractor, test_act, test_blocks
     ) -> None:
         """connect_sequential_blocks uses custom relationship type."""
-        from reos.memory.graph_store import MemoryGraphStore
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.graph_store import MemoryGraphStore
+        from cairn.memory.relationships import RelationshipType
 
         graph_store = MemoryGraphStore()
         extractor._graph_store = graph_store
@@ -522,14 +522,14 @@ class TestAutoLinkSimilarBlocks:
         self, extractor, test_act, test_blocks, mock_embedding_service
     ) -> None:
         """auto_link_similar_blocks creates SIMILAR_TO relationships."""
-        from reos.memory.graph_store import MemoryGraphStore
+        from cairn.memory.graph_store import MemoryGraphStore
 
         graph_store = MemoryGraphStore()
         extractor._graph_store = graph_store
 
         # Store embeddings
         for block_id in test_blocks:
-            from reos.play.blocks_db import get_block
+            from cairn.play.blocks_db import get_block
             block = get_block(block_id)
             content = block.rich_text[0].content if block.rich_text else ""
             emb = mock_embedding_service.embed(content)
@@ -550,14 +550,14 @@ class TestAutoLinkSimilarBlocks:
         self, extractor, test_act, test_blocks, mock_embedding_service
     ) -> None:
         """auto_link_similar_blocks respects similarity threshold."""
-        from reos.memory.graph_store import MemoryGraphStore
+        from cairn.memory.graph_store import MemoryGraphStore
 
         graph_store = MemoryGraphStore()
         extractor._graph_store = graph_store
 
         # Store embeddings
         for block_id in test_blocks:
-            from reos.play.blocks_db import get_block
+            from cairn.play.blocks_db import get_block
             block = get_block(block_id)
             content = block.rich_text[0].content if block.rich_text else ""
             emb = mock_embedding_service.embed(content)

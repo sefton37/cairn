@@ -10,17 +10,17 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from reos.play_db import init_db, close_connection, _get_connection
-from reos.services.compression_pipeline import (
+from cairn.play_db import init_db, close_connection, _get_connection
+from cairn.services.compression_pipeline import (
     CompressionPipeline,
     ExtractionResult,
     format_transcript,
 )
-from reos.services.compression_manager import (
+from cairn.services.compression_manager import (
     CompressionManager,
     CompressionStatus,
 )
-from reos.services.conversation_service import ConversationService
+from cairn.services.conversation_service import ConversationService
 
 
 # =============================================================================
@@ -35,7 +35,7 @@ def conv_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     data_dir.mkdir()
     monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.close_connection()
     play_db.init_db()
@@ -394,17 +394,17 @@ class TestCompressionPipeline:
         """generate_embedding returns None when no embedder is set and import fails."""
         import sys
         # Temporarily hide the embeddings module to simulate missing sentence-transformers
-        saved = sys.modules.get("reos.memory.embeddings")
-        sys.modules["reos.memory.embeddings"] = None  # type: ignore[assignment]
+        saved = sys.modules.get("cairn.memory.embeddings")
+        sys.modules["cairn.memory.embeddings"] = None  # type: ignore[assignment]
         try:
             p = CompressionPipeline(provider=mock_provider, embedding_service=None)
             result = p.generate_embedding("Some narrative")
             assert result is None
         finally:
             if saved is None:
-                sys.modules.pop("reos.memory.embeddings", None)
+                sys.modules.pop("cairn.memory.embeddings", None)
             else:
-                sys.modules["reos.memory.embeddings"] = saved
+                sys.modules["cairn.memory.embeddings"] = saved
 
 
 # =============================================================================

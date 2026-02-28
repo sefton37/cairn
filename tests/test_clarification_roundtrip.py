@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from reos.atomic_ops.models import (
+from cairn.atomic_ops.models import (
     AtomicOperation,
     Classification,
     ConsumerType,
@@ -22,7 +22,7 @@ from reos.atomic_ops.models import (
     ExecutionSemantics,
     OperationStatus,
 )
-from reos.atomic_ops.schema import AtomicOpsStore
+from cairn.atomic_ops.schema import AtomicOpsStore
 
 # =============================================================================
 # Fixtures
@@ -184,7 +184,7 @@ class TestClarificationDetection:
 
     def _make_bridge(self, llm: MockLLM | None = None):
         """Create a CairnAtomicBridge with mocked dependencies."""
-        from reos.atomic_ops.cairn_integration import CairnAtomicBridge
+        from cairn.atomic_ops.cairn_integration import CairnAtomicBridge
 
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row
@@ -247,8 +247,8 @@ class TestClarificationRoundTrip:
 
     def test_ambiguous_stores_clarification(self) -> None:
         """Ambiguous request stores clarification and returns question."""
-        from reos.atomic_ops.cairn_integration import CairnAtomicBridge
-        from reos.atomic_ops.processor import ProcessingResult
+        from cairn.atomic_ops.cairn_integration import CairnAtomicBridge
+        from cairn.atomic_ops.processor import ProcessingResult
 
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row
@@ -296,8 +296,8 @@ class TestClarificationRoundTrip:
 
     def test_answer_resolves_and_reprocesses(self) -> None:
         """Answering clarification resolves it and processes augmented input."""
-        from reos.atomic_ops.cairn_integration import CairnAtomicBridge, CairnOperationResult
-        from reos.atomic_ops.verifiers.pipeline import PipelineResult
+        from cairn.atomic_ops.cairn_integration import CairnAtomicBridge, CairnOperationResult
+        from cairn.atomic_ops.verifiers.pipeline import PipelineResult
 
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row
@@ -357,8 +357,8 @@ class TestClarificationRoundTrip:
 
     def test_non_answer_after_clarification_processes_normally(self) -> None:
         """New request after clarification skips round-trip."""
-        from reos.atomic_ops.cairn_integration import CairnAtomicBridge
-        from reos.atomic_ops.processor import ProcessingResult
+        from cairn.atomic_ops.cairn_integration import CairnAtomicBridge
+        from cairn.atomic_ops.processor import ProcessingResult
 
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row

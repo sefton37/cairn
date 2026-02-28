@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from reos.db import Database
-from reos.migrations import MigrationRunner
+from cairn.db import Database
+from cairn.migrations import MigrationRunner
 
 
 class TestForeignKeyEnforcement:

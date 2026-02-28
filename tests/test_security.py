@@ -3,7 +3,7 @@
 import pytest
 from datetime import datetime
 
-from reos.security import (
+from cairn.security import (
     ValidationError,
     validate_service_name,
     validate_container_id,

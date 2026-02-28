@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from reos.cairn.mcp_tools import CairnToolHandler, list_tools
-from reos.cairn.store import CairnStore
+from cairn.cairn.mcp_tools import CairnToolHandler, list_tools
+from cairn.cairn.store import CairnStore
 
 
 @pytest.fixture
@@ -113,7 +113,7 @@ def test_acknowledge_health_with_valid_log_id(handler: CairnToolHandler):
     handler.call_tool("cairn_health_report", {})
 
     # Manually create a surfaced finding to acknowledge
-    from reos.cairn.health.anti_nag import AntiNagProtocol
+    from cairn.cairn.health.anti_nag import AntiNagProtocol
 
     conn = handler.store._get_connection()
     anti_nag = AntiNagProtocol(conn)
@@ -139,7 +139,7 @@ def test_acknowledge_health_with_invalid_log_id(handler: CairnToolHandler):
 
 def test_acknowledge_health_missing_log_id_raises_error(handler: CairnToolHandler):
     """_acknowledge_health should raise error if log_id is missing."""
-    from reos.cairn.mcp_tools import CairnToolError
+    from cairn.cairn.mcp_tools import CairnToolError
 
     with pytest.raises(CairnToolError) as exc_info:
         handler.call_tool("cairn_acknowledge_health", {})

@@ -15,15 +15,15 @@ from pathlib import Path
 
 import pytest
 
-from reos.cairn.models import (
+from cairn.cairn.models import (
     ActivityType,
     CairnMetadata,
     ContactRelationship,
     KanbanState,
     SurfaceContext,
 )
-from reos.cairn.store import CairnStore
-from reos.cairn.surfacing import CairnSurfacer
+from cairn.cairn.store import CairnStore
+from cairn.cairn.surfacing import CairnSurfacer
 
 # =============================================================================
 # Fixtures
@@ -532,7 +532,7 @@ class TestModels:
 
     def test_activity_log_entry_to_dict(self) -> None:
         """ActivityLogEntry serializes correctly."""
-        from reos.cairn.models import ActivityLogEntry
+        from cairn.cairn.models import ActivityLogEntry
 
         entry = ActivityLogEntry(
             log_id="log1",
@@ -549,7 +549,7 @@ class TestModels:
 
     def test_contact_link_to_dict_and_from_dict(self) -> None:
         """ContactLink round-trips through dict."""
-        from reos.cairn.models import ContactLink
+        from cairn.cairn.models import ContactLink
 
         link = ContactLink(
             link_id="link1",
@@ -567,7 +567,7 @@ class TestModels:
 
     def test_undo_context_to_dict_and_from_dict(self) -> None:
         """UndoContext round-trips through dict."""
-        from reos.cairn.models import UndoContext
+        from cairn.cairn.models import UndoContext
 
         ctx = UndoContext(
             tool_name="cairn_set_priority",
@@ -585,7 +585,7 @@ class TestModels:
 
     def test_pending_confirmation_properties(self) -> None:
         """PendingConfirmation properties work correctly."""
-        from reos.cairn.models import PendingConfirmation
+        from cairn.cairn.models import PendingConfirmation
 
         conf = PendingConfirmation(
             confirmation_id="conf1",
@@ -606,7 +606,7 @@ class TestModels:
 
     def test_pending_confirmation_to_dict_from_dict(self) -> None:
         """PendingConfirmation round-trips through dict."""
-        from reos.cairn.models import PendingConfirmation
+        from cairn.cairn.models import PendingConfirmation
 
         conf = PendingConfirmation(
             confirmation_id="conf1",
@@ -625,7 +625,7 @@ class TestModels:
 
     def test_surfaced_item_fields(self) -> None:
         """SurfacedItem has expected fields."""
-        from reos.cairn.models import SurfacedItem
+        from cairn.cairn.models import SurfacedItem
 
         item = SurfacedItem(
             entity_type="act",
@@ -643,7 +643,7 @@ class TestModels:
 
     def test_tools_requiring_confirmation(self) -> None:
         """TOOLS_REQUIRING_CONFIRMATION has expected tools."""
-        from reos.cairn.models import TOOLS_REQUIRING_CONFIRMATION
+        from cairn.cairn.models import TOOLS_REQUIRING_CONFIRMATION
 
         assert "cairn_delete_act" in TOOLS_REQUIRING_CONFIRMATION
         assert "cairn_delete_scene" in TOOLS_REQUIRING_CONFIRMATION

@@ -9,15 +9,15 @@ import pytest
 
 @pytest.fixture
 def isolated_db_singleton(tmp_path: Path) -> Iterator[Path]:
-    """Ensure tests do not write to `.reos-data/`.
+    """Ensure tests do not write to the real database.
 
-    This fixture swaps the global DB singleton in `reos.db` to a temp file DB.
+    This fixture swaps the global DB singleton to a temp file DB.
     It yields the db path for convenience.
     """
 
-    import reos.db as db_mod
+    import cairn.db as db_mod
 
-    db_path = tmp_path / "reos-test.db"
+    db_path = tmp_path / "cairn-test.db"
     db_mod._db_instance = db_mod.Database(db_path=db_path)
     db_mod._db_instance.migrate()
     try:
@@ -47,19 +47,19 @@ def temp_git_repo(tmp_path: Path) -> Path:
 
     run_git(repo, ["init"])
     run_git(repo, ["config", "user.email", "test@example.com"])
-    run_git(repo, ["config", "user.name", "ReOS Test"])
+    run_git(repo, ["config", "user.name", "Cairn Test"])
 
     (repo / "docs").mkdir(parents=True, exist_ok=True)
     (repo / "docs" / "tech-roadmap.md").write_text(
-        """# Roadmap\n\nMention: src/reos/example.py\n""",
+        """# Roadmap\n\nMention: src/cairn/example.py\n""",
         encoding="utf-8",
     )
-    (repo / "ReOS_charter.md").write_text(
-        """# Charter\n\nMention: src/reos/example.py\n""",
+    (repo / "charter.md").write_text(
+        """# Charter\n\nMention: src/cairn/example.py\n""",
         encoding="utf-8",
     )
-    (repo / "src" / "reos").mkdir(parents=True, exist_ok=True)
-    (repo / "src" / "reos" / "example.py").write_text(
+    (repo / "src" / "cairn").mkdir(parents=True, exist_ok=True)
+    (repo / "src" / "cairn" / "example.py").write_text(
         """def hello() -> str:\n    return \"hello\"\n""",
         encoding="utf-8",
     )
@@ -76,7 +76,7 @@ def configured_repo(
 ) -> Path:
     """Configure the temp git repo as the active repo for tools."""
 
-    from reos.db import get_db
+    from cairn.db import get_db
 
     db = get_db()
     db.set_state(key="repo_path", value=str(temp_git_repo))
@@ -159,94 +159,12 @@ def real_llm() -> Iterator:
     if not available:
         pytest.skip("Ollama not available for E2E tests")
 
-    from reos.ollama import OllamaClient
+    from cairn.ollama import OllamaClient
     client = OllamaClient(url=base_url, model=model)
 
     yield client
 
 
-@pytest.fixture
-def e2e_executor_real_llm(
-    temp_git_repo: Path,
-    isolated_db_singleton: Path,
-    real_llm,
-) -> Iterator[tuple]:
-    """Create a fully configured CodeExecutor with REAL LLM for E2E testing.
-
-    This mirrors the exact setup in ui_rpc_server.py _handle_code_exec_start().
-    Uses real Ollama - skips if unavailable.
-
-    Yields:
-        Tuple of (executor, sandbox, act, llm, context, db)
-    """
-    from reos.db import get_db
-    from reos.code_mode import CodeSandbox, CodeExecutor
-    from reos.code_mode.streaming import ExecutionObserver, create_execution_context
-    from reos.code_mode.project_memory import ProjectMemoryStore
-    from reos.play_fs import Act
-
-    db = get_db()
-    db.set_state(key="repo_path", value=str(temp_git_repo))
-
-    # Store Ollama config (like real app does)
-    _, base_url, model = get_ollama_for_tests()
-    db.set_state(key="ollama_url", value=base_url)
-    db.set_state(key="ollama_model", value=model)
-
-    # Create execution context (like RPC layer does)
-    context = create_execution_context(
-        session_id="e2e-test-session",
-        prompt="test prompt",
-        max_iterations=10,
-    )
-
-    # Create observer (like RPC layer does)
-    observer = ExecutionObserver(context)
-
-    # Create sandbox
-    sandbox = CodeSandbox(temp_git_repo)
-
-    # Create project memory
-    project_memory = ProjectMemoryStore(db=db)
-
-    # Create executor with REAL LLM
-    executor = CodeExecutor(
-        sandbox=sandbox,
-        llm=real_llm,
-        project_memory=project_memory,
-        observer=observer,
-    )
-
-    # Create Act
-    act = Act(
-        act_id="e2e-test-act",
-        title="E2E Test Act",
-        active=True,
-        repo_path=str(temp_git_repo),
-    )
-
-    yield executor, sandbox, act, real_llm, context, db
-
-    # Cleanup
-    context.is_complete = True
-
-
-@pytest.fixture
-def session_log_dir(tmp_path: Path) -> Iterator[Path]:
-    """Create and configure a session log directory for E2E tests.
-
-    Patches the session logger to write to the temp directory.
-    """
-    log_dir = tmp_path / "reos-sessions"
-    log_dir.mkdir(parents=True, exist_ok=True)
-
-    # Patch the session logger base path
-    import reos.code_mode.session_logger as sl_mod
-    original_base = getattr(sl_mod, '_SESSION_LOG_BASE', None)
-    sl_mod._SESSION_LOG_BASE = log_dir
-
-    yield log_dir
-
-    # Restore
-    if original_base is not None:
-        sl_mod._SESSION_LOG_BASE = original_base
+# e2e_executor_real_llm and session_log_dir fixtures removed.
+# They imported reos.code_mode (RIVA), which no longer lives in Talking Rock.
+# See /home/kellogg/dev/RIVA/tests/ for the moved tests that used them.

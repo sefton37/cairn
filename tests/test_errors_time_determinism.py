@@ -4,15 +4,15 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from reos.db import get_db
-from reos.errors import record_error
+from cairn.db import get_db
+from cairn.errors import record_error
 
 
 def test_record_error_dedupe_boundary_is_deterministic(
     isolated_db_singleton,  # noqa: ANN001
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import reos.errors as errors_mod
+    import cairn.errors as errors_mod
 
     # Avoid cross-test interference.
     errors_mod._RECENT_SIGNATURES.clear()

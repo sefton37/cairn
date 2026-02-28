@@ -28,7 +28,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
 
     # Close any existing connection before test
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
     play_db.close_connection()
 
     yield data_dir
@@ -40,7 +40,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 def initialized_db(temp_data_dir: Path):
     """Initialize the database and return the play_db module."""
-    import reos.play_db as play_db
+    import cairn.play_db as play_db
 
     play_db.init_db()
     return play_db
@@ -49,7 +49,7 @@ def initialized_db(temp_data_dir: Path):
 @pytest.fixture
 def graph_store(initialized_db):
     """Create a MemoryGraphStore with initialized database."""
-    from reos.memory.graph_store import MemoryGraphStore
+    from cairn.memory.graph_store import MemoryGraphStore
 
     return MemoryGraphStore()
 
@@ -64,7 +64,7 @@ def test_act(initialized_db) -> str:
 @pytest.fixture
 def test_blocks(test_act: str, initialized_db) -> list[str]:
     """Create test blocks and return their IDs."""
-    from reos.play.blocks_db import create_block
+    from cairn.play.blocks_db import create_block
 
     block_ids = []
     for i in range(5):
@@ -88,7 +88,7 @@ class TestTraverseEdgeCases:
 
     def test_traverse_max_depth_zero(self, graph_store, test_blocks) -> None:
         """traverse() with max_depth=0 returns only the seed node."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # Create a chain: block_0 -> block_1 -> block_2
         graph_store.create_relationship(
@@ -117,7 +117,7 @@ class TestTraverseEdgeCases:
 
     def test_traverse_disconnected_nodes(self, graph_store, test_blocks) -> None:
         """traverse() doesn't find disconnected nodes."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # Create two separate components:
         # Component 1: block_0 -> block_1
@@ -147,7 +147,7 @@ class TestTraverseEdgeCases:
         self, graph_store, test_blocks
     ) -> None:
         """traverse() from isolated node returns only that node."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # Create relationships between other blocks
         graph_store.create_relationship(
@@ -164,7 +164,7 @@ class TestTraverseEdgeCases:
 
     def test_find_path_no_connection(self, graph_store, test_blocks) -> None:
         """find_path() returns None when nodes are in different components."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # Create two disconnected components
         # Component 1: block_0 -> block_1
@@ -183,7 +183,7 @@ class TestTraverseEdgeCases:
 
     def test_find_path_from_isolated_node(self, graph_store, test_blocks) -> None:
         """find_path() returns None from an isolated node."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # Create a connection not involving block_4
         graph_store.create_relationship(
@@ -197,7 +197,7 @@ class TestTraverseEdgeCases:
 
     def test_find_path_to_isolated_node(self, graph_store, test_blocks) -> None:
         """find_path() returns None to an isolated node."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # Create a connection not involving block_4
         graph_store.create_relationship(
@@ -346,7 +346,7 @@ class TestCombinedEdgeCases:
 
     def test_traverse_and_check_embeddings(self, graph_store, test_blocks) -> None:
         """Can traverse graph and check which nodes have embeddings."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # Create relationships
         graph_store.create_relationship(
@@ -379,7 +379,7 @@ class TestCombinedEdgeCases:
         self, graph_store, test_blocks
     ) -> None:
         """Can delete both relationships and embedding for a block."""
-        from reos.memory.relationships import RelationshipType
+        from cairn.memory.relationships import RelationshipType
 
         # Create relationships
         graph_store.create_relationship(

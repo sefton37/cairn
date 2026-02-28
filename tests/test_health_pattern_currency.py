@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from reos.cairn.health.checks.pattern_currency import PatternCurrencyCheck
-from reos.cairn.health.runner import Severity
-from reos.db import Database
+from cairn.cairn.health.checks.pattern_currency import PatternCurrencyCheck
+from cairn.cairn.health.runner import Severity
+from cairn.db import Database
 
 
 @pytest.fixture

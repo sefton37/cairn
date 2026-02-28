@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from reos.cairn.intent_engine import (
+from cairn.cairn.intent_engine import (
     CairnIntentEngine,
     ExtractedIntent,
     IntentAction,

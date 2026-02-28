@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from reos.db import Database
+from cairn.db import Database
 
 
 class TestChatService:
@@ -28,7 +28,7 @@ class TestChatService:
     @pytest.fixture
     def chat_service(self, db: Database):
         """Create a ChatService instance."""
-        from reos.services.chat_service import ChatService
+        from cairn.services.chat_service import ChatService
 
         return ChatService(db)
 
@@ -107,7 +107,7 @@ class TestChatService:
 
     def test_chat_request_dataclass(self) -> None:
         """ChatRequest should hold message data."""
-        from reos.services.chat_service import ChatRequest
+        from cairn.services.chat_service import ChatRequest
 
         request = ChatRequest(
             message="Hello",
@@ -120,7 +120,7 @@ class TestChatService:
 
     def test_chat_result_to_dict(self) -> None:
         """ChatResult should serialize to dict."""
-        from reos.services.chat_service import ChatResult
+        from cairn.services.chat_service import ChatResult
 
         result = ChatResult(
             answer="Hi there!",
@@ -137,7 +137,7 @@ class TestChatService:
 
     def test_model_info_to_dict(self) -> None:
         """ModelInfo should serialize to dict."""
-        from reos.services.chat_service import ModelInfo
+        from cairn.services.chat_service import ModelInfo
 
         info = ModelInfo(
             id="qwen2.5:7b",
@@ -171,7 +171,7 @@ class TestContextService:
     @pytest.fixture
     def context_service(self, db: Database):
         """Create a ContextService instance."""
-        from reos.services.context_service import ContextService
+        from cairn.services.context_service import ContextService
 
         return ContextService(db)
 
@@ -253,7 +253,7 @@ class TestPlayService:
     @pytest.fixture
     def play_service(self):
         """Create a PlayService instance."""
-        from reos.services.play_service import PlayService
+        from cairn.services.play_service import PlayService
 
         return PlayService()
 
@@ -307,7 +307,7 @@ class TestKnowledgeService:
     @pytest.fixture
     def knowledge_service(self):
         """Create a KnowledgeService instance."""
-        from reos.services.knowledge_service import KnowledgeService
+        from cairn.services.knowledge_service import KnowledgeService
 
         return KnowledgeService()
 
@@ -351,8 +351,8 @@ class TestServiceDataclasses:
 
     def test_context_stats_result_from_context_stats(self) -> None:
         """Should convert from ContextStats."""
-        from reos.context_meter import ContextStats
-        from reos.services.context_service import ContextStatsResult
+        from cairn.context_meter import ContextStats
+        from cairn.services.context_service import ContextStatsResult
 
         stats = ContextStats(
             estimated_tokens=1000,
@@ -369,8 +369,8 @@ class TestServiceDataclasses:
 
     def test_chat_result_from_chat_response(self) -> None:
         """Should convert from ChatResponse."""
-        from reos.agent import ChatResponse
-        from reos.services.chat_service import ChatResult
+        from cairn.agent import ChatResponse
+        from cairn.services.chat_service import ChatResult
 
         response = ChatResponse(
             answer="Test answer",
@@ -394,7 +394,7 @@ class TestServiceErrorHandling:
 
     def test_chat_service_handles_missing_conversation(self, db: Database) -> None:
         """Should handle getting messages for non-existent conversation."""
-        from reos.services.chat_service import ChatService
+        from cairn.services.chat_service import ChatService
 
         service = ChatService(db)
         messages = service.get_messages("nonexistent123")
@@ -402,7 +402,7 @@ class TestServiceErrorHandling:
 
     def test_context_service_handles_invalid_conversation(self, db: Database) -> None:
         """Should handle stats for non-existent conversation."""
-        from reos.services.context_service import ContextService
+        from cairn.services.context_service import ContextService
 
         service = ContextService(db)
         stats = service.get_stats(conversation_id="nonexistent123")
@@ -411,7 +411,7 @@ class TestServiceErrorHandling:
 
     def test_chat_service_clear_nonexistent_conversation(self, db: Database) -> None:
         """Should handle clearing non-existent conversation."""
-        from reos.services.chat_service import ChatService
+        from cairn.services.chat_service import ChatService
 
         service = ChatService(db)
         # Should not crash - clearing empty conversation is success

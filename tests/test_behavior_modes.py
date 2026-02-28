@@ -10,13 +10,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from reos.atomic_ops.models import (
+from cairn.atomic_ops.models import (
     Classification,
     ConsumerType,
     DestinationType,
     ExecutionSemantics,
 )
-from reos.cairn.behavior_modes import (
+from cairn.cairn.behavior_modes import (
     CALENDAR_QUERY_MODE,
     CONTACTS_QUERY_MODE,
     CONVERSATION_MODE,
@@ -305,7 +305,7 @@ class TestLLMArgExtraction:
             '{"scene_name": "Planning", "act_name": "Career",' ' "new_act_name": "Health"}'
         )
 
-        from reos.cairn.behavior_modes import _llm_extract_scene_move_args
+        from cairn.cairn.behavior_modes import _llm_extract_scene_move_args
 
         ctx = BehaviorModeContext(
             user_input="Move the Planning scene to Health",
