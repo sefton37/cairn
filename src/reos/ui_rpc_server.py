@@ -906,7 +906,7 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 raise RpcError(code=-32602, message="params must be an object")
             text = params.get("text")
             conversation_id = params.get("conversation_id")
-            extended_thinking = params.get("extended_thinking", False)
+            extended_thinking = params.get("extended_thinking")
             if not isinstance(text, str) or not text.strip():
                 raise RpcError(code=-32602, message="text is required")
             result = _handle_cairn_chat_async(

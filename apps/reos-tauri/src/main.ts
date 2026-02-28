@@ -485,8 +485,8 @@ function buildUi() {
 
   // ============ CAIRN View (Conversational) ============
   const cairnView = createCairnView({
-    onSendMessage: async (message: string, options?: { extendedThinking?: boolean }) => {
-      return handleCairnMessage(message, options);
+    onSendMessage: async (message: string) => {
+      return handleCairnMessage(message);
     },
     kernelRequest,
   });
@@ -630,7 +630,7 @@ function buildUi() {
 
   // Handle CAIRN chat messages (default conversational mode)
   // Uses async chat to enable real-time consciousness streaming
-  async function handleCairnMessage(message: string, options?: { extendedThinking?: boolean }): Promise<void> {
+  async function handleCairnMessage(message: string): Promise<void> {
     // Show thinking indicator while waiting for response
     cairnView.showThinking();
     try {
@@ -639,7 +639,6 @@ function buildUi() {
       const asyncResult = (await kernelRequest('cairn/chat_async', {
         text: message,
         conversation_id: currentConversationId,
-        extended_thinking: options?.extendedThinking === true ? true : undefined,
       })) as { chat_id: string; status: string };
 
       const chatId = asyncResult.chat_id;
