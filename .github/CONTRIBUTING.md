@@ -24,8 +24,8 @@ Talking Rock has three agents:
 
 ```bash
 # Clone and install
-git clone https://github.com/sefton37/talking_rock.git
-cd talking_rock
+git clone https://github.com/sefton37/cairn.git
+cd cairn
 pip install -e ".[dev]"
 
 # Install Ollama

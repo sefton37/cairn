@@ -72,4 +72,4 @@ When you finish a conversation with CAIRN, it extracts the meaning — what was 
 
 ## Getting Help
 
-- Issues: https://github.com/sefton37/talking_rock/issues
+- Issues: https://github.com/sefton37/cairn/issues
