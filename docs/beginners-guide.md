@@ -22,8 +22,8 @@ ollama pull llama3.2
 ### 2. Install Talking Rock
 
 ```bash
-git clone https://github.com/sefton37/talking_rock.git
-cd talking_rock
+git clone https://github.com/sefton37/cairn.git
+cd cairn
 pip install -e .
 ```
 
