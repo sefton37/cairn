@@ -30,6 +30,10 @@ import pytest
 
 from conftest import get_ollama_for_tests, requires_ollama
 
+# All tests in this module hit Ollama for real LLM inference (60s+ each).
+# Excluded from default runs; use `pytest -m slow` to include.
+pytestmark = pytest.mark.slow
+
 
 # =============================================================================
 # Test: Full RPC Flow (Simulating Tauri → Python Communication)

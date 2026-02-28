@@ -36,6 +36,9 @@ Top memories:
 Active work items:
 {active_scenes_block}
 
+User's attention priorities:
+{priorities_block}
+
 Open threads:
 {open_threads_block}
 
@@ -235,6 +238,24 @@ class StateBriefingService:
         row = cursor.fetchone()
         return row["summary"] if row else "(no prior summary)"
 
+    def _get_attention_priorities(self, limit: int = 5) -> list[str]:
+        """Fetch top user-prioritized attention items with scene titles."""
+        conn = _get_connection()
+        try:
+            cursor = conn.execute(
+                """SELECT s.title FROM attention_priorities ap
+                   JOIN scenes s ON ap.scene_id = s.scene_id
+                   ORDER BY ap.user_priority ASC
+                   LIMIT ?""",
+                (limit,),
+            )
+            return [
+                f"#{i + 1}: {row['title']}"
+                for i, row in enumerate(cursor.fetchall())
+            ]
+        except Exception:
+            return []
+
     # -------------------------------------------------------------------------
     # Generation
     # -------------------------------------------------------------------------
@@ -254,6 +275,7 @@ class StateBriefingService:
         """
         memories = self._get_top_memories()
         active_scenes = self._get_active_scenes()
+        priorities = self._get_attention_priorities()
         open_threads = self._get_open_threads()
         last_summary = self._get_last_summary()
 
@@ -263,6 +285,9 @@ class StateBriefingService:
         active_scenes_block = (
             "\n".join(f"- {s}" for s in active_scenes) if active_scenes else "(none)"
         )
+        priorities_block = (
+            "\n".join(f"- {p}" for p in priorities) if priorities else "(none)"
+        )
         open_threads_block = (
             "\n".join(f"- {t}" for t in open_threads) if open_threads else "(none)"
         )
@@ -270,6 +295,7 @@ class StateBriefingService:
         user_prompt = _BRIEFING_USER.format(
             memories_block=memories_block,
             active_scenes_block=active_scenes_block,
+            priorities_block=priorities_block,
             open_threads_block=open_threads_block,
             last_summary=last_summary,
         )

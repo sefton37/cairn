@@ -708,9 +708,26 @@ class CairnSurfacer:
                 seen.add(key)
                 deduped.append(item)
 
-        # Rank by urgency
+        # Rank by urgency tier, then user priority within tier
         urgency_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-        deduped.sort(key=lambda x: urgency_order.get(x.urgency, 4))
+
+        from reos.play_db import get_attention_priorities
+
+        try:
+            priorities = get_attention_priorities()
+        except Exception:
+            priorities = {}
+
+        # Attach user_priority to each item
+        for item in deduped:
+            if item.entity_id in priorities:
+                item.user_priority = priorities[item.entity_id]
+
+        deduped.sort(key=lambda x: (
+            urgency_order.get(x.urgency, 4),
+            x.entity_id not in priorities,  # False < True → prioritized first
+            priorities.get(x.entity_id, 999),
+        ))
 
         return deduped[:max_items]
 

@@ -53,12 +53,12 @@ def _get_triggers(conn: sqlite3.Connection) -> set[str]:
 class TestSchemaV13Fresh:
     """Tests for fresh v13 schema install."""
 
-    def test_schema_version_is_13(self):
-        assert SCHEMA_VERSION == 13
+    def test_schema_version_is_current(self):
+        assert SCHEMA_VERSION == 14
         conn = _get_connection()
         cursor = conn.execute("SELECT version FROM schema_version LIMIT 1")
         row = cursor.fetchone()
-        assert row[0] == 13
+        assert row[0] == 14
 
     def test_memories_has_source_column(self):
         conn = _get_connection()

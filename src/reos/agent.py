@@ -1057,6 +1057,7 @@ class ChatAgent:
         conversation_id: str | None = None,
         agent_type: str | None = None,
         extended_thinking: bool | None = None,
+        is_system_initiated: bool = False,
     ) -> ChatResponse:
         """Respond to user message with conversation context.
 
@@ -1070,29 +1071,33 @@ class ChatAgent:
                              If None, auto-detects based on prompt complexity.
                              If True, always runs extended thinking.
                              If False, never runs extended thinking.
+            is_system_initiated: If True, the message is system-generated (not user input).
+                               Skips prompt injection check and user message storage.
+                               The assistant response is still stored normally.
 
         Returns:
             ChatResponse with answer and metadata
         """
-        # SECURITY: Check for prompt injection attempts
-        injection_check = detect_prompt_injection(user_text)
-        if injection_check.is_suspicious:
-            audit_log(
-                AuditEventType.INJECTION_DETECTED,
-                {
-                    "patterns": injection_check.detected_patterns,
-                    "confidence": injection_check.confidence,
-                    "input_preview": user_text[:100],
-                },
-            )
-            # Log warning but don't block - just sanitize and add extra caution
-            logger.warning(
-                "Potential prompt injection detected (confidence=%.2f): %s",
-                injection_check.confidence,
-                injection_check.detected_patterns,
-            )
-            # Use sanitized input for processing
-            user_text = injection_check.sanitized_input
+        # SECURITY: Check for prompt injection attempts (skip for system-initiated)
+        if not is_system_initiated:
+            injection_check = detect_prompt_injection(user_text)
+            if injection_check.is_suspicious:
+                audit_log(
+                    AuditEventType.INJECTION_DETECTED,
+                    {
+                        "patterns": injection_check.detected_patterns,
+                        "confidence": injection_check.confidence,
+                        "input_preview": user_text[:100],
+                    },
+                )
+                # Log warning but don't block - just sanitize and add extra caution
+                logger.warning(
+                    "Potential prompt injection detected (confidence=%.2f): %s",
+                    injection_check.confidence,
+                    injection_check.detected_patterns,
+                )
+                # Use sanitized input for processing
+                user_text = injection_check.sanitized_input
 
         # Get or create conversation
         if conversation_id is None:
@@ -1104,15 +1109,18 @@ class ChatAgent:
             if conv is None:
                 self._db.create_conversation(conversation_id=conversation_id)
 
-        # Store user message
-        user_message_id = _generate_id()
-        self._db.add_message(
-            message_id=user_message_id,
-            conversation_id=conversation_id,
-            role="user",
-            content=user_text,
-            message_type="text",
-        )
+        # Store user message (skip for system-initiated — synthetic messages
+        # should not appear in conversation history)
+        user_message_id: str | None = None
+        if not is_system_initiated:
+            user_message_id = _generate_id()
+            self._db.add_message(
+                message_id=user_message_id,
+                conversation_id=conversation_id,
+                role="user",
+                content=user_text,
+                message_type="text",
+            )
 
         # Check for pending code prerequisites (e.g., waiting for repo path)
         pending_prereq = self._get_pending_code_prerequisite()
@@ -1349,6 +1357,7 @@ class ChatAgent:
                 confidence=confidence,
                 evidence_summary=evidence_summary,
                 extended_thinking_trace=extended_thinking_trace,
+                user_message_id=user_message_id,
             )
 
         wants_diff = self._user_opted_into_diff(user_text)

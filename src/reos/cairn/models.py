@@ -388,3 +388,6 @@ class SurfacedItem:
     # Coherence verification (from CAIRN Coherence Kernel)
     coherence_score: float | None = None  # -1.0 to 1.0, None = not checked
     coherence_recommendation: str | None = None  # "accept", "defer", "reject"
+
+    # User-set priority from drag-reorder (lower = higher priority)
+    user_priority: int | None = None

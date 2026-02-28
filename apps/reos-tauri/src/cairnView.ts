@@ -56,7 +56,7 @@ export function createCairnView(
   hideThinking: () => void;
   clearChat: () => void;
   getChatInput: () => HTMLInputElement;
-  updateSurfaced: (items: Array<{ title: string; reason: string; urgency: string; is_recurring?: boolean; recurrence_frequency?: string; act_color?: string }>) => void;
+  updateSurfaced: (items: Array<{ title: string; reason: string; urgency: string; is_recurring?: boolean; recurrence_frequency?: string; act_color?: string; user_priority?: number }>) => void;
   persistAndShowFeedback: (conversationId: string, userMessageId: string, responseMessageId: string) => Promise<void>;
 } {
   const state: CairnViewState = {
@@ -1359,6 +1359,7 @@ export function createCairnView(
     scene_id?: string;
     act_title?: string;
     act_color?: string;
+    user_priority?: number;
   }>): void {
     // Compute fingerprint to detect changes and avoid unnecessary re-renders
     const newFingerprint = JSON.stringify(items.map(i => ({
@@ -1367,6 +1368,7 @@ export function createCairnView(
       u: i.urgency,
       a: i.act_id,
       c: i.act_color,
+      p: i.user_priority,
     })));
 
     if (newFingerprint === surfacedFingerprint) {
@@ -1390,16 +1392,22 @@ export function createCairnView(
       return;
     }
 
-    items.forEach(item => {
+    // Drag state
+    let dragSourceIndex: number | null = null;
+
+    items.forEach((item, index) => {
       const itemEl = el('div');
+      itemEl.setAttribute('data-index', String(index));
+      itemEl.setAttribute('data-entity-id', item.entity_id || '');
+      itemEl.draggable = true;
       itemEl.style.cssText = `
         background: rgba(255,255,255,0.05);
         border: 1px solid rgba(255,255,255,0.1);
         border-radius: 8px;
         padding: 12px;
         margin-bottom: 8px;
-        cursor: pointer;
-        transition: background 0.2s;
+        cursor: grab;
+        transition: background 0.2s, opacity 0.2s;
       `;
 
       const urgencyColor = item.urgency === 'critical' ? '#ef4444'
@@ -1430,6 +1438,93 @@ export function createCairnView(
         </div>
       `;
 
+      // --- Drag-and-drop handlers ---
+      itemEl.addEventListener('dragstart', (e: DragEvent) => {
+        dragSourceIndex = index;
+        itemEl.style.opacity = '0.4';
+        e.dataTransfer!.effectAllowed = 'move';
+        e.dataTransfer!.setData('text/plain', String(index));
+      });
+
+      itemEl.addEventListener('dragover', (e: DragEvent) => {
+        e.preventDefault();
+        e.dataTransfer!.dropEffect = 'move';
+        const rect = itemEl.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        // Show insertion indicator
+        if (e.clientY < midY) {
+          itemEl.style.borderTop = '2px solid #3b82f6';
+          itemEl.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+        } else {
+          itemEl.style.borderBottom = '2px solid #3b82f6';
+          itemEl.style.borderTop = '1px solid rgba(255,255,255,0.1)';
+        }
+      });
+
+      itemEl.addEventListener('dragleave', () => {
+        itemEl.style.borderTop = '1px solid rgba(255,255,255,0.1)';
+        itemEl.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+      });
+
+      itemEl.addEventListener('drop', (e: DragEvent) => {
+        e.preventDefault();
+        itemEl.style.borderTop = '1px solid rgba(255,255,255,0.1)';
+        itemEl.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+
+        if (dragSourceIndex === null || dragSourceIndex === index) return;
+
+        // Compute insertion position
+        const rect = itemEl.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        let targetIndex = e.clientY < midY ? index : index + 1;
+        if (dragSourceIndex < targetIndex) targetIndex--;
+
+        if (targetIndex === dragSourceIndex) return;
+
+        // Reorder items array
+        const reordered = [...items];
+        const [moved] = reordered.splice(dragSourceIndex, 1);
+        reordered.splice(targetIndex, 0, moved);
+
+        // Optimistic re-render
+        surfacedFingerprint = '';  // Force re-render
+        updateSurfaced(reordered);
+
+        // Fire RPC to persist + analyze
+        const orderedIds = reordered
+          .map(i => i.entity_id)
+          .filter((id): id is string => !!id);
+        const originalItems = items;
+        showThinking();
+        callbacks.kernelRequest('cairn/attention/reorder', {
+          ordered_scene_ids: orderedIds,
+        }).then((result: unknown) => {
+          hideThinking();
+          const r = result as { priorities_updated: number; analysis_text?: string };
+          if (r.analysis_text && r.analysis_text.trim()) {
+            addChatMessage('assistant', r.analysis_text);
+          }
+        }).catch((err: unknown) => {
+          hideThinking();
+          console.error('Failed to persist attention reorder:', err);
+          // Revert to original order on failure
+          surfacedFingerprint = '';
+          updateSurfaced(originalItems);
+        });
+      });
+
+      itemEl.addEventListener('dragend', () => {
+        itemEl.style.opacity = '1';
+        dragSourceIndex = null;
+        // Clean up any remaining indicators
+        const cards = surfacedList.querySelectorAll('[data-index]');
+        cards.forEach((card) => {
+          (card as HTMLElement).style.borderTop = '1px solid rgba(255,255,255,0.1)';
+          (card as HTMLElement).style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+        });
+      });
+
+      // --- Hover handlers ---
       itemEl.addEventListener('mouseenter', () => {
         itemEl.style.background = 'rgba(255,255,255,0.08)';
       });

@@ -554,6 +554,9 @@ from .rpc_handlers.system import (
     handle_cairn_attention as _handle_cairn_attention,
 )
 from .rpc_handlers.system import (
+    handle_cairn_attention_reorder as _handle_cairn_attention_reorder,
+)
+from .rpc_handlers.system import (
     handle_cairn_thunderbird_status as _handle_cairn_thunderbird_status,
 )
 
@@ -2879,6 +2882,23 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
             return _jsonrpc_result(
                 req_id=req_id,
                 result=_handle_cairn_attention(db, hours=hours, limit=limit),
+            )
+
+        if method == "cairn/attention/reorder":
+            if not isinstance(params, dict):
+                return _jsonrpc_error(req_id, -32602, "params must be an object")
+            ordered = params.get("ordered_scene_ids")
+            if not isinstance(ordered, list):
+                return _jsonrpc_error(req_id, -32602, "ordered_scene_ids must be a list")
+            if not all(isinstance(sid, str) for sid in ordered):
+                return _jsonrpc_error(
+                    req_id, -32602, "ordered_scene_ids elements must be strings"
+                )
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_cairn_attention_reorder(
+                    db, ordered_scene_ids=ordered
+                ),
             )
 
         # -------------------------------------------------------------------------

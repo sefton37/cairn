@@ -29,6 +29,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from reos.shell_propose import propose_command
 
+# All tests in this module hit Ollama for real LLM inference (~3-4s each).
+# Excluded from default runs; use `pytest -m slow` to include.
+pytestmark = pytest.mark.slow
+
 
 @pytest.mark.xfail(reason="LLM-dependent tests - command proposals vary based on model behavior")
 class TestParseGateE2E:

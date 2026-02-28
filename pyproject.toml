@@ -62,7 +62,10 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=reos --cov=llm --cov=classification --cov=agents --cov=routing --cov=verification --cov=search --cov-report=term-missing --cov-fail-under=45"
+addopts = "--cov=reos --cov=llm --cov=classification --cov=agents --cov=routing --cov=verification --cov=search --cov-report=term-missing --cov-fail-under=45 -m 'not slow'"
+markers = [
+    "slow: marks tests that call Ollama for real LLM inference (run with '-m slow' or '--run-slow')",
+]
 
 [tool.coverage.run]
 source = ["src/reos", "src/llm", "src/classification", "src/agents", "src/routing", "src/verification", "src/search"]

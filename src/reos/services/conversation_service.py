@@ -21,6 +21,7 @@ from uuid import uuid4
 
 from ..play_db import (
     ARCHIVED_CONVERSATIONS_ACT_ID,
+    SYSTEM_SIGNALS_CONVERSATION_ID,
     _get_connection,
     _transaction,
     init_db,
@@ -388,18 +389,23 @@ class ConversationService:
         status: str | None = None,
         limit: int = 50,
     ) -> list[Conversation]:
-        """List conversations, optionally filtered by status."""
+        """List conversations, optionally filtered by status.
+
+        Excludes the system-signals synthetic conversation (used as FK target
+        for priority_signal memories, not a real conversation).
+        """
         conn = _get_connection()
         if status:
             cursor = conn.execute(
-                "SELECT * FROM conversations WHERE status = ? "
+                "SELECT * FROM conversations WHERE status = ? AND id != ? "
                 "ORDER BY started_at DESC LIMIT ?",
-                (status, limit),
+                (status, SYSTEM_SIGNALS_CONVERSATION_ID, limit),
             )
         else:
             cursor = conn.execute(
-                "SELECT * FROM conversations ORDER BY started_at DESC LIMIT ?",
-                (limit,),
+                "SELECT * FROM conversations WHERE id != ? "
+                "ORDER BY started_at DESC LIMIT ?",
+                (SYSTEM_SIGNALS_CONVERSATION_ID, limit),
             )
         return [Conversation.from_row(row) for row in cursor.fetchall()]
 
@@ -517,8 +523,8 @@ class ConversationService:
         """
         conn = _get_connection()
 
-        conditions = ["c.status = ?"]
-        params: list[Any] = [status]
+        conditions = ["c.status = ?", "c.id != ?"]
+        params: list[Any] = [status, SYSTEM_SIGNALS_CONVERSATION_ID]
 
         if since:
             conditions.append("c.started_at >= ?")

@@ -50,7 +50,8 @@ _local = threading.local()
 #      system_role column on acts, Your Story + Archived Conversations system acts
 # v13: Add source column on memories, FTS5 tables, conversation_summaries,
 #      state_briefings, turn_assessments
-SCHEMA_VERSION = 13
+# v14: Add attention_priorities table, system-signals conversation
+SCHEMA_VERSION = 14
 
 
 def _play_db_path() -> Path:
@@ -338,7 +339,7 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             signal_count INTEGER NOT NULL DEFAULT 1,
             last_reinforced_at TEXT,
             source TEXT NOT NULL DEFAULT 'compression'
-                CHECK (source IN ('compression', 'turn_assessment')),
+                CHECK (source IN ('compression', 'turn_assessment', 'priority_signal')),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (destination_act_id) REFERENCES acts(act_id) ON DELETE SET NULL,
             CHECK (status IN ('pending_review', 'approved', 'rejected', 'superseded'))
@@ -446,6 +447,16 @@ def _init_schema(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_turn_assessments_conversation
             ON turn_assessments(conversation_id);
+
+        -- Attention priorities (v14: user drag-reorder of attention cards)
+        CREATE TABLE IF NOT EXISTS attention_priorities (
+            scene_id TEXT PRIMARY KEY REFERENCES scenes(scene_id) ON DELETE CASCADE,
+            user_priority INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_attention_priorities_rank
+            ON attention_priorities(user_priority);
     """)
 
     conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
@@ -455,6 +466,9 @@ def _init_schema(conn: sqlite3.Connection) -> None:
 
     # Create system acts for fresh databases
     _create_system_acts(conn)
+
+    # Create system-signals conversation for priority memories (v14)
+    _create_system_signals_conversation(conn)
 
 
 def _run_schema_migrations(conn: sqlite3.Connection, current_version: int) -> None:
@@ -529,6 +543,11 @@ def _run_schema_migrations(conn: sqlite3.Connection, current_version: int) -> No
     if current_version < 13:
         logger.info("Running v13 migration: Add FTS5, summaries, briefings, assessments")
         _migrate_v12_to_v13(conn)
+
+    # Migration v13 -> v14: Add attention_priorities table, system-signals conversation
+    if current_version < 14:
+        logger.info("Running v14 migration: Add attention priorities, system signals")
+        _migrate_v13_to_v14(conn)
 
     # Update schema version
     conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
@@ -1237,8 +1256,161 @@ def _migrate_v12_to_v13(conn: sqlite3.Connection) -> None:
     logger.info("v13 migration complete")
 
 
+def _migrate_v13_to_v14(conn: sqlite3.Connection) -> None:
+    """Migrate from v13 to v14 schema.
+
+    Adds:
+    - attention_priorities table for user-reordered attention cards
+    - system-signals synthetic conversation as FK target for priority_signal memories
+    - Expand source CHECK constraint on memories to include 'priority_signal'
+    """
+    # Expand source CHECK constraint on memories table.
+    # Fresh v13 installs have CHECK(source IN ('compression','turn_assessment')).
+    # Migrated v13 installs have no CHECK on source (ALTER TABLE can't add one).
+    # We rebuild the table to ensure 'priority_signal' is allowed everywhere.
+    cursor = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='memories'"
+    )
+    row = cursor.fetchone()
+    if row and "priority_signal" not in (row[0] or ""):
+        logger.info("Rebuilding memories table to expand source CHECK constraint")
+        conn.execute("PRAGMA foreign_keys = OFF")
+        try:
+            conn.execute("""
+                CREATE TABLE memories_new (
+                    id TEXT PRIMARY KEY,
+                    block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+                    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+                    narrative TEXT NOT NULL,
+                    narrative_embedding BLOB,
+                    destination_act_id TEXT,
+                    destination_page_id TEXT,
+                    is_your_story BOOLEAN DEFAULT 1,
+                    status TEXT NOT NULL DEFAULT 'pending_review',
+                    user_reviewed BOOLEAN DEFAULT 0,
+                    user_edited BOOLEAN DEFAULT 0,
+                    original_narrative TEXT,
+                    extraction_model TEXT,
+                    extraction_confidence REAL,
+                    signal_count INTEGER NOT NULL DEFAULT 1,
+                    last_reinforced_at TEXT,
+                    source TEXT NOT NULL DEFAULT 'compression'
+                        CHECK (source IN ('compression', 'turn_assessment', 'priority_signal')),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (destination_act_id) REFERENCES acts(act_id) ON DELETE SET NULL,
+                    CHECK (status IN ('pending_review', 'approved', 'rejected', 'superseded'))
+                )
+            """)
+            conn.execute("""INSERT INTO memories_new
+                (id, block_id, conversation_id, narrative, narrative_embedding,
+                 destination_act_id, destination_page_id, is_your_story, status,
+                 user_reviewed, user_edited, original_narrative, extraction_model,
+                 extraction_confidence, signal_count, last_reinforced_at, source,
+                 created_at)
+                SELECT id, block_id, conversation_id, narrative, narrative_embedding,
+                 destination_act_id, destination_page_id, is_your_story, status,
+                 user_reviewed, user_edited, original_narrative, extraction_model,
+                 extraction_confidence, signal_count, last_reinforced_at, source,
+                 created_at
+                FROM memories
+            """)
+            conn.execute("DROP TABLE memories")
+            conn.execute("ALTER TABLE memories_new RENAME TO memories")
+
+            # Recreate indexes
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memories_conversation "
+                "ON memories(conversation_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memories_destination "
+                "ON memories(destination_act_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memories_your_story "
+                "ON memories(is_your_story)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memories_created "
+                "ON memories(created_at)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memories_status "
+                "ON memories(status)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memories_signal "
+                "ON memories(signal_count)"
+            )
+
+            # Recreate FTS5 virtual table and triggers
+            conn.execute("DROP TABLE IF EXISTS memories_fts")
+            conn.execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+                    narrative, content='memories', content_rowid='rowid'
+                )
+            """)
+            conn.execute(
+                "INSERT INTO memories_fts(rowid, narrative) "
+                "SELECT rowid, narrative FROM memories"
+            )
+            conn.execute("DROP TRIGGER IF EXISTS memories_fts_insert")
+            conn.execute("DROP TRIGGER IF EXISTS memories_fts_delete")
+            conn.execute("DROP TRIGGER IF EXISTS memories_fts_update")
+            _create_fts_triggers(conn)
+        finally:
+            conn.execute("PRAGMA foreign_keys = ON")
+        logger.info("Rebuilt memories table with expanded source CHECK")
+
+    # Create attention_priorities table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS attention_priorities (
+            scene_id TEXT PRIMARY KEY REFERENCES scenes(scene_id) ON DELETE CASCADE,
+            user_priority INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_attention_priorities_rank "
+        "ON attention_priorities(user_priority)"
+    )
+
+    # Create system-signals conversation
+    _create_system_signals_conversation(conn)
+
+    logger.info("v14 migration complete")
+
+
+def _create_system_signals_conversation(conn: sqlite3.Connection) -> None:
+    """Create the system-signals synthetic conversation as FK target for priority memories.
+
+    This conversation is archived and never used for actual chat — it's a
+    foreign key target so priority_signal memories have a valid conversation_id.
+    """
+    cursor = conn.execute(
+        "SELECT id FROM conversations WHERE id = ?",
+        (SYSTEM_SIGNALS_CONVERSATION_ID,),
+    )
+    if not cursor.fetchone():
+        now = datetime.now(timezone.utc).isoformat()
+        block_id = "block-system-signals"
+        conn.execute(
+            """INSERT INTO blocks (id, type, act_id, parent_id, page_id, scene_id,
+               position, created_at, updated_at)
+               VALUES (?, 'conversation', ?, NULL, NULL, NULL, 0, ?, ?)""",
+            (block_id, ARCHIVED_CONVERSATIONS_ACT_ID, now, now),
+        )
+        conn.execute(
+            """INSERT INTO conversations (id, block_id, status, started_at, archived_at)
+               VALUES (?, ?, 'archived', ?, ?)""",
+            (SYSTEM_SIGNALS_CONVERSATION_ID, block_id, now, now),
+        )
+        logger.info("Created system-signals conversation for priority memories")
+
+
 YOUR_STORY_ACT_ID = "your-story"
 ARCHIVED_CONVERSATIONS_ACT_ID = "archived-conversations"
+SYSTEM_SIGNALS_CONVERSATION_ID = "system-signals"
 
 
 def _create_system_acts(conn: sqlite3.Connection) -> None:
@@ -3013,3 +3185,31 @@ def search_blocks_in_act(act_id: str, query: str) -> list[dict[str, Any]]:
         )
 
     return results
+
+
+# =============================================================================
+# Attention Priorities
+# =============================================================================
+
+
+def get_attention_priorities() -> dict[str, int]:
+    """Return {scene_id: user_priority} for all user-prioritized attention items."""
+    conn = _get_connection()
+    cursor = conn.execute("SELECT scene_id, user_priority FROM attention_priorities")
+    return {row["scene_id"]: row["user_priority"] for row in cursor.fetchall()}
+
+
+def set_attention_priorities(ordered_scene_ids: list[str]) -> None:
+    """Persist user-reordered attention priorities.
+
+    Position 0 in the list = highest priority (user_priority=0).
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    with _transaction() as conn:
+        conn.execute("DELETE FROM attention_priorities")
+        for position, scene_id in enumerate(ordered_scene_ids):
+            conn.execute(
+                """INSERT INTO attention_priorities (scene_id, user_priority, updated_at)
+                   VALUES (?, ?, ?)""",
+                (scene_id, position, now),
+            )

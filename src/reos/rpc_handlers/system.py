@@ -428,6 +428,14 @@ def handle_cairn_attention(
     except Exception as e:
         logger.debug("Health check at startup failed: %s", e)
 
+    # Load user priorities to include in response
+    from reos.play_db import get_attention_priorities
+
+    try:
+        priorities = get_attention_priorities()
+    except Exception:
+        priorities = {}
+
     return {
         "count": len(items),
         "items": [
@@ -446,10 +454,119 @@ def handle_cairn_attention(
                 "scene_id": item.scene_id,
                 "act_title": act_info.get(item.act_id, {}).get("title") if item.act_id else None,
                 "act_color": act_info.get(item.act_id, {}).get("color") if item.act_id else None,
+                "user_priority": priorities.get(item.entity_id),
             }
             for item in items
         ],
         "health_warnings": health_warnings,
+    }
+
+
+def handle_cairn_attention_reorder(
+    db: Database,
+    *,
+    ordered_scene_ids: list[str],
+) -> dict[str, Any]:
+    """Reorder attention items based on user drag-and-drop.
+
+    Persists the new order, then asks CAIRN to analyze the reorder
+    and propose memories for user approval via conversation.
+    """
+    from reos.cairn.models import ActivityType
+    from reos.cairn.store import CairnStore
+    from reos.services.priority_signal_service import PrioritySignalService
+    from reos.services.priority_analysis_service import PriorityAnalysisService
+    from reos.services.conversation_service import ConversationService
+    from reos import play_db
+
+    play_path = get_current_play_path(db)
+
+    # 1. Capture old order BEFORE persisting
+    try:
+        old_priorities = play_db.get_attention_priorities()
+    except Exception:
+        old_priorities = {}
+
+    # 2. Gather scene details for context
+    scene_details: list[dict[str, Any]] = []
+    if ordered_scene_ids:
+        try:
+            conn = play_db._get_connection()
+            placeholders = ",".join("?" * len(ordered_scene_ids))
+            cursor = conn.execute(
+                f"""SELECT s.scene_id, s.title, s.stage,
+                           substr(s.notes, 1, 300) as notes,
+                           s.calendar_event_start AS start_date,
+                           s.calendar_event_end   AS end_date,
+                           s.act_id,
+                           a.title as act_title
+                    FROM scenes s
+                    LEFT JOIN acts a ON s.act_id = a.act_id
+                    WHERE s.scene_id IN ({placeholders})""",
+                ordered_scene_ids,
+            )
+            scene_details = [dict(row) for row in cursor.fetchall()]
+        except Exception:
+            logger.warning("Failed to look up scene details for reorder", exc_info=True)
+
+    # 3. Persist new order (DB only)
+    service = PrioritySignalService()
+    result = service.process_reorder(ordered_scene_ids)
+
+    # 4. Get active conversation (or create one)
+    conversation_id: str | None = None
+    try:
+        conv_service = ConversationService()
+        active_conv = conv_service.get_active()
+        if active_conv:
+            conversation_id = active_conv.id
+        else:
+            new_conv = conv_service.start()
+            conversation_id = new_conv.id
+    except Exception:
+        logger.debug("Failed to get/create conversation for analysis", exc_info=True)
+
+    # 5. Call CAIRN analysis (failure → empty analysis, never a 500)
+    analysis_text = ""
+    if conversation_id and ordered_scene_ids:
+        try:
+            # Add urgency info from old surfaced items to scene_details
+            for detail in scene_details:
+                sid = detail.get("scene_id", "")
+                if sid in old_priorities:
+                    detail["urgency"] = f"priority #{old_priorities[sid] + 1}"
+                else:
+                    detail["urgency"] = "unranked"
+
+            analyzer = PriorityAnalysisService()
+            analysis_text = analyzer.analyze_reorder(
+                db=db,
+                ordered_scene_ids=ordered_scene_ids,
+                old_priorities=old_priorities,
+                scene_details=scene_details,
+                conversation_id=conversation_id,
+            )
+        except Exception:
+            logger.warning("CAIRN priority analysis failed", exc_info=True)
+
+    # 6. Log activity
+    if play_path:
+        try:
+            cairn_db_path = Path(play_path) / ".cairn" / "cairn.db"
+            store = CairnStore(cairn_db_path)
+            if ordered_scene_ids:
+                store.log_activity(
+                    entity_type="scene",
+                    entity_id=ordered_scene_ids[0],
+                    activity_type=ActivityType.PRIORITY_SET,
+                )
+        except Exception:
+            logger.debug("Failed to log priority activity", exc_info=True)
+
+    return {
+        "priorities_updated": result["priorities_updated"],
+        "analysis_text": analysis_text,
+        "conversation_id": conversation_id,
     }
 
 
