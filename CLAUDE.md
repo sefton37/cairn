@@ -6,10 +6,12 @@
 
 ## What This Is
 
+> **Mission:** Center your data around you, not in a data center, so that your attention is centered on what you value. Local, zero trust AI. Small models and footprint, outsized impact and trust.
+
+> **Vision:** AI that partners with you and your values, not to automate you. Intent always verified, permission always requested, all learning available to be audited and edited by you.
+
 **Talking Rock** is a local-first personal attention minder with one agent:
 - **CAIRN** — Attention minder and life organizer (1B models)
-
-**Core philosophy:** Local inference is essentially free, enabling verification and analysis at scale that cloud services can't afford. Zero trust, local only, encrypted at rest, never phones home.
 
 ---
 

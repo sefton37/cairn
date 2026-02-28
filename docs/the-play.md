@@ -280,7 +280,7 @@ Reorder blocks by dragging the grip handle that appears on hover.
 The editor is a React application mounted inside the vanilla TypeScript shell:
 
 ```
-apps/reos-tauri/src/
+apps/cairn-tauri/src/
 ├── react/                    # React components
 │   ├── BlockEditor.tsx       # TipTap editor wrapper
 │   ├── blocks/               # Block type components
@@ -322,7 +322,7 @@ CAIRN is the attention minder for The Play:
 
 ## Storage
 
-The Play is stored in SQLite (`~/.local/share/reos/reos.db`) with tables:
+The Play is stored in SQLite (`reos.db`) with tables:
 - `acts` - Life narratives (with `root_block_id` for block-based content)
 - `pages` - Block container documents within Acts
 - `blocks` - Notion-style content blocks

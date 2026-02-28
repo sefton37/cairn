@@ -270,7 +270,7 @@ CREATE TABLE classification_reasoning (
 | `SYSTEM` info | `(stream, human, read)` |
 | `CONTACTS` search | `(stream, human, read)` |
 
-### ReOS Parse Gate → Atomic Operations
+### Parse Gate → Atomic Operations
 
 | Parse Gate Intent | Typical Operations |
 |-------------------|-------------------|

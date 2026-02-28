@@ -1,16 +1,14 @@
 # Talking Rock Desktop App Vision
 
-## Purpose
+## Mission
 
-The Talking Rock Tauri desktop app is the **home base** for your AI assistant. It provides the UI for three specialized agents:
+**Center your data around you, not in a data center, so that your attention is centered on what you value.**
 
-| Agent | What It Does | UI Surface |
-|-------|--------------|------------|
-| **CAIRN** | Attention minder, life organizer (default) | Chat, The Play navigator |
-| **ReOS** | System control, Linux administration | System panel, command preview |
-| **RIVA** | Coding assistant, development help | Diff preview, execution stream |
+Local, zero-trust AI. Small models and small footprint. Outsized impact and trust.
 
-**It's not just a terminal wrapper—it's where you interact with your local AI companion.**
+## Vision
+
+AI that partners with you and your values — not to automate you. Intent always verified, permission always requested, all learning available to be audited and edited by you.
 
 ### A Mirror That Doesn't Sell Your Reflection
 
@@ -48,25 +46,20 @@ The only report goes to the only stakeholder that matters: you.
   - Learning mode toggle (show/hide command breakdowns)
 
 ### 2. Conversational Interface
-**Talk to CAIRN, who routes to the right agent**
+**Talk to CAIRN — your attention minder and life organizer**
 
 - **Chat Window** (center pane):
-  - Natural language input—CAIRN is your default conversational partner
-  - CAIRN routes to ReOS for system questions, RIVA for code questions
-  - Command preview boxes (approve/reject/explain) when ReOS proposes actions
+  - Natural language input — CAIRN is your conversational partner
+  - Intent is always verified before any action is taken
+  - Command preview boxes (approve/reject/explain) when CAIRN proposes actions
   - Live output streaming during execution
   - Post-execution summaries (what changed, how to undo)
   - Learning tooltips (command breakdowns, pattern explanations)
 
-- **Conversation Types**:
-  - **Life/Attention (CAIRN)**: "What should I focus on today?", "Show me waiting items"
-  - **System (ReOS)**: "What's using memory?", "Install docker"
-  - **Code (RIVA)**: "Add login to my API", "Fix the test failures"
-
 - **Conversation Lifecycle** (see [Conversation Lifecycle Spec](./CONVERSATION_LIFECYCLE_SPEC.md)):
   - One conversation at a time — depth over breadth
   - Deliberate closure with meaning extraction
-  - Memory review: user sees and edits what the system learned
+  - Memory review: you see and edit what the system learned before it's kept
   - Memories feed back into future conversations as reasoning context
 
 - **Context Awareness**:
@@ -82,7 +75,6 @@ The only report goes to the only stakeholder that matters: you.
   - **Acts** = Life narratives (months to years)
   - **Scenes** = Calendar events that define the narrative's journey
   - Markdown notebooks at each level
-  - Repository assignment to Acts (for RIVA context)
 
 - **Philosophy**:
   - Two levels prevent obscuring responsibility in complexity
@@ -101,52 +93,18 @@ The only report goes to the only stakeholder that matters: you.
   - Quick access to recent items
   - Contact knowledge graph (people ↔ projects)
 
-### 4. System Panel (ReOS's Domain)
-**Live view of your Linux system**
-
-- **Nav Panel** (left side):
-  - **Metrics**: CPU, RAM, disk usage (with visual indicators)
-  - **Services**: List systemd units (green=running, red=failed, gray=inactive)
-    - Click → see logs, quick restart/stop
-  - **Containers**: Docker/Podman containers and images
-    - Quick actions: stop, restart, view logs
-  - **Quick Access**: Recent conversations, saved runbooks, failed services
-
-- **Command Workflow**:
-  - Preview before execution
-  - Approval required for changes
-  - Post-execution summary with undo options
-
-### 5. Code Mode (RIVA's Domain)
-**AI-assisted development** *(development frozen — see README for current priorities)*
-
-- **Diff Preview**:
-  - See exactly what RIVA will change before it happens
-  - File-by-file, hunk-by-hunk review
-  - Accept/reject per file or per hunk
-
-- **Execution Streaming**:
-  - Current phase (Intent, Contract, Build, Verify)
-  - Progress through steps
-  - Live test output
-  - Debug attempts
-
-- **Inspector Pane** (right side):
-  - Click any response → see full reasoning trail
-  - What perspective was active
-  - What tools were called
-  - Confidence level
-
-### 6. Inspector Pane
-**Transparency for all agents**
+### 4. Inspector Pane
+**Full transparency for every response**
 
 - Click any response to see:
-  - Which agent handled it (CAIRN, ReOS, or RIVA)
   - What context was provided
   - What tools were called
   - What alternatives were considered
   - Why this approach was chosen
+  - Which memories influenced the reasoning
   - Confidence level
+
+Everything CAIRN does is auditable. Nothing is hidden.
 
 ---
 
@@ -162,22 +120,18 @@ The only report goes to the only stakeholder that matters: you.
 │ The Play     │  User: What should I focus   │  [Click response  │
 │ ├─ Act 1     │        on today?             │   to see trail]   │
 │ │  ├─ Scene  │                              │                   │
-│ └─ Act 2     │  CAIRN: Based on your Play,  │  Agent: CAIRN     │
-│    └─ Scene  │  I'd suggest focusing on...  │                   │
-│              │                              │  Context: The Play │
-│ System       │  User: Install docker        │                   │
-│ ├─ CPU 23%   │                              │  Tools Called:    │
-│ ├─ RAM 4.2GB │  ReOS: I'll install Docker   │  - play_surface   │
-│ └─ Disk 67%  │  and add you to the group.   │                   │
+│ └─ Act 2     │  CAIRN: Based on your Play   │  Context Used:    │
+│    └─ Scene  │  and recent memories, here's │  - The Play       │
+│              │  what needs attention...     │  - 3 memories     │
 │              │                              │                   │
-│ Services     │  Plan:                       │  Confidence: 95%  │
-│ ├─✓ docker   │  1. apt install docker.io    │                   │
-│ ├─✗ nginx    │  2. systemctl enable docker  │                   │
-│ └─○ apache2  │                              │                   │
-│              │  Proceed? [Yes] [No]         │                   │
-│ Containers   │                              │                   │
-│ ├─ postgres  │                              │                   │
-│ └─ redis     │                              │                   │
+│ Recent       │  User: Add a scene for the   │  Tools Called:    │
+│ ├─ Planning  │        Thursday review       │  - play_surface   │
+│ └─ Health    │                              │  - create_scene   │
+│              │  CAIRN: I'll create that.    │                   │
+│ Health       │  Confirm?                    │  Intent verified  │
+│  ● Good      │                              │  before action    │
+│              │  [Yes] [No] [Edit]           │                   │
+│              │                              │  Confidence: 95%  │
 └──────────────┴──────────────────────────────┴───────────────────┘
 ```
 
@@ -200,63 +154,39 @@ The only report goes to the only stakeholder that matters: you.
 3. If no active conversation, CAIRN surfaces: "Good morning. Based on your memories and Play, here's what needs attention..."
 4. Startup greeting is memory-driven: open threads, waiting-ons, recent decisions, stale items — all sourced from accumulated conversation memories
 5. User asks clarifying questions
-6. CAIRN updates priorities based on user decisions
-7. When done, user closes the conversation; meaning is extracted, reviewed, and routed to an Act or Your Story
-
-### Journey 3: System Issue (ReOS)
-1. User notices system slowdown
-2. Opens Talking Rock: "Why is my system slow?"
-3. CAIRN routes to ReOS
-4. ReOS checks system, finds nginx failed
-5. Offers to fix, shows command preview
-6. User approves, ReOS executes
-7. System panel updates: nginx ✓ green
-
-### Journey 4: Coding Task (RIVA) *(planned — RIVA development is frozen)*
-1. User: "Add user authentication to my API"
-2. CAIRN routes to RIVA
-3. RIVA discovers intent, builds contract
-4. Shows diff preview of proposed changes
-5. User reviews, approves
-6. RIVA executes, runs tests
-7. Self-debugs if tests fail
-
-### Journey 5: Learning
-1. User: "How do I list running containers?"
-2. CAIRN routes to ReOS
-3. ReOS: Shows `docker ps` with breakdown
-4. Explains each flag
-5. User learns the pattern
-6. Next time, types it themselves
+6. CAIRN verifies intent before any changes, asks permission before acting
+7. User updates priorities based on their own decisions — CAIRN surfaces options, never mandates
+8. When done, user closes the conversation; meaning is extracted, reviewed, and routed to an Act or Your Story
 
 ---
 
 ## What Makes Talking Rock Different
 
 ### vs. Terminal Emulators
-- Three specialized agents, not just command execution
-- Understands **intent**, routes appropriately
+- Understands **intent**, verifies it, asks permission before executing
 - The Play for life organization
-- Inspector pane for transparency
+- Inspector pane for full transparency
+- Every decision is auditable
 
 ### vs. AI Chat Apps
-- Knows **YOUR system** (not generic advice)
-- Actions are **executable** (not just suggestions)
+- Knows **YOUR context** (not generic advice)
+- Actions require **your approval** (intent verified, permission requested)
 - Safety is **built-in** (circuit breakers, previews)
 - Everything is **local** (no cloud, no privacy leak)
+- All learning is **visible and editable** by you
 
 ### vs. Productivity Apps
+- **Data sovereignty**: Your data lives on your machine, full stop
+- **Partnership, not automation**: CAIRN surfaces options and verifies intent — you decide
+- **Auditable AI**: Every memory, every inference, every decision trail is open to inspection
 - **Non-coercive**: Surfaces options, never guilt-trips
-- **Identity-aware**: Coherence kernel filters distractions
-- **Agent architecture**: Specialized helpers, not generic features
+- **Identity-aware**: Coherence kernel filters distractions based on your values
 
 ---
 
 ## The Honest Tradeoff: Speed vs. Trust
 
-> "ChatGPT optimizes for speed. RIVA optimizes for correctness."
-
-Talking Rock doesn't try to beat big tech on speed. We beat them on **reliability and trust**.
+Talking Rock doesn't try to beat big tech on speed. We optimize for **verification and user sovereignty**.
 
 | Dimension | Big Tech | Talking Rock |
 |-----------|----------|--------------|
@@ -265,13 +195,12 @@ Talking Rock doesn't try to beat big tech on speed. We beat them on **reliabilit
 | **First-try success** | 90-95% | 85-90% (but safer) |
 | **Ownership** | Their cloud, their rules | Your machine, your data |
 | **Trust** | Optimized for speed | Optimized for verification |
+| **Learning** | Opaque, inaccessible | Visible, editable by you |
 
 **The user perception we're designing for:**
-> "Takes longer and sometimes needs tweaking, but it checks its work, I own everything, and it's free."
+> "Takes longer and sometimes needs tweaking, but it checks its work, I own everything, and I can see exactly what it learned about me."
 
 **Value proposition:** All you need is patience.
-
-See [RIVA Performance Strategy](./archive/riva-performance-strategy.md) for detailed optimization strategies (frozen).
 
 ---
 
@@ -300,7 +229,7 @@ See [RIVA Performance Strategy](./archive/riva-performance-strategy.md) for deta
 ### 5. Transparent AI
 - Every response shows reasoning trail
 - No hidden decisions
-- User can audit everything
+- User can audit everything — including every memory CAIRN has formed about them
 
 ---
 
@@ -310,13 +239,13 @@ See [RIVA Performance Strategy](./archive/riva-performance-strategy.md) for deta
 
 1. **First-time users** set up and complete a task in <10 minutes
 2. **Learning happens**: Users type raw commands instead of asking
-3. **Trust is built**: Users approve commands because they see reasoning
-4. **Agent routing works**: Users naturally get routed to the right agent
-5. **CAIRN helps**: Users report feeling less overwhelmed, not more
+3. **Trust is built**: Users approve actions because they see the reasoning
+4. **CAIRN helps**: Users report feeling less overwhelmed, not more
+5. **Sovereignty is real**: Users have reviewed, edited, or rejected at least one memory
 
 **What we DON'T measure:**
 - Daily active usage (less is good if they learned!)
-- Commands executed (manual > automated for learning)
+- Actions executed (manual > automated for learning)
 - Time in app (efficiency is the goal)
 
 ---
@@ -325,17 +254,12 @@ See [RIVA Performance Strategy](./archive/riva-performance-strategy.md) for deta
 
 > **Don't rent a data center. Center your data around you.**
 
-Talking Rock is **not trying to replace your terminal or your brain**.
+Talking Rock is not trying to replace your brain or make decisions for you.
 
-It's trying to make Linux **accessible**, life **organized**, and coding **assisted**—all through a local, private, transparent AI companion.
+It's trying to make your attention **organized**, your values **reflected**, and your AI partnership **honest** — all through a local, private, transparent AI companion that works for you.
 
-The three agents work together:
-- **CAIRN** helps you decide what matters
-- **ReOS** helps you control your system
-- **RIVA** helps you write code
+**CAIRN** helps you see what matters, surfaces open threads, and verifies intent before acting. Over time, you need it less because you've internalized the patterns. Meanwhile, CAIRN understands you more because each conversation's meaning is extracted, reviewed by you, and woven into your ongoing narrative — creating a compounding loop of better understanding.
 
-And over time, you **need them less** because you've internalized the patterns. Meanwhile, Talking Rock **understands you more** because each conversation's meaning is extracted, compressed, and woven into your ongoing narrative — creating a compounding loop of better understanding.
+That's not a bug. That's the whole point.
 
-**That's not a bug. That's the whole point.**
-
-*Talking Rock: AI that works for you, on your terms.*
+*Talking Rock: AI that partners with you, on your terms.*

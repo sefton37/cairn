@@ -2,24 +2,7 @@
 
 ## Overview
 
-ReOS is a natural language interface for Linux system administration that executes shell commands via LLM. This creates a unique threat surface: user input influences AI decisions that result in privileged system operations. This document describes the defense-in-depth security architecture.
-
-## Core Architectural Principle: Never Obstruct Linux
-
-**ReOS enhances Linux - it never obstructs it.**
-
-When running from a terminal (shell integration), commands execute with full terminal access:
-- stdin/stdout/stderr connected to the terminal
-- Interactive prompts (y/n, passwords) work normally
-- Users can respond to apt, sudo, and other interactive commands
-- The escape hatch (`!command`) always works
-
-This principle means:
-1. **Terminal mode**: Commands inherit terminal I/O - user interaction preserved
-2. **GUI/API mode**: Output captured for display - non-interactive by design
-3. **No silent failures**: If a command needs input, the user can provide it
-
-The `REOS_TERMINAL_MODE` environment variable signals terminal context throughout the codebase.
+Cairn is a local-first AI assistant that processes natural language and manages personal data. This creates a security surface where user input influences AI decisions. This document describes the defense-in-depth security architecture.
 
 ## Threat Model
 
@@ -126,7 +109,7 @@ The `REOS_TERMINAL_MODE` environment variable signals terminal context throughou
 
 ### 1. Input Validation
 
-**Location**: `src/reos/security.py`
+**Location**: `src/cairn/security.py`
 
 All user-provided identifiers are validated before use:
 
@@ -184,7 +167,7 @@ User Input
 
 ### 2. Prompt Injection Detection
 
-**Location**: `src/reos/security.py`
+**Location**: `src/cairn/security.py`
 
 Detects attempts to manipulate the LLM into bypassing safety controls.
 
@@ -218,7 +201,7 @@ def detect_prompt_injection(user_input: str) -> InjectionCheckResult:
 
 ### 3. Command Safety
 
-**Location**: `src/reos/security.py`, `src/reos/linux_tools.py`
+**Location**: `src/cairn/security.py`
 
 Two-tier pattern matching:
 
@@ -260,7 +243,7 @@ RISKY_PATTERNS = [
 
 ### 4. Shell Escaping
 
-**Location**: `src/reos/security.py`
+**Location**: `src/cairn/security.py`
 
 All user values interpolated into shell commands are escaped:
 
@@ -282,7 +265,7 @@ Even with validation, we escape because:
 
 ### 5. Approval Workflow
 
-**Location**: `src/reos/ui_rpc_server.py`
+**Location**: `src/cairn/ui_rpc_server.py`
 
 ```
 User Request
@@ -326,7 +309,7 @@ if was_edited:
 
 ### 6. Rate Limiting
 
-**Location**: `src/reos/security.py`
+**Location**: `src/cairn/security.py`
 
 Token bucket rate limiter per operation category:
 
@@ -357,7 +340,7 @@ class RateLimiter:
 
 ### 7. Audit Logging
 
-**Location**: `src/reos/security.py`
+**Location**: `src/cairn/security.py`
 
 All security-relevant events are logged:
 
@@ -393,7 +376,7 @@ AUDIT: command_executed | user=local | success=True | {
 
 ### 8. Circuit Breakers
 
-**Location**: `src/reos/reasoning/engine.py`
+**Location**: `src/cairn/reasoning/engine.py`
 
 Hard-coded limits that the AI cannot override:
 

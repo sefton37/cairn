@@ -2,7 +2,7 @@
 
 > **How atomic operations are classified using LLMs with few-shot learning.**
 
-Classification in ReOS is LLM-native, not ML/SentenceTransformer-based. The system uses structured prompts with few-shot examples to classify user requests into the 3x2x3 taxonomy.
+Classification of atomic operations is LLM-native, not ML/SentenceTransformer-based. The system uses structured prompts with few-shot examples to classify user requests into the 3x2x3 taxonomy.
 
 ---
 
@@ -269,7 +269,7 @@ collect_feedback(
 
 ## Implementation Location
 
-**Key file:** `src/reos/atomic_ops/classification_context.py`
+**Key file:** `src/cairn/atomic_ops/classification_context.py`
 
 This module handles:
 - Loading few-shot examples from the database

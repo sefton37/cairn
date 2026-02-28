@@ -2,20 +2,25 @@
 
 > **The philosophical and architectural bedrock for Talking Rock's AI assistant system.**
 
-This document describes the core principles and architecture that unify CAIRN, ReOS, and RIVA. For detailed implementation, see the linked specialized documents.
+This document describes the core principles and architecture of Cairn. For detailed implementation, see the linked specialized documents.
 
 ---
 
 ## Mission
 
-> **Don't rent a data center. Center your data around you.**
+> **Center your data around you, not in a data center, so that your attention is centered on what you value. Local, zero trust AI. Small models and footprint, outsized impact and trust.**
 
-Talking Rock is an AI assistant that runs entirely on your computer. Not a thin client connecting to someone else's servers—the actual AI, running locally, under your control.
+## Vision
 
-**Local inference isn't just about privacy (though you get that too). It's about economics:**
+> **AI that partners with you and your values, not to automate you. Intent always verified, permission always requested, all learning available to be audited and edited by you.**
 
-- **Cloud AI costs money per token.** Every verification pass, every repo analysis, every safety check—they all cost the provider money. So they minimize them.
-- **Local inference is essentially free.** Once you have the model, compute costs nothing extra. So we can verify every line of code. Analyze every repository. Check every command.
+Talking Rock is an AI assistant that runs entirely on your computer. Not a thin client connecting to someone else's servers — the actual AI, running locally, under your control.
+
+**Local isn't just about privacy (though you get that too). It's about ownership of your own data and the trust that only comes from it:**
+
+- **When your data is centered around you**, no one else can read your conversations, train on your patterns, or sell your attention. The architecture makes this true by default, not by policy.
+- **When inference is local and free**, every intent can be verified before execution, every classification decision can be inspected, and every memory the system builds about you can be read, corrected, or deleted. You audit the AI that knows you.
+- **Small models on accessible hardware** — 1B parameters, 8GB RAM, no GPU — mean this isn't a privilege for the well-resourced. Outsized impact from a small footprint.
 
 ---
 
@@ -29,10 +34,7 @@ This single recursive rule governs all of Talking Rock's operations. Instead of 
 2. If yes → execute and verify
 3. If no → decompose into smaller operations and repeat
 
-This principle manifests across all agents:
-- **RIVA** decomposes complex coding intentions into verifiable contract steps
-- **CAIRN** decomposes complex attention demands into verifiable coherence facets
-- **ReOS** decomposes natural language into verifiable shell commands
+This principle manifests in CAIRN's attention minding: complex attention demands are decomposed into verifiable coherence facets.
 
 ---
 
@@ -61,7 +63,7 @@ See [Atomic Operations](./atomic-operations.md) for the complete taxonomy and cl
 
 ## Agents as Operation Generators
 
-The three agents don't replace atomic operations—they **generate** them:
+CAIRN doesn't replace atomic operations — it **generates** them:
 
 ```
 User Request
@@ -69,20 +71,19 @@ User Request
      ▼
 ┌──────────────────────────────────────────────────────┐
 │                  Agent Layer                          │
-│  ┌────────────┐  ┌────────────┐  ┌────────────────┐  │
-│  │   CAIRN    │  │    ReOS    │  │     RIVA       │  │
-│  │ Attention  │  │   System   │  │     Code       │  │
-│  │  Minder    │  │   Helper   │  │    Agent       │  │
-│  └─────┬──────┘  └─────┬──────┘  └───────┬────────┘  │
-│        │               │                  │           │
-│        └───────────────┼──────────────────┘           │
-│                        ▼                              │
-│            ┌──────────────────────┐                   │
-│            │  Atomic Operations   │                   │
-│            │  (stream/file/proc)  │                   │
-│            │  (human/machine)     │                   │
-│            │  (read/interp/exec)  │                   │
-│            └──────────────────────┘                   │
+│               ┌────────────────┐                     │
+│               │     CAIRN      │                     │
+│               │   Attention    │                     │
+│               │    Minder      │                     │
+│               └───────┬────────┘                     │
+│                       │                              │
+│                       ▼                              │
+│           ┌──────────────────────┐                   │
+│           │  Atomic Operations   │                   │
+│           │  (stream/file/proc)  │                   │
+│           │  (human/machine)     │                   │
+│           │  (read/interp/exec)  │                   │
+│           └──────────────────────┘                   │
 └──────────────────────────────────────────────────────┘
                         │
                         ▼
@@ -118,32 +119,6 @@ CAIRN generates operations like:
 - `PLAY` intents → `(file, human, execute)` for Scene creation
 
 See [CAIRN Architecture](./cairn_architecture.md) for details.
-
-### ReOS: The System Helper
-
-**Target: 1-3B parameters.** Shell commands are constrained and predictable.
-
-ReOS lets you control your Linux system through natural language while never obstructing normal terminal operation.
-
-ReOS generates operations like:
-- "what's using memory?" → `(stream, human, read)`
-- "stop docker containers" → `(process, machine, execute)`
-
-See [Parse Gate Architecture](./parse-gate.md) for details.
-
-### RIVA: The Code Agent (Frozen — NOL Backend Ready)
-
-**Target: 7-8B+ parameters.** Code generation with verification requires more capable reasoning. Development is frozen while CAIRN and ReOS prove small-model viability.
-
-RIVA provides test-first, contract-based development with multi-layer verification. The NOL integration infrastructure is complete: [NoLang](https://github.com/sefton37/nol) will serve as the code generation backend when RIVA unfreezes — the LLM will generate fixed-width NoLang assembly instead of Python/JS, and the `nolang verify` step will confirm structural correctness before execution. The bridge, translator, and verification layer are implemented with 73 passing tests.
-
-> **RIVA × NOL Alignment:** RIVA's kernel principle ("If you can't verify it, decompose it") maps naturally to NoLang's architecture. NOL function blocks are content-addressable (HASH), individually verifiable, and composable. When RIVA decomposes an intention into sub-intentions, each becomes a NoLang function with its own PRE/POST contracts and hash. The decomposition tree is a verified function hierarchy.
-
-RIVA generates operations like:
-- Code edits → `(file, machine, execute)`
-- Test runs → `(process, machine, interpret)`
-
-See [RIVA Architecture](./archive/code_mode_architecture.md) for details.
 
 ---
 
@@ -268,8 +243,6 @@ See [The Play](./the-play.md) for the complete organizational system.
 | Document | Agent |
 |----------|-------|
 | [CAIRN Architecture](./cairn_architecture.md) | Attention minder |
-| [Parse Gate](./parse-gate.md) | ReOS system helper |
-| [RIVA Architecture](./archive/code_mode_architecture.md) | Code agent (frozen, NOL backend ready) |
 | [The Play](./the-play.md) | Life organization |
 
 ## Reference Documentation
@@ -281,4 +254,4 @@ See [The Play](./the-play.md) for the complete organizational system.
 
 ---
 
-*Talking Rock: Local AI, real ownership, accessible hardware.*
+*Talking Rock: Center your data around you. Center your attention on what you value.*

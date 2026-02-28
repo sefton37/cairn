@@ -2,7 +2,7 @@
 
 > **The five-layer verification system for atomic operations.**
 
-Every atomic operation must pass through verification layers before execution. This extends RIVA's original 4-layer system (Syntax, Semantic, Behavioral, Intent) with an explicit Safety layer.
+Every atomic operation passes through five verification layers: Syntax, Semantic, Behavioral, Safety, and Intent.
 
 ---
 
@@ -456,22 +456,6 @@ CREATE TABLE operation_verification (
     CHECK (verification_layer IN ('syntax', 'semantic', 'behavioral', 'safety', 'intent'))
 );
 ```
-
----
-
-## Relationship to RIVA's 4-Layer System
-
-This 5-layer system extends RIVA's original verification approach:
-
-| RIVA Layer | V2 Layer | Notes |
-|------------|----------|-------|
-| Syntax | Syntax | Same: tree-sitter parsing |
-| Semantic | Semantic | Same: static analysis |
-| Behavioral | Behavioral | Same: pytest/runtime checks |
-| Intent | Intent | Same: LLM judge (when active) |
-| — | **Safety** | **New**: Explicit safety checks |
-
-The addition of an explicit Safety layer makes dangerous operation blocking a first-class concern rather than embedding it within other layers.
 
 ---
 

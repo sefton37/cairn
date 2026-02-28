@@ -1,84 +1,43 @@
 # Talking Rock
 
-## The Mission
+> **Mission:** Center your data around you, not in a data center, so that your attention is centered on what you value. Local, zero trust AI. Small models and footprint, outsized impact and trust.
 
-> **Don't rent a data center. Center your data around you.**
+> **Vision:** AI that partners with you and your values, not to automate you. Intent always verified, permission always requested, all learning available to be audited and edited by you.
 
-Talking Rock is an AI assistant that runs entirely on your computer. Not a thin client connecting to someone else's servers—the actual AI, running locally, under your control.
+---
 
-**This is our competitive advantage.** Local inference isn't just about privacy (though you get that too). It's about economics:
+## Why This Exists
 
-- **Cloud AI costs money per token.** Every verification pass, every analysis, every safety check—they all cost the provider money. So they minimize them.
-- **Local inference is essentially free.** Once you have the model, compute costs nothing extra. So we can verify every decision, analyze every context, check every action. Do things that subscription services can't afford at scale.
+Big tech wants AI to be a subscription you pay forever. They collect your data, train on your conversations, and can change the rules anytime. They optimize for engagement, not for you.
 
-Big tech wants AI to be a subscription you pay forever. They collect your data, train on your conversations, and can change the rules anytime.
+Talking Rock is the opposite. The AI runs on your machine. Your data never leaves. There is no server to send it to, no company that sees your priorities, your goals, or your struggles.
 
-We believe AI should be:
-- **Local** — The AI runs on your machine, not in a data center
-- **Private** — Your conversations never leave your computer
-- **Free** — No subscription, no "we changed our pricing"
-- **Yours** — Open source, can't be taken away
+**This isn't a privacy policy. It's architecture.** There's no data center involved.
 
-**Our goal: Build the best AI assistant in the world. Then give it away.**
-
-### A Mirror That Doesn't Sell Your Reflection
+### A Mirror, Not a Manager
 
 Every productivity tool asks: *"How can we capture what this person does?"*
 
 Talking Rock asks: *"How can this person see themselves clearly?"*
 
-**Zero trust. Local only. Encrypted at rest. Never phones home.**
-
 The only report goes to the only stakeholder that matters: you.
-
----
-
-## Development Priorities: Democratizing AI
-
-True democratization means running on hardware people actually have. A 70B model that needs a $2000 GPU isn't democratized—it's just a different kind of paywall.
-
-**Our target: 1B parameter models.** These run on 8GB RAM, integrated graphics, and five-year-old laptops. If your computer can run a web browser, it should be able to run Talking Rock.
-
-### Current Priorities
-
-| Priority | Agent | Target Model Size | Status |
-|----------|-------|-------------------|--------|
-| **1** | CAIRN | 1B parameters | Active development |
-
-**Why 1B is the right target:**
-
-CAIRN is an attention minder and life organizer. Surfacing tasks, managing priorities, understanding your context, and helping you focus are achievable at 1B parameters. The model needs to understand intent and match patterns, not generate complex code. This is where we deliver real value on minimal hardware.
-
-**The honest reality:** We're prioritizing what we can ship on accessible hardware today, not what sounds impressive in a README.
 
 ---
 
 ## What Talking Rock Does
 
-Talking Rock is CAIRN: a personal attention minder that helps you focus on what matters without overwhelming you.
+Talking Rock is **CAIRN**: a personal attention minder that helps you focus on what you value without overwhelming you.
 
-You talk to CAIRN about your life—your projects, your priorities, what you're waiting on, what's coming up. CAIRN surfaces what needs your attention, keeps track of your context across conversations, and helps you see where you actually are without judging you for where you aren't.
+You talk to CAIRN about your life — your projects, your priorities, what you're waiting on, what's coming up. CAIRN surfaces what needs your attention, keeps track of your context across conversations, and helps you see where you actually are without judging you for where you aren't.
 
-**Why local matters here:** Because analysis and reasoning happen locally, every request can be examined and validated without cost concerns. Cloud services charge per token—we don't.
+### How It Works
 
----
-
-## CAIRN: The Attention Minder
-
-**Thesis:** CAIRN helps you focus on what matters without overwhelming you. It shows you the next thing, not everything—and never guilt-trips you about what you haven't done.
-
-**Target: 1B parameter models.** Surfacing and prioritization are pattern-matching tasks—achievable with smaller models.
-
-### How CAIRN Works: The Journey of Your Day
-
-**Step 1: You Ask What Needs Attention**
+**You ask what needs attention:**
 ```
 You: "What should I focus on today?"
 ```
 
-**Step 2: CAIRN Checks Your Context**
-
-CAIRN knows your life structure through "The Play":
+**CAIRN checks your context** through "The Play" — your two-tier life organization system:
 ```
 [Context Check]
 ├─ Current Act: "Building my startup"
@@ -88,14 +47,7 @@ CAIRN knows your life structure through "The Play":
 └─ Last touched: Database schema (3 days ago)
 ```
 
-**Step 3: Smart Surfacing**
-
-CAIRN surfaces what needs attention based on:
-- What's blocking other work
-- What has upcoming deadlines
-- What you haven't touched recently (without guilt)
-- What aligns with your stated priorities
-
+**CAIRN surfaces what matters** based on what's blocking other work, what has deadlines, and what aligns with your stated priorities — without guilt:
 ```
 [Today's Focus]
 1. Database schema needs review (blocking frontend work)
@@ -109,7 +61,7 @@ Waiting for you when ready:
 
 ### The Play: Your Life Structure
 
-CAIRN organizes everything with deliberate simplicity—just two levels:
+Two levels. That's it.
 
 | Level | Timeframe | Example |
 |-------|-----------|---------|
@@ -118,37 +70,39 @@ CAIRN organizes everything with deliberate simplicity—just two levels:
 
 **Why just two levels?** To remove the temptation to obscure responsibility in complexity. Acts answer "What narrative does this belong to?" Scenes answer "When am I doing this?" That's enough.
 
-This structure lets CAIRN understand context. When you say "what's next?", it knows which act you're in and what scenes are coming up.
-
 ### Core Capabilities
 
-- **Project tracking** — Acts and Scenes with status and priority
+- **Smart surfacing** — Shows you the next thing, not everything
 - **Calendar integration** — Syncs with Thunderbird (including recurring events)
 - **Contact knowledge** — Knows who's involved in what
 - **Waiting-on tracking** — Knows what you're blocked on
 - **Document knowledge base** — Import PDFs, Word docs, and more for semantic search
 - **Coherence Kernel** — Filters distractions based on your stated identity and goals
-- **Health Pulse** — Monitors data freshness, calibration alignment, and system health across three axes; surfaces findings through chat ("how are you doing?") and a passive UI indicator without intrusive nagging
-- **Conversation Lifecycle** — One conversation at a time with deliberate closure; meaning is extracted and woven into your ongoing narrative
-- **Memory Architecture** — Compressed meaning from conversations becomes active reasoning context for all future interactions
-- **Your Story** — A permanent Act representing who you are across all other Acts, built from accumulated conversation memories
-
-### Conclusion
-
-CAIRN is a calm, non-judgmental life organizer. It respects your attention by showing you the next thing—not a wall of everything you haven't done. It's a mirror for self-reflection, not a surveillance tool that reports on you. Because it runs locally, your life data stays on your machine. No company sees your priorities, your goals, or your struggles.
+- **Health Pulse** — Monitors data freshness and calibration without nagging
+- **Conversation lifecycle** — One conversation at a time with deliberate closure; meaning is extracted and woven into your ongoing narrative
+- **Memory architecture** — Compressed meaning from conversations becomes active reasoning context, auditable and editable by you
+- **Your Story** — A permanent record of who you are, built from accumulated conversation memories
 
 ---
 
-## Safety: You're Always in Control
+## Safety: Intent Verified, Permission Requested, Learning Auditable
 
-**Thesis:** Talking Rock has safety limits that can be tuned but not disabled. You approve every change, and everything runs locally where you can see exactly what's happening.
+These aren't features. They're the architecture.
 
-### Approval Required
+### Intent Always Verified
+
+Every request passes through a 5-layer verification pipeline (Syntax, Semantic, Behavioral, Safety, Intent) before anything happens. Because inference is local, verification is free — so we verify everything.
+
+### Permission Always Requested
 
 - **Preview before changes** — See exactly what will change before any file is modified
 - **Explicit approval** — All changes need your OK
 - **Automatic backups** — Every modified file is backed up
 - **Undo anything** — Rollback any change
+
+### All Learning Auditable and Editable
+
+When a conversation ends, CAIRN extracts the meaning — what was decided, what changed, what's open. You see every extracted memory before it is stored. You can edit, redirect, or reject any of it. Which memories influenced which decisions is traceable. Nothing is learned behind your back.
 
 ### Built-in Limits
 
@@ -158,21 +112,23 @@ CAIRN is a calm, non-judgmental life organizer. It respects your attention by sh
 | Max run time | 5 minutes | 1-30 minutes |
 | Auth attempts (rate limit) | 5/minute | N/A |
 
-### Privacy by Architecture
+---
 
-Because Talking Rock runs locally:
-- **No tracking** — We don't know you exist
-- **No data collection** — Your conversations stay on your machine
-- **No training** — Your data is never used to train models
-- **Open source** — Read every line of code
+## Small Models, Outsized Impact
 
-**This isn't a privacy policy—it's architecture.** There's no server to send data to.
+True democratization means running on hardware people actually have. A 70B model that needs a $2000 GPU isn't democratized — it's just a different kind of paywall.
+
+**Target: 1B parameter models.** These run on 8GB RAM, integrated graphics, and five-year-old laptops. If your computer can run a web browser, it should be able to run Talking Rock.
+
+CAIRN is an attention minder. Surfacing tasks, managing priorities, understanding your context, and helping you focus are achievable at 1B parameters. The model needs to understand intent and match patterns, not generate complex code.
+
+Because inference is local, it's essentially free after download. Every verification pass, every analysis, every safety check costs nothing extra. Cloud services charge per token and minimize verification to save money. We can verify every decision, analyze every context, check every action — because the economics don't punish thoroughness.
 
 ---
 
 ## Getting Started
 
-### Quick Install (Experienced Users)
+### Quick Install
 
 ```bash
 # 1. Install Ollama (runs AI models locally)
@@ -184,13 +140,13 @@ git clone https://github.com/sefton37/talking-rock
 cd talking-rock
 pip install -e .
 
-# 3. Run the app
+# 3. Run the desktop app
 cd apps/cairn-tauri
 npm install
 npm run tauri:dev
 ```
 
-### Step-by-Step Install (Beginners)
+### Step-by-Step (Beginners)
 
 **Step 1: Install Ollama**
 
@@ -207,14 +163,9 @@ ollama pull llama3.2:1b
 **Step 2: Install Talking Rock**
 
 ```bash
-# Clone the code
 git clone https://github.com/sefton37/talking-rock
 cd talking-rock
-
-# Install Python dependencies
 pip install -e .
-
-# Install the desktop app
 cd apps/cairn-tauri
 npm install
 ```
@@ -225,18 +176,7 @@ npm install
 npm run tauri:dev
 ```
 
-A window will open. Start talking to CAIRN!
-
----
-
-## Is This For You?
-
-Talking Rock is for you if:
-- You want an AI assistant that respects your privacy
-- You're tired of subscription fatigue
-- You want a calm, non-judgmental organizer for your life
-- You have modest hardware (8GB RAM, no GPU required)
-- You believe software should work for users, not advertisers
+A window will open. Start talking to CAIRN.
 
 ### Requirements
 
@@ -245,6 +185,17 @@ Talking Rock is for you if:
 - 8GB RAM
 - 10GB disk space
 - No GPU required
+
+---
+
+## Is This For You?
+
+Talking Rock is for you if:
+- You want an AI that partners with your values, not one that automates you
+- You're tired of subscription fatigue
+- You want a calm, non-judgmental organizer for your life
+- You have modest hardware (8GB RAM, no GPU required)
+- You believe your data should be centered around you, not in a data center
 
 ### How It Compares
 
@@ -257,13 +208,15 @@ Talking Rock is for you if:
 | Runs on 8GB RAM | N/A | N/A | **Yes** |
 | Life organization | No | No | **Yes** |
 | Learns from conversations | No | No | **Yes** |
+| Learning auditable/editable | No | No | **Yes** |
+| Intent verified before action | No | No | **Yes** |
 
 ---
 
 ## What's Built
 
 ### CAIRN (Attention Minder) — Active Development
-- [x] The Play hierarchy (Acts → Scenes, 2-tier)
+- [x] The Play hierarchy (Acts and Scenes, 2-tier)
 - [x] Smart surfacing ("what needs attention")
 - [x] Calendar integration (Thunderbird)
 - [x] Contact knowledge graph
@@ -273,9 +226,13 @@ Talking Rock is for you if:
 - [x] Conversation lifecycle (singleton constraint, closure, compression pipeline)
 - [x] Memory architecture (extraction, routing, Your Story, semantic search)
 - [x] Memory-augmented reasoning (memories inform classification, decomposition, verification)
+- [x] Health Pulse (data freshness, calibration, system health — no nagging)
 - [ ] 1B model optimization and testing
 
 ### Infrastructure
+- [x] 5-layer verification pipeline (intent always verified)
+- [x] Approval workflow (permission always requested)
+- [x] Memory review gate (all learning auditable and editable)
 - [x] Automatic backups and undo
 - [x] Context preservation across conversations
 
@@ -283,25 +240,21 @@ Talking Rock is for you if:
 
 ## Documentation
 
-### Foundation (Start Here)
-
-- **[Foundation](docs/FOUNDATION.md)** — Core philosophy and architecture overview
+### Foundation
+- **[Foundation](docs/FOUNDATION.md)** — Core philosophy and architecture
 - [Atomic Operations](docs/atomic-operations.md) — 3x2x3 classification taxonomy
-- [Verification Layers](docs/verification-layers.md) — Verification system
+- [Verification Layers](docs/verification-layers.md) — 5-layer verification system
 
 ### Getting Started
-
 - [Beginner's Guide](docs/beginners-guide.md) — New to Linux? Start here
 - [App Vision](docs/app-vision.md) — What we're building and why
 
-### Agent Architecture
-
+### Architecture
 - [CAIRN Architecture](docs/cairn_architecture.md) — Attention minder design
 - [Conversation Lifecycle](docs/CONVERSATION_LIFECYCLE_SPEC.md) — Conversation lifecycle, memory extraction, and Your Story
 - [The Play](docs/the-play.md) — Life organization system
 
 ### Reference
-
 - [Security Design](docs/security.md) — How we protect your system
 - [Classification](docs/classification.md) — LLM-native 3x2x3 taxonomy
 - [Technical Roadmap](docs/tech-roadmap.md) — Development plans
@@ -332,4 +285,4 @@ MIT — Do whatever you want with it.
 
 ---
 
-*Talking Rock: Local AI, real ownership, accessible hardware.*
+*Talking Rock: Center your data around you. Center your attention on what you value.*
