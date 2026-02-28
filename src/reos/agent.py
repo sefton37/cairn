@@ -135,26 +135,71 @@ class ConversationContext:
     full_prompt_prefix: str = ""
 
     def build_prompt_prefix(self) -> str:
-        """Build the full prompt prefix from all context sources."""
+        """Build the full prompt prefix from all context sources.
+
+        Uses explicit section markers so the LLM can distinguish injected
+        reference material from actual conversation history.  Everything
+        before the CONVERSATION HISTORY section is background knowledge
+        that was NOT discussed with the user.
+        """
         parts = []
         if self.temporal_context:
             parts.append(self.temporal_context)
         if self.persona_system:
-            parts.append(self.persona_system)
+            parts.append(
+                "========== REFERENCE: SYSTEM IDENTITY ==========\n"
+                "The following defines who you are. This is configuration, "
+                "not something the user told you.\n\n"
+                f"{self.persona_system}"
+            )
         if self.persona_context:
-            parts.append(self.persona_context)
+            parts.append(
+                "========== REFERENCE: DEFAULT CONTEXT ==========\n"
+                "Background context loaded from your configuration. "
+                "The user did NOT say any of this to you.\n\n"
+                f"{self.persona_context}"
+            )
         if self.play_context:
-            parts.append(self.play_context)
+            parts.append(
+                "========== REFERENCE: THE PLAY (USER'S LIFE CONTEXT) ==========\n"
+                "Information about the user's life organization. This is stored "
+                "profile data, NOT prior conversation.\n\n"
+                f"{self.play_context}"
+            )
         if self.learned_context:
-            parts.append(self.learned_context)
+            parts.append(
+                "========== REFERENCE: LEARNED KNOWLEDGE ==========\n"
+                "Knowledge base entries. Reference material, not conversation.\n\n"
+                f"{self.learned_context}"
+            )
         if self.memory_context:
-            parts.append(self.memory_context)
+            parts.append(
+                "========== REFERENCE: MEMORIES FROM PRIOR SESSIONS ==========\n"
+                "Compressed memories from previous conversations. You may use "
+                "these to inform your responses, but do NOT say 'as we discussed' "
+                "unless the topic appears in the CONVERSATION HISTORY below.\n\n"
+                f"{self.memory_context}"
+            )
         if self.system_context:
-            parts.append(self.system_context)
+            parts.append(
+                "========== REFERENCE: SYSTEM STATE ==========\n"
+                "Current system information. Not conversation.\n\n"
+                f"{self.system_context}"
+            )
         if self.codebase_context:
-            parts.append(self.codebase_context)
+            parts.append(
+                "========== REFERENCE: CODEBASE ==========\n"
+                "Active project context. Not conversation.\n\n"
+                f"{self.codebase_context}"
+            )
         if self.conversation_history:
-            parts.append(self.conversation_history)
+            parts.append(
+                "========== CONVERSATION HISTORY (THIS SESSION) ==========\n"
+                "These are the actual messages exchanged with the user in this "
+                "session. ONLY reference these when saying 'as we discussed', "
+                "'you mentioned', 'earlier you said', etc.\n\n"
+                f"{self.conversation_history}"
+            )
         return "\n\n".join(parts)
 
 
@@ -1459,7 +1504,7 @@ class ChatAgent:
         if not history_messages:
             return ""
 
-        lines = ["CONVERSATION HISTORY:"]
+        lines = []
         for msg in history_messages:
             role = str(msg.get("role", "")).upper()
             content = str(msg.get("content", ""))

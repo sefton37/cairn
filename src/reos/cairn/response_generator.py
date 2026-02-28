@@ -105,12 +105,15 @@ class ResponseGenerator:
 
         conversation_section = ""
         if conversation_context:
-            conversation_section = f"\nRECENT CONVERSATION:\n{conversation_context}\n"
+            conversation_section = (
+                "\n\n--- CONVERSATION THIS SESSION (actual messages exchanged) ---\n"
+                f"{conversation_context}\n"
+            )
 
         persona_section = ""
         if persona_context:
             persona_section = (
-                "\nKNOWLEDGE ABOUT THE USER (the human talking to you — NOT about you):\n"
+                "\n\n--- REFERENCE: USER PROFILE (stored data, NOT prior conversation) ---\n"
                 f"{persona_context}\n"
             )
 
@@ -122,7 +125,9 @@ class ResponseGenerator:
             "The user is making casual conversation — a greeting, acknowledgment, "
             "or social nicety. Respond warmly and briefly (1-2 sentences). "
             "You can offer to help but don't be pushy. "
-            "Never mention tools, APIs, or technical internals."
+            "Never mention tools, APIs, or technical internals. "
+            "IMPORTANT: Only say 'as we discussed' or 'you mentioned' if the topic "
+            "appears in the CONVERSATION section below, never from reference data."
             f"{persona_section}{conversation_section}"
         )
 
@@ -164,7 +169,10 @@ class ResponseGenerator:
 
         conversation_section = ""
         if conversation_context:
-            conversation_section = f"\nRECENT CONVERSATION:\n{conversation_context}\n"
+            conversation_section = (
+                "\n\n--- CONVERSATION THIS SESSION (actual messages exchanged) ---\n"
+                f"{conversation_context}\n"
+            )
 
         system = system_prompt or (
             "You are CAIRN, the Attention Minder — an AI assistant. "
@@ -208,10 +216,11 @@ class ResponseGenerator:
         ctx = persona_context or "No personal information available yet."
         user = (
             f"USER QUESTION: {user_input}\n\n"
-            f"KNOWLEDGE ABOUT THE USER (the human you serve — NOT about you):\n"
+            f"--- REFERENCE: USER PROFILE (stored data, NOT prior conversation) ---\n"
             f"{ctx}\n\n"
             "Generate a helpful response using ONLY the knowledge above. "
-            "Address the user as 'you' or by name. Never confuse their identity with yours."
+            "Address the user as 'you' or by name. Never confuse their identity with yours. "
+            "Do NOT say 'as we discussed' — this is stored profile data, not conversation."
         )
 
         try:
