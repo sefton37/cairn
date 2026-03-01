@@ -2,6 +2,10 @@
 
 Handles copying files to managed storage and tracking document metadata.
 Storage location: ~/.reos-data/play/documents/{doc_id}/
+
+All file writes are routed through CryptoStorage when available, ensuring
+documents are encrypted at rest.  Falls back to plaintext writes when
+no authenticated session is active (e.g. during tests).
 """
 
 from __future__ import annotations
@@ -19,10 +23,30 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _get_crypto():
+    """Return the active CryptoStorage, or None if not authenticated."""
+    from cairn.crypto_storage import get_active_crypto
+
+    return get_active_crypto()
+
+
+def _read_json_file(path: Path) -> dict[str, Any]:
+    """Read a JSON file, decrypting if CryptoStorage is active."""
+    crypto = _get_crypto()
+    if crypto:
+        try:
+            return json.loads(crypto.decrypt(path.read_bytes()).decode("utf-8"))
+        except Exception:
+            # Fall back to plaintext (pre-encryption data)
+            pass
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def _get_documents_base_path() -> Path:
     """Get the base path for document storage."""
     base = Path(os.path.expanduser("~/.reos-data/play/documents"))
     base.mkdir(parents=True, exist_ok=True)
+    os.chmod(base, 0o700)
     return base
 
 
@@ -30,6 +54,7 @@ def _get_act_documents_path(act_id: str) -> Path:
     """Get the path for act-scoped document references."""
     base = Path(os.path.expanduser(f"~/.reos-data/play/acts/{act_id}/documents"))
     base.mkdir(parents=True, exist_ok=True)
+    os.chmod(base, 0o700)
     return base
 
 
@@ -99,7 +124,15 @@ def store_document(
     # Copy original file with preserved extension
     original_ext = source_path.suffix.lower()
     dest_path = doc_dir / f"original{original_ext}"
-    shutil.copy2(source_path, dest_path)
+
+    crypto = _get_crypto()
+    if crypto:
+        # Encrypt file content before writing
+        plaintext = source_path.read_bytes()
+        dest_path.write_bytes(crypto.encrypt(plaintext))
+        os.chmod(dest_path, 0o600)
+    else:
+        shutil.copy2(source_path, dest_path)
 
     logger.info(
         "Stored document %s: %s -> %s",
@@ -125,7 +158,13 @@ def save_extracted_text(document_id: str, text: str) -> Path:
     doc_dir.mkdir(parents=True, exist_ok=True)
 
     text_path = doc_dir / "extracted.txt"
-    text_path.write_text(text, encoding="utf-8")
+
+    crypto = _get_crypto()
+    if crypto:
+        text_path.write_bytes(crypto.encrypt(text.encode("utf-8")))
+        os.chmod(text_path, 0o600)
+    else:
+        text_path.write_text(text, encoding="utf-8")
 
     return text_path
 
@@ -143,19 +182,24 @@ def save_metadata(metadata: DocumentMetadata) -> Path:
     doc_dir.mkdir(parents=True, exist_ok=True)
 
     meta_path = doc_dir / "metadata.json"
-    meta_path.write_text(
-        json.dumps(metadata.to_dict(), indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    meta_json = json.dumps(metadata.to_dict(), indent=2, ensure_ascii=False)
+
+    crypto = _get_crypto()
+    if crypto:
+        meta_path.write_bytes(crypto.encrypt(meta_json.encode("utf-8")))
+        os.chmod(meta_path, 0o600)
+    else:
+        meta_path.write_text(meta_json, encoding="utf-8")
 
     # Also create act-scoped reference if act_id is provided
     if metadata.act_id:
         act_docs_path = _get_act_documents_path(metadata.act_id)
         ref_path = act_docs_path / f"{metadata.document_id}.json"
-        ref_path.write_text(
-            json.dumps(metadata.to_dict(), indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        if crypto:
+            ref_path.write_bytes(crypto.encrypt(meta_json.encode("utf-8")))
+            os.chmod(ref_path, 0o600)
+        else:
+            ref_path.write_text(meta_json, encoding="utf-8")
 
     return meta_path
 
@@ -191,7 +235,16 @@ def get_document_metadata(document_id: str) -> DocumentMetadata | None:
         return None
 
     try:
-        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        crypto = _get_crypto()
+        if crypto:
+            raw = meta_path.read_bytes()
+            try:
+                data = json.loads(crypto.decrypt(raw).decode("utf-8"))
+            except Exception:
+                # Fall back to plaintext (pre-encryption data)
+                data = json.loads(meta_path.read_text(encoding="utf-8"))
+        else:
+            data = json.loads(meta_path.read_text(encoding="utf-8"))
         return DocumentMetadata.from_dict(data)
     except Exception as exc:
         logger.warning("Failed to read metadata for %s: %s", document_id, exc)
@@ -250,7 +303,7 @@ def list_documents(act_id: str | None = None) -> list[DocumentMetadata]:
         documents: list[DocumentMetadata] = []
         for ref_path in act_docs_path.glob("*.json"):
             try:
-                data = json.loads(ref_path.read_text(encoding="utf-8"))
+                data = _read_json_file(ref_path)
                 documents.append(DocumentMetadata.from_dict(data))
             except Exception as exc:
                 logger.warning("Failed to read document ref %s: %s", ref_path, exc)
@@ -266,7 +319,7 @@ def list_documents(act_id: str | None = None) -> list[DocumentMetadata]:
             meta_path = doc_dir / "metadata.json"
             if meta_path.exists():
                 try:
-                    data = json.loads(meta_path.read_text(encoding="utf-8"))
+                    data = _read_json_file(meta_path)
                     documents.append(DocumentMetadata.from_dict(data))
                 except Exception as exc:
                     logger.warning("Failed to read metadata for %s: %s", doc_dir.name, exc)
@@ -310,4 +363,11 @@ def get_extracted_text(document_id: str) -> str | None:
     if not text_path.exists():
         return None
 
+    crypto = _get_crypto()
+    if crypto:
+        try:
+            return crypto.decrypt(text_path.read_bytes()).decode("utf-8")
+        except Exception:
+            # Fall back to plaintext (pre-encryption data)
+            return text_path.read_text(encoding="utf-8")
     return text_path.read_text(encoding="utf-8")

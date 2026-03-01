@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any, Iterator
 from uuid import uuid4
 
+from . import db_crypto
 from .settings import settings
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ def _get_connection() -> sqlite3.Connection:
     if not hasattr(_local, "conn") or _local.conn is None:
         db_path = _play_db_path()
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        _local.conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        _local.conn = db_crypto.connect(str(db_path), check_same_thread=False)
         _local.conn.row_factory = sqlite3.Row
         # Enable foreign keys
         _local.conn.execute("PRAGMA foreign_keys = ON")

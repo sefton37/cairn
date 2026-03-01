@@ -28,6 +28,24 @@ class CryptoStorageError(Exception):
     pass
 
 
+# ---------------------------------------------------------------------------
+# Module-level singleton for file encryption across the application
+# ---------------------------------------------------------------------------
+
+_active_crypto: "CryptoStorage | None" = None
+
+
+def set_active_crypto(crypto: "CryptoStorage | None") -> None:
+    """Set the active CryptoStorage instance (called after login)."""
+    global _active_crypto
+    _active_crypto = crypto
+
+
+def get_active_crypto() -> "CryptoStorage | None":
+    """Return the active CryptoStorage, or None if not authenticated."""
+    return _active_crypto
+
+
 class CryptoStorage:
     """Transparent encryption layer for user data.
 

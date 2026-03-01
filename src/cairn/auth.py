@@ -35,6 +35,9 @@ from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 # Session idle timeout (15 minutes)
 SESSION_IDLE_TIMEOUT_SECONDS = 15 * 60
 
+# Keyring service name for persistent data-encryption keys
+KEYRING_ENCRYPTION_SERVICE = "com.cairn.encryption"
+
 
 @dataclass
 class Session:
@@ -235,6 +238,51 @@ def generate_session_token() -> str:
     return secrets.token_hex(32)
 
 
+def _get_or_create_dek(username: str) -> bytes:
+    """Get or create a persistent data-encryption key via system keyring.
+
+    On first Polkit login, generates a 256-bit DEK and stores it in the
+    system keyring. On subsequent logins, retrieves the existing key.
+
+    Falls back to a random (non-persistent) key if the keyring is
+    unavailable (headless, no D-Bus), matching the existing graceful
+    degradation pattern in providers/secrets.py.
+
+    Args:
+        username: Linux username (keyring entry name).
+
+    Returns:
+        32-byte data-encryption key.
+    """
+    import base64
+
+    try:
+        import keyring
+
+        stored = keyring.get_password(KEYRING_ENCRYPTION_SERVICE, username)
+        if stored:
+            logger.debug("Retrieved existing DEK from keyring for %s", username)
+            return base64.b64decode(stored)
+
+        # First login: generate and persist
+        dek = secrets.token_bytes(32)
+        keyring.set_password(
+            KEYRING_ENCRYPTION_SERVICE,
+            username,
+            base64.b64encode(dek).decode("ascii"),
+        )
+        logger.info("Generated and stored new DEK in keyring for %s", username)
+        return dek
+
+    except Exception as e:
+        logger.warning(
+            "System keyring unavailable, using ephemeral key (CryptoStorage "
+            "will not persist across sessions): %s",
+            e,
+        )
+        return secrets.token_bytes(32)
+
+
 def create_session_polkit(username: str) -> Session | None:
     """Authenticate user via Polkit and create a new session.
 
@@ -252,16 +300,15 @@ def create_session_polkit(username: str) -> Session | None:
     if not authenticate_polkit(username):
         return None
 
-    # Generate session token
-    token = generate_session_token()
+    # Generate session credential
+    session_token = generate_session_token()
     now = datetime.now(UTC)
 
-    # For Polkit auth, we don't have access to password for key derivation
-    # Use a placeholder - encrypted storage requires separate key setup
-    key_material = secrets.token_bytes(32)
+    # Retrieve or create a persistent DEK via system keyring
+    key_material = _get_or_create_dek(username)
 
     return Session(
-        token=token,
+        token=session_token,
         username=username,
         created_at=now,
         last_activity=now,
@@ -280,6 +327,8 @@ def login_polkit(username: str) -> dict[str, Any]:
     Returns:
         Dict with success status, session_token, username, or error
     """
+    from . import db_crypto
+
     # Validate username format
     if not username or len(username) > 32:
         return {
@@ -306,6 +355,14 @@ def login_polkit(username: str) -> dict[str, Any]:
     # Store session
     _session_store.insert(session)
 
+    # Make DEK available to database layer
+    db_crypto.set_active_key(session.key_material)
+
+    # Initialize CryptoStorage for file encryption
+    from .crypto_storage import CryptoStorage, set_active_crypto
+
+    set_active_crypto(CryptoStorage(session))
+
     # Ensure user data directory exists
     user_data_root = session.get_user_data_root()
     user_data_root.mkdir(parents=True, exist_ok=True)
@@ -331,6 +388,8 @@ def create_session_from_pam(username: str, credential: str) -> dict[str, Any]:
     """
     import pam as pam_lib
 
+    from . import db_crypto
+
     # Validate username format (same rules as login_polkit)
     if not username or len(username) > 32:
         return {"success": False, "error": "Invalid username"}
@@ -345,17 +404,25 @@ def create_session_from_pam(username: str, credential: str) -> dict[str, Any]:
     # Derive real encryption key from credentials (Scrypt)
     key_material = derive_encryption_key(username, credential)
 
-    token = generate_session_token()
+    session_token = generate_session_token()
     now = datetime.now(UTC)
 
     session = Session(
-        token=token,
+        token=session_token,
         username=username,
         created_at=now,
         last_activity=now,
         key_material=key_material,
     )
     _session_store.insert(session)
+
+    # Make DEK available to database layer
+    db_crypto.set_active_key(session.key_material)
+
+    # Initialize CryptoStorage for file encryption
+    from .crypto_storage import CryptoStorage, set_active_crypto
+
+    set_active_crypto(CryptoStorage(session))
 
     # Ensure user data directory exists
     user_data_root = session.get_user_data_root()
@@ -390,7 +457,14 @@ def logout(session_token: str) -> dict[str, Any]:
     Returns:
         Dict with success status
     """
+    from . import db_crypto
+
     if _session_store.remove(session_token):
+        # Clear encryption state from memory when last session ends
+        db_crypto.set_active_key(None)
+        from .crypto_storage import set_active_crypto
+
+        set_active_crypto(None)
         return {"success": True}
     return {"success": False, "error": "Session not found"}
 

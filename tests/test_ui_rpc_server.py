@@ -191,14 +191,14 @@ class TestToolsHandlers:
         with patch("cairn.ui_rpc_server.list_tools") as mock_list:
             mock_list.return_value = [
                 Tool(
-                    name="linux_system_info",
-                    description="Get system information",
+                    name="cairn_get_calendar",
+                    description="Get calendar events",
                     input_schema={"type": "object", "properties": {}},
                 ),
                 Tool(
-                    name="linux_run_command",
-                    description="Run a shell command",
-                    input_schema={"type": "object", "properties": {"command": {"type": "string"}}},
+                    name="cairn_list_acts",
+                    description="List all Acts",
+                    input_schema={"type": "object", "properties": {}},
                 ),
             ]
 
@@ -208,8 +208,8 @@ class TestToolsHandlers:
         assert len(result["tools"]) == 2
 
         tool_names = [t["name"] for t in result["tools"]]
-        assert "linux_system_info" in tool_names
-        assert "linux_run_command" in tool_names
+        assert "cairn_get_calendar" in tool_names
+        assert "cairn_list_acts" in tool_names
 
         # Each tool should have required fields
         for tool in result["tools"]:
@@ -222,16 +222,16 @@ class TestToolsHandlers:
         from cairn.ui_rpc_server import _handle_tools_call
 
         with patch("cairn.ui_rpc_server.call_tool") as mock_call:
-            mock_call.return_value = {"hostname": "my-machine", "distro": "Ubuntu"}
+            mock_call.return_value = {"acts": [{"title": "Career"}]}
 
             result = _handle_tools_call(
                 db,
-                name="linux_system_info",
+                name="cairn_list_acts",
                 arguments={}
             )
 
-        assert result["hostname"] == "my-machine"
-        mock_call.assert_called_once_with(db, name="linux_system_info", arguments={})
+        assert result["acts"] == [{"title": "Career"}]
+        mock_call.assert_called_once_with(db, name="cairn_list_acts", arguments={})
 
     def test_tools_call_error_is_descriptive(self, db: Database) -> None:
         """Tool errors should be wrapped as RpcError with descriptive message."""
@@ -240,20 +240,20 @@ class TestToolsHandlers:
 
         with patch("cairn.ui_rpc_server.call_tool") as mock_call:
             mock_call.side_effect = ToolError(
-                "linux_run_command",
-                "Command blocked: 'rm -rf /' is dangerous"
+                "unknown_tool",
+                "Unknown tool: bad_tool"
             )
 
             with pytest.raises(RpcError) as exc_info:
                 _handle_tools_call(
                     db,
-                    name="linux_run_command",
-                    arguments={"command": "rm -rf /"}
+                    name="bad_tool",
+                    arguments={}
                 )
 
         # RpcError wraps the ToolError message
         error_msg = exc_info.value.message
-        assert "blocked" in error_msg.lower() or "dangerous" in error_msg.lower(), (
+        assert "unknown" in error_msg.lower() or "tool" in error_msg.lower(), (
             f"Should explain why it failed, got: {error_msg}"
         )
 

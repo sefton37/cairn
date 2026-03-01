@@ -284,7 +284,7 @@ def verify_command_safety_llm(
 
     Returns:
         Tuple of (is_safe, reason_if_unsafe).
-        Falls OPEN (returns safe) if LLM is unavailable.
+        Falls CLOSED (returns unsafe) if LLM is unavailable.
     """
     try:
         user_msg = f"Command: {command}\nUser intent: {user_intent}"
@@ -312,9 +312,9 @@ def verify_command_safety_llm(
         return is_safe, reason
 
     except Exception as e:
-        # Fail OPEN — regex layer already passed, LLM is supplementary
-        logger.debug("LLM safety check unavailable, falling through: %s", e)
-        return True, None
+        # Fail CLOSED — if LLM safety check is unavailable, deny by default
+        logger.warning("LLM safety check unavailable, denying command: %s", e)
+        return False, "LLM safety check unavailable"
 
 
 # =============================================================================

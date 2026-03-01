@@ -104,11 +104,14 @@ class TestVerifyCommandSafetyLlmBlocked:
         assert reason is None
 
 
-class TestVerifyCommandSafetyLlmFailOpen:
-    """Tests that the function fails open when the provider or response is unusable."""
+class TestVerifyCommandSafetyLlmFailClosed:
+    """Tests that the function fails closed when the provider or response is unusable.
 
-    def test_provider_raises_exception_falls_open(self):
-        """If the provider throws any exception, function returns (True, None) to fail open."""
+    Changed from fail-open to fail-closed as part of zero-trust hardening.
+    """
+
+    def test_provider_raises_exception_fails_closed(self):
+        """If the provider throws any exception, function denies the command."""
         provider = MagicMock()
         provider.chat_json.side_effect = RuntimeError("Ollama not running")
 
@@ -118,11 +121,11 @@ class TestVerifyCommandSafetyLlmFailOpen:
             provider=provider,
         )
 
-        assert is_safe is True
-        assert reason is None
+        assert is_safe is False
+        assert reason == "LLM safety check unavailable"
 
-    def test_provider_raises_connection_error_falls_open(self):
-        """A connection error (LLM server down) causes fail-open behavior."""
+    def test_provider_raises_connection_error_fails_closed(self):
+        """A connection error (LLM server down) denies the command."""
         provider = MagicMock()
         provider.chat_json.side_effect = ConnectionError("Connection refused")
 
@@ -132,11 +135,11 @@ class TestVerifyCommandSafetyLlmFailOpen:
             provider=provider,
         )
 
-        assert is_safe is True
-        assert reason is None
+        assert is_safe is False
+        assert reason == "LLM safety check unavailable"
 
-    def test_provider_raises_timeout_falls_open(self):
-        """A timeout from the provider causes fail-open behavior."""
+    def test_provider_raises_timeout_fails_closed(self):
+        """A timeout from the provider denies the command."""
         provider = MagicMock()
         provider.chat_json.side_effect = TimeoutError("Request timed out")
 
@@ -146,11 +149,11 @@ class TestVerifyCommandSafetyLlmFailOpen:
             provider=provider,
         )
 
-        assert is_safe is True
-        assert reason is None
+        assert is_safe is False
+        assert reason == "LLM safety check unavailable"
 
-    def test_invalid_json_response_falls_open(self):
-        """Malformed JSON from provider causes fail-open behavior, not a crash."""
+    def test_invalid_json_response_fails_closed(self):
+        """Malformed JSON from provider denies the command, not a crash."""
         provider = MagicMock()
         provider.chat_json.return_value = "not valid json at all"
 
@@ -160,11 +163,11 @@ class TestVerifyCommandSafetyLlmFailOpen:
             provider=provider,
         )
 
-        assert is_safe is True
-        assert reason is None
+        assert is_safe is False
+        assert reason == "LLM safety check unavailable"
 
-    def test_truncated_json_falls_open(self):
-        """Truncated/incomplete JSON from provider causes fail-open behavior."""
+    def test_truncated_json_fails_closed(self):
+        """Truncated/incomplete JSON from provider denies the command."""
         provider = MagicMock()
         provider.chat_json.return_value = '{"safe": fal'
 
@@ -174,11 +177,11 @@ class TestVerifyCommandSafetyLlmFailOpen:
             provider=provider,
         )
 
-        assert is_safe is True
-        assert reason is None
+        assert is_safe is False
+        assert reason == "LLM safety check unavailable"
 
     def test_missing_safe_key_defaults_to_safe_true(self):
-        """Valid JSON missing the 'safe' key defaults to safe=True (fails open)."""
+        """Valid JSON missing the 'safe' key defaults to safe=True (within try block)."""
         provider = MagicMock()
         provider.chat_json.return_value = '{"status": "ok"}'
 
@@ -192,7 +195,7 @@ class TestVerifyCommandSafetyLlmFailOpen:
         assert reason is None
 
     def test_empty_json_object_defaults_to_safe_true(self):
-        """Empty JSON object missing 'safe' key defaults to safe=True (fails open)."""
+        """Empty JSON object missing 'safe' key defaults to safe=True (within try block)."""
         provider = MagicMock()
         provider.chat_json.return_value = "{}"
 

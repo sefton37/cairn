@@ -4,6 +4,9 @@ Handles:
 - Archives: Full conversation storage for search
 - Learned KB: Extracted facts/lessons/observations per Act
 - Deduplication: Prevent redundant knowledge entries
+
+All file writes are routed through CryptoStorage when available, ensuring
+knowledge data is encrypted at rest.
 """
 
 from __future__ import annotations
@@ -18,6 +21,37 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _get_crypto():
+    """Return the active CryptoStorage, or None if not authenticated."""
+    from cairn.crypto_storage import get_active_crypto
+
+    return get_active_crypto()
+
+
+def _write_json(path: Path, data: dict | list) -> None:
+    """Write JSON data, encrypting if CryptoStorage is active."""
+    content = json.dumps(data, indent=2, ensure_ascii=False)
+    crypto = _get_crypto()
+    if crypto:
+        path.write_bytes(crypto.encrypt(content.encode("utf-8")))
+        os.chmod(path, 0o600)
+    else:
+        path.write_text(content, encoding="utf-8")
+
+
+def _read_json(path: Path) -> dict | list:
+    """Read JSON data, decrypting if CryptoStorage is active."""
+    crypto = _get_crypto()
+    if crypto:
+        try:
+            raw = crypto.decrypt(path.read_bytes())
+            return json.loads(raw.decode("utf-8"))
+        except Exception:
+            # Fall back to plaintext (pre-encryption data)
+            pass
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 @dataclass
@@ -172,8 +206,10 @@ class KnowledgeStore:
         return self._root / "learned.json"
 
     def _ensure_dirs(self, act_id: str | None) -> None:
-        """Ensure directories exist."""
-        self._archives_dir(act_id).mkdir(parents=True, exist_ok=True)
+        """Ensure directories exist with restrictive permissions."""
+        d = self._archives_dir(act_id)
+        d.mkdir(parents=True, exist_ok=True)
+        os.chmod(d, 0o700)
 
     # --- Archive Operations ---
 
@@ -220,7 +256,7 @@ class KnowledgeStore:
         )
 
         path = self._archives_dir(act_id) / f"{archive_id}.json"
-        path.write_text(json.dumps(archive.to_dict(), indent=2), encoding="utf-8")
+        _write_json(path, archive.to_dict())
 
         logger.info("Saved archive %s with %d messages", archive_id, len(messages))
         return archive
@@ -234,9 +270,9 @@ class KnowledgeStore:
         archives = []
         for path in archives_dir.glob("*.json"):
             try:
-                data = json.loads(path.read_text(encoding="utf-8"))
+                data = _read_json(path)
                 archives.append(Archive.from_dict(data))
-            except (json.JSONDecodeError, KeyError) as e:
+            except (json.JSONDecodeError, KeyError, Exception) as e:
                 logger.warning("Failed to load archive %s: %s", path, e)
 
         # Sort by archived_at descending (newest first)
@@ -250,9 +286,9 @@ class KnowledgeStore:
             return None
 
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = _read_json(path)
             return Archive.from_dict(data)
-        except (json.JSONDecodeError, KeyError) as e:
+        except (json.JSONDecodeError, KeyError, Exception) as e:
             logger.warning("Failed to load archive %s: %s", archive_id, e)
             return None
 
@@ -301,9 +337,9 @@ class KnowledgeStore:
             return LearnedKnowledge(act_id=act_id)
 
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = _read_json(path)
             return LearnedKnowledge.from_dict(data)
-        except (json.JSONDecodeError, KeyError) as e:
+        except (json.JSONDecodeError, KeyError, Exception) as e:
             logger.warning("Failed to load learned KB: %s", e)
             return LearnedKnowledge(act_id=act_id)
 
@@ -313,7 +349,7 @@ class KnowledgeStore:
         path.parent.mkdir(parents=True, exist_ok=True)
 
         kb.last_updated = datetime.now().isoformat()
-        path.write_text(json.dumps(kb.to_dict(), indent=2), encoding="utf-8")
+        _write_json(path, kb.to_dict())
         logger.info("Saved learned KB with %d entries", len(kb.entries))
 
     def add_learned_entries(

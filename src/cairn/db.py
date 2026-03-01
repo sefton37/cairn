@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Generator
 from uuid import uuid4
 
+from . import db_crypto
 from .settings import settings
 
 
@@ -36,7 +37,7 @@ class Database:
         # Handle :memory: databases specially
         if isinstance(self.db_path, Path):
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(
+        conn = db_crypto.connect(
             str(self.db_path),
             timeout=5.0,
             check_same_thread=False,

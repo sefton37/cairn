@@ -336,46 +336,6 @@ def list_tools() -> list[Tool]:
         ]
     )
 
-    # =========================================================================
-    # Linux System Tools
-    # =========================================================================
-    tools.extend(
-        [
-            Tool(
-                name="linux_system_info",
-                description=(
-                    "Get system information: CPU, memory, disk usage, load average, "
-                    "and uptime. Use for any system status or resource questions."
-                ),
-                input_schema={
-                    "type": "object",
-                    "properties": {},
-                },
-            ),
-            Tool(
-                name="linux_run_command",
-                description=(
-                    "Execute a shell command and return its output. "
-                    "Use for system administration tasks."
-                ),
-                input_schema={
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "Shell command to execute",
-                        },
-                        "timeout": {
-                            "type": "number",
-                            "description": "Timeout in seconds (default: 30)",
-                        },
-                    },
-                    "required": ["command"],
-                },
-            ),
-        ]
-    )
-
     return tools
 
 
@@ -449,48 +409,6 @@ def call_tool(db: Database, *, name: str, arguments: dict[str, Any] | None) -> A
         except Exception as e:
             cairn_logger.exception("CAIRN tool %s unexpected error: %s", name, e)
             return {"error": str(e), "tool": name}
-
-    # --- Linux System Tools ---
-    if name == "linux_system_info":
-        import shutil
-        import subprocess
-
-        lines: list[str] = []
-        for cmd in [
-            ["uname", "-sr"],
-            ["uptime", "-p"],
-            ["free", "-h"],
-            ["df", "-h", "--output=source,size,used,avail,pcent,target", "-x", "tmpfs", "-x", "devtmpfs"],
-        ]:
-            try:
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-                lines.append(result.stdout.strip())
-            except Exception:
-                lines.append(f"({cmd[0]} unavailable)")
-        return "\n\n".join(lines)
-
-    if name == "linux_run_command":
-        import subprocess
-
-        command = args.get("command")
-        if not command or not isinstance(command, str):
-            raise ToolError(code="invalid_args", message="'command' argument is required")
-        timeout = int(args.get("timeout", 30))
-        try:
-            result = subprocess.run(
-                command,
-                shell=True,  # noqa: S602
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-            return {
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "returncode": result.returncode,
-            }
-        except subprocess.TimeoutExpired:
-            raise ToolError(code="timeout", message=f"Command timed out after {timeout}s") from None
 
     raise ToolError(code="unknown_tool", message=f"Unknown tool: {name}")
 

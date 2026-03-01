@@ -198,9 +198,11 @@ class SafetyVerifier(BaseVerifier):
         if not operation.classification:
             return issues
 
-        # Process operations with execute semantics need scrutiny
+        # Process operations with execute semantics ALWAYS require approval
         if (operation.classification.destination == DestinationType.PROCESS and
             operation.classification.semantics == ExecutionSemantics.EXECUTE):
+
+            issues.append("Process execution requires approval")
 
             # Check if sudo is being used
             if "sudo" in operation.user_request.lower():
