@@ -200,6 +200,9 @@ from .rpc_handlers.memories import (
     handle_memories_correct as _handle_memories_correct,
 )
 from .rpc_handlers.memories import (
+    handle_memories_delete as _handle_memories_delete,
+)
+from .rpc_handlers.memories import (
     handle_memories_edit as _handle_memories_edit,
 )
 from .rpc_handlers.memories import (
@@ -2206,6 +2209,17 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
             return _jsonrpc_result(
                 req_id=req_id,
                 result=_handle_memories_reject(db, memory_id=memory_id),
+            )
+
+        if method == "lifecycle/memories/delete":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            memory_id = params.get("memory_id")
+            if not isinstance(memory_id, str) or not memory_id:
+                raise RpcError(code=-32602, message="memory_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_memories_delete(db, memory_id=memory_id),
             )
 
         if method == "lifecycle/memories/edit":

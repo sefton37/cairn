@@ -104,6 +104,18 @@ def handle_memories_route(
         return {"error": str(e)}
 
 
+@require_params("memory_id")
+@rpc_handler("lifecycle/memories/delete")
+def handle_memories_delete(db: Database, *, memory_id: str) -> dict[str, Any]:
+    """Hard-delete a memory and all related data."""
+    service = _get_service()
+    try:
+        service.delete(memory_id)
+        return {"deleted": True, "memory_id": memory_id}
+    except MemoryError as e:
+        return {"error": str(e)}
+
+
 @require_params("query")
 @rpc_handler("lifecycle/memories/search")
 def handle_memories_search(

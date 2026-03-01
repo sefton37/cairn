@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Generator
+from uuid import uuid4
 
 from .settings import settings
 
@@ -688,6 +690,42 @@ class Database:
             VALUES (?, ?, ?, ?, ?, ?)
             """,
             (classification_id, session_id, kind, severity, explanation, now),
+        )
+        self.connect().commit()
+
+    def insert_audit_event(
+        self,
+        event_type: str,
+        timestamp: str,
+        details: dict[str, object] | None = None,
+        user: str | None = None,
+        session_id: str | None = None,
+        success: bool = True,
+    ) -> None:
+        """Insert a security audit event into the audit_log table.
+
+        Maps SecurityAuditor fields onto audit_log columns:
+          action        ← event_type
+          resource_type ← user (who triggered the event)
+          resource_id   ← session_id
+          before_state  ← JSON-encoded details dict
+          after_state   ← JSON-encoded {"success": <bool>}
+        """
+        self._execute(
+            """
+            INSERT INTO audit_log
+            (id, action, resource_type, resource_id, before_state, after_state, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(uuid4()),
+                event_type,
+                user,
+                session_id,
+                json.dumps(details) if details is not None else None,
+                json.dumps({"success": success}),
+                timestamp,
+            ),
         )
         self.connect().commit()
 

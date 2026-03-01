@@ -48,8 +48,13 @@ class ExecutionConfig:
     default_timeout_seconds: int = 30
     max_timeout_seconds: int = 120
 
-    # Backup settings
-    backup_dir: str = "/tmp/reos_backups"
+    # Backup settings — stored under data dir, not /tmp
+    backup_dir: str = field(default="")
+
+    def __post_init__(self) -> None:
+        if not self.backup_dir:
+            from cairn.settings import settings
+            self.backup_dir = str(settings.data_dir / "backups")
     max_backup_size_mb: int = 100
     backup_retention_hours: int = 24
 
@@ -75,7 +80,10 @@ class ExecutionContext:
 class StateCapture:
     """Captures system state before/after operations."""
 
-    def __init__(self, backup_dir: str = "/tmp/reos_backups"):
+    def __init__(self, backup_dir: str = ""):
+        if not backup_dir:
+            from cairn.settings import settings
+            backup_dir = str(settings.data_dir / "backups")
         self.backup_dir = Path(backup_dir)
         try:
             self.backup_dir.mkdir(parents=True, exist_ok=True)

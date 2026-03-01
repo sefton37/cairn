@@ -148,10 +148,6 @@ class ConsciousnessObserver:
         with self._event_lock:
             self.events.append(event)
 
-        # Debug logging to file
-        with open("/tmp/consciousness_debug.log", "a") as f:
-            f.write(f"[EMIT] {title} (total events: {len(self.events)})\n")
-
     def poll(self, since_index: int = 0) -> list[ConsciousnessEvent]:
         """Poll for new events since the given index.
 

@@ -48,10 +48,15 @@ app = FastAPI(
 # HTTP RPC routes for PWA (auth, JSON-RPC dispatch, SSE streaming)
 app.include_router(http_rpc_router)
 
-# CORS: allow the PWA origin (same host, served by StaticFiles)
+# CORS: restrict to local Tauri and PWA origins only
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Tailscale-only; no public exposure
+    allow_origins=[
+        "tauri://localhost",
+        "https://tauri.localhost",
+        "http://localhost:8010",
+        "http://127.0.0.1:8010",
+    ],
     allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type"],
 )

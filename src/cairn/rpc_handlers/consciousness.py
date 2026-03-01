@@ -69,10 +69,6 @@ def handle_consciousness_poll(_db: Database, *, since_index: int = 0) -> dict[st
     observer = ConsciousnessObserver.get_instance()
     events = observer.poll(since_index)
 
-    # Debug logging to file
-    with open("/tmp/consciousness_debug.log", "a") as f:
-        f.write(f"[POLL] since_index={since_index}, active={observer.is_active()}, events={len(events)}\n")
-
     return {
         "events": [
             {
@@ -138,9 +134,6 @@ def handle_cairn_chat_async(
     # Start consciousness session
     observer = ConsciousnessObserver.get_instance()
     observer.start_session()
-    # Debug logging to file
-    with open("/tmp/consciousness_debug.log", "a") as f:
-        f.write(f"[ASYNC CHAT] Started consciousness session for chat_id={chat_id}\n")
 
     context = CairnChatContext(
         chat_id=chat_id,

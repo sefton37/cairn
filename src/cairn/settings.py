@@ -36,6 +36,16 @@ class Settings:
     host: str = os.environ.get("REOS_HOST", "127.0.0.1")
     port: int = int(os.environ.get("REOS_PORT", "8010"))
     ollama_url: str = os.environ.get("REOS_OLLAMA_URL", "http://127.0.0.1:11434")
+
+    def __post_init__(self) -> None:
+        """Validate settings that must be constrained for zero-trust."""
+        from urllib.parse import urlparse
+        parsed = urlparse(self.ollama_url)
+        if parsed.hostname not in ("localhost", "127.0.0.1", "::1", None):
+            raise ValueError(
+                f"REOS_OLLAMA_URL must point to localhost (got {parsed.hostname!r}). "
+                "Cairn is local-only — remote LLM endpoints are not allowed."
+            )
     ollama_model: str | None = os.environ.get("REOS_OLLAMA_MODEL")
 
     # =========================================================================
@@ -103,4 +113,6 @@ class Settings:
 settings = Settings()
 
 # Ensure data directories exist at import time (local-only side effect).
+# Use 0o700 to prevent group/other access to user data.
 settings.data_dir.mkdir(parents=True, exist_ok=True)
+settings.data_dir.chmod(0o700)

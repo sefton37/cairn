@@ -570,6 +570,36 @@ class MemoryService:
         """
         return self._review_transition(memory_id, "rejected")
 
+    def delete(self, memory_id: str) -> None:
+        """Hard-delete a memory and all related data.
+
+        Cascades to: memory_entities, memory_state_deltas, block_embeddings,
+        block_relationships (source or target), classification_memory_references.
+        The memories_fts table is cleaned up automatically by the FTS5 DELETE trigger.
+
+        Raises:
+            MemoryError: If memory not found.
+        """
+        memory = self.get_by_id(memory_id)
+        if not memory:
+            raise MemoryError(f"Memory not found: {memory_id}")
+
+        with _transaction() as conn:
+            conn.execute("DELETE FROM memory_entities WHERE memory_id = ?", (memory_id,))
+            conn.execute("DELETE FROM memory_state_deltas WHERE memory_id = ?", (memory_id,))
+            conn.execute("DELETE FROM block_embeddings WHERE block_id = ?", (memory_id,))
+            conn.execute(
+                "DELETE FROM block_relationships WHERE source_block_id = ? OR target_block_id = ?",
+                (memory_id, memory_id),
+            )
+            conn.execute(
+                "DELETE FROM classification_memory_references WHERE memory_id = ?",
+                (memory_id,),
+            )
+            conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
+
+        logger.info("Hard-deleted memory %s and all related data", memory_id)
+
     def _review_transition(self, memory_id: str, target_status: str) -> Memory:
         """Transition a memory through the review gate."""
         memory = self.get_by_id(memory_id)
