@@ -181,23 +181,13 @@ class ChatService:
         approved: bool,
     ) -> ChatResult:
         """Handle approval/rejection intent for a pending command."""
-        from ..linux_tools import execute_command
         import uuid
 
         message_id = uuid.uuid4().hex[:12]
 
         if approved:
-            # Execute the command
-            command = pending.get("command", "")
-            try:
-                result = execute_command(command)
-                answer = f"Command executed. Return code: {result.get('return_code', 'unknown')}"
-                if result.get("stdout"):
-                    answer += f"\n\nOutput:\n{result['stdout'][:500]}"
-                if result.get("stderr"):
-                    answer += f"\n\nErrors:\n{result['stderr'][:500]}"
-            except Exception as e:
-                answer = f"Command execution failed: {e}"
+            # Command execution is no longer available (linux_tools removed)
+            answer = "Command execution is not available: shell access has been removed."
 
             # Update approval status
             self._db.update_approval(

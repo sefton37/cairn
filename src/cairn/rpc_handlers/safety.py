@@ -27,10 +27,7 @@ from cairn.security import (
 
 def handle_safety_settings(_db: Database) -> dict[str, Any]:
     """Get current safety settings and limits."""
-    from cairn import linux_tools
-
     rate_limiter = get_rate_limiter()
-    sudo_count, sudo_max = linux_tools.get_sudo_escalation_status()
 
     # Build rate limits dict
     rate_limits = {}
@@ -43,8 +40,6 @@ def handle_safety_settings(_db: Database) -> dict[str, Any]:
 
     return {
         "rate_limits": rate_limits,
-        "max_sudo_escalations": sudo_max,
-        "current_sudo_count": sudo_count,
         "max_command_length": MAX_COMMAND_LEN,
         "max_service_name_length": MAX_SERVICE_NAME_LEN,
         "max_container_id_length": MAX_CONTAINER_ID_LEN,
@@ -85,24 +80,20 @@ def handle_safety_set_rate_limit(
 
 
 def handle_safety_set_sudo_limit(
-    db: Database,
+    _db: Database,
     *,
     max_escalations: int,
 ) -> dict[str, Any]:
-    """Update the sudo escalation limit."""
-    from cairn import linux_tools
+    """Update the sudo escalation limit.
 
+    Note: linux_tools module has been removed. This setting is persisted
+    for future use but has no effect on the current runtime.
+    """
     # Validate bounds (1-20)
     if max_escalations < 1:
         max_escalations = 1
     if max_escalations > 20:
         max_escalations = 20
-
-    # Update the module-level constant
-    linux_tools._MAX_SUDO_ESCALATIONS = max_escalations
-
-    # Persist to database
-    db.set_state(key="safety_sudo_limit", value=str(max_escalations))
 
     return {
         "success": True,

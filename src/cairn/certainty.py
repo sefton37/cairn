@@ -412,16 +412,12 @@ class CertaintyWrapper:
         """Suggest how to verify an uncertain claim."""
         claim_lower = claim.lower()
 
-        if "container" in claim_lower:
-            return "Run linux_containers tool to verify container state"
-        elif "service" in claim_lower or "running" in claim_lower:
-            return "Run linux_service_status tool to verify service state"
-        elif "process" in claim_lower:
-            return "Run linux_processes tool to verify process state"
-        elif "disk" in claim_lower or "storage" in claim_lower:
-            return "Run linux_disk_usage tool to verify disk state"
-        elif "memory" in claim_lower or "cpu" in claim_lower:
-            return "Run linux_system_info tool to verify current usage"
+        if any(kw in claim_lower for kw in ("calendar", "schedule", "event", "meeting")):
+            return "Use cairn_get_calendar tool to verify calendar data"
+        elif any(kw in claim_lower for kw in ("task", "todo", "reminder")):
+            return "Use cairn_get_todos tool to verify task data"
+        elif any(kw in claim_lower for kw in ("act", "scene", "play")):
+            return "Use cairn_list_acts tool to verify Play data"
 
         return None
 

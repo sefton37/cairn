@@ -24,7 +24,6 @@ from cairn.cairn.behavior_modes import (
     PERSONAL_QUERY_MODE,
     PLAY_MUTATION_MODE,
     PLAY_QUERY_MODE,
-    SYSTEM_QUERY_MODE,
     TASKS_QUERY_MODE,
     UNDO_MODE,
     BehaviorModeContext,
@@ -116,12 +115,6 @@ class TestRegistryLookup:
         c = _make_classification(dest="file", semantics="execute", domain="undo")
         mode = registry.get_mode(c)
         assert mode.name == "undo"
-
-    def test_system_read(self, registry: BehaviorModeRegistry) -> None:
-        """System read returns SYSTEM_QUERY_MODE."""
-        c = _make_classification(semantics="read", domain="system")
-        mode = registry.get_mode(c)
-        assert mode.name == "system_query"
 
     def test_tasks_read(self, registry: BehaviorModeRegistry) -> None:
         """Tasks read returns TASKS_QUERY_MODE."""
@@ -280,7 +273,6 @@ class TestBehaviorModeAttributes:
             FEEDBACK_MODE,
             CALENDAR_QUERY_MODE,
             CONTACTS_QUERY_MODE,
-            SYSTEM_QUERY_MODE,
             TASKS_QUERY_MODE,
             PLAY_QUERY_MODE,
             PLAY_MUTATION_MODE,

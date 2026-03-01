@@ -385,20 +385,6 @@ CONTACTS_QUERY_MODE = BehaviorMode(
     verification_mode="FAST",
 )
 
-SYSTEM_QUERY_MODE = BehaviorMode(
-    name="system_query",
-    needs_tool=True,
-    tool_selector=_static_tool("linux_system_info"),
-    arg_extractor=_no_args,
-    system_prompt_template=(
-        "You are CAIRN, the Attention Minder. "
-        "Respond based STRICTLY on the data provided.\n"
-        "This is a Linux desktop application - NEVER mention macOS, Windows, or other platforms."
-    ),
-    needs_hallucination_check=True,
-    verification_mode="FAST",
-)
-
 TASKS_QUERY_MODE = BehaviorMode(
     name="tasks_query",
     needs_tool=True,
@@ -496,17 +482,6 @@ UNDO_MODE = BehaviorMode(
     verification_mode="STANDARD",
 )
 
-SYSTEM_EXECUTE_MODE = BehaviorMode(
-    name="system_execute",
-    needs_tool=True,
-    tool_selector=_static_tool("linux_run_command"),
-    arg_extractor=_no_args,
-    system_prompt_template=("You are CAIRN, the Attention Minder. Report the command result."),
-    needs_hallucination_check=True,
-    verification_mode="STANDARD",
-)
-
-
 def create_default_registry() -> BehaviorModeRegistry:
     """Create a registry with all known behavior modes registered."""
     reg = BehaviorModeRegistry()
@@ -527,10 +502,6 @@ def create_default_registry() -> BehaviorModeRegistry:
 
     # Contacts
     reg.register("stream", "human", "read", "contacts", CONTACTS_QUERY_MODE)
-
-    # System
-    reg.register("stream", "human", "read", "system", SYSTEM_QUERY_MODE)
-    reg.register("process", "machine", "execute", "system", SYSTEM_EXECUTE_MODE)
 
     # Tasks
     reg.register("stream", "human", "read", "tasks", TASKS_QUERY_MODE)
@@ -564,7 +535,6 @@ def create_default_registry() -> BehaviorModeRegistry:
     reg.register_domain("feedback", FEEDBACK_MODE)
     reg.register_domain("calendar", CALENDAR_QUERY_MODE)
     reg.register_domain("contacts", CONTACTS_QUERY_MODE)
-    reg.register_domain("system", SYSTEM_QUERY_MODE)
     reg.register_domain("tasks", TASKS_QUERY_MODE)
     reg.register_domain("knowledge", KNOWLEDGE_QUERY_MODE)
     reg.register_domain("play", PLAY_QUERY_MODE)

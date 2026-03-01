@@ -193,8 +193,8 @@ Return the structured intent as JSON:"""
         # Match targets against actual system resources
         matched_resources = self._match_targets(intent, context)
 
-        system_prompt = """You are a Linux system administration planner.
-Given a user's intent and matched system resources, generate a step-by-step plan.
+        system_prompt = """You are a task planner.
+Given a user's intent and matched resources, generate a step-by-step plan.
 
 CRITICAL RULES:
 1. Return a JSON ARRAY of steps (not a single object!)
@@ -203,29 +203,14 @@ CRITICAL RULES:
 
 JSON format - MUST be an array:
 [
-    {"title": "Step 1", "description": "...", "tool": "linux_run_command", "tool_args": {"command": "..."}, "risk_level": "medium"},
-    {"title": "Step 2", "description": "...", "tool": "linux_run_command", "tool_args": {"command": "..."}, "risk_level": "high"}
+    {"title": "Step 1", "description": "...", "tool": "cairn_tool_name", "tool_args": {}, "risk_level": "medium"},
+    {"title": "Step 2", "description": "...", "tool": "cairn_tool_name", "tool_args": {}, "risk_level": "safe"}
 ]
-
-For combined actions like "stop_and_remove":
-- Create SEPARATE steps: first stop, then remove
-- One step per container/resource
-
-Example for "stop_and_remove containers [nextcloud-app, nextcloud-redis]":
-[
-    {"title": "Stop nextcloud-app", "tool": "linux_run_command", "tool_args": {"command": "docker stop nextcloud-app"}, "risk_level": "medium"},
-    {"title": "Remove nextcloud-app", "tool": "linux_run_command", "tool_args": {"command": "docker rm nextcloud-app"}, "risk_level": "high", "depends_on": ["Stop nextcloud-app"]},
-    {"title": "Stop nextcloud-redis", "tool": "linux_run_command", "tool_args": {"command": "docker stop nextcloud-redis"}, "risk_level": "medium"},
-    {"title": "Remove nextcloud-redis", "tool": "linux_run_command", "tool_args": {"command": "docker rm nextcloud-redis"}, "risk_level": "high", "depends_on": ["Stop nextcloud-redis"]}
-]
-
-Available tools:
-- linux_run_command: Execute shell commands. Args: {"command": "..."}
 
 Risk levels:
-- "high": destructive (rm, remove, delete)
-- "medium": state-changing (stop, restart)
-- "safe": read-only
+- "high": destructive (delete, remove)
+- "medium": state-changing (update, modify)
+- "safe": read-only (list, query)
 
 IMPORTANT: Always return a JSON ARRAY [], never a single object {}."""
 
@@ -294,7 +279,7 @@ Return the step-by-step plan as JSON array:"""
                 steps.append(PlanStep(
                     title=step.get("title", "Untitled step"),
                     description=step.get("description", ""),
-                    tool=step.get("tool", "linux_run_command"),
+                    tool=step.get("tool", "unknown"),
                     tool_args=step.get("tool_args", {}),
                     risk_level=step.get("risk_level", "medium"),
                     rollback_command=step.get("rollback_command"),
@@ -522,172 +507,22 @@ def _generate_steps_from_intent(
 def _generate_container_steps(action: str, containers: list[str]) -> list[dict]:
     """Generate steps for container operations.
 
-    Creates proper steps for each container and each action.
+    NOTE: Shell execution has been removed. Returns empty list.
     """
-    import shlex
-    steps = []
-
-    for i, container in enumerate(containers):
-        safe_name = shlex.quote(container)
-
-        if action == "stop":
-            steps.append({
-                "id": f"stop_{i}",
-                "title": f"Stop {container}",
-                "description": f"Stop container: {container}",
-                "type": "command",
-                "action": {"command": f"docker stop {safe_name}"},
-                "rollback": f"docker start {safe_name}",
-                "explanation": f"Stop the {container} container",
-            })
-
-        elif action == "remove":
-            # Stop first, then remove
-            steps.append({
-                "id": f"stop_{i}",
-                "title": f"Stop {container}",
-                "description": f"Stop container before removal: {container}",
-                "type": "command",
-                "action": {"command": f"docker stop {safe_name} 2>/dev/null || true"},
-                "explanation": f"Stop {container} before removing it",
-            })
-            steps.append({
-                "id": f"remove_{i}",
-                "title": f"Remove {container}",
-                "description": f"Remove container: {container}",
-                "type": "command",
-                "action": {"command": f"docker rm {safe_name}"},
-                "depends_on": [f"stop_{i}"],
-                "explanation": f"Remove the {container} container",
-            })
-
-        elif action == "stop_and_remove":
-            # Explicit stop and remove
-            steps.append({
-                "id": f"stop_{i}",
-                "title": f"Stop {container}",
-                "description": f"Stop container: {container}",
-                "type": "command",
-                "action": {"command": f"docker stop {safe_name}"},
-                "rollback": f"docker start {safe_name}",
-                "explanation": f"Stop the {container} container",
-            })
-            steps.append({
-                "id": f"remove_{i}",
-                "title": f"Remove {container}",
-                "description": f"Remove container: {container}",
-                "type": "command",
-                "action": {"command": f"docker rm {safe_name}"},
-                "depends_on": [f"stop_{i}"],
-                "explanation": f"Remove the {container} container",
-            })
-
-        elif action == "restart":
-            steps.append({
-                "id": f"restart_{i}",
-                "title": f"Restart {container}",
-                "description": f"Restart container: {container}",
-                "type": "command",
-                "action": {"command": f"docker restart {safe_name}"},
-                "explanation": f"Restart the {container} container",
-            })
-
-        elif action == "start":
-            steps.append({
-                "id": f"start_{i}",
-                "title": f"Start {container}",
-                "description": f"Start container: {container}",
-                "type": "command",
-                "action": {"command": f"docker start {safe_name}"},
-                "explanation": f"Start the {container} container",
-            })
-
-        elif action == "kill":
-            steps.append({
-                "id": f"kill_{i}",
-                "title": f"Kill {container}",
-                "description": f"Force kill container: {container}",
-                "type": "command",
-                "action": {"command": f"docker kill {safe_name}"},
-                "rollback": f"docker start {safe_name}",
-                "explanation": f"Force kill the {container} container",
-            })
-
-    return steps
+    return []
 
 
 def _generate_service_steps(action: str, services: list[str]) -> list[dict]:
-    """Generate steps for service operations."""
-    import shlex
-    steps = []
+    """Generate steps for service operations.
 
-    for i, service in enumerate(services):
-        safe_name = shlex.quote(service)
-
-        if action in ("stop", "start", "restart", "enable", "disable"):
-            steps.append({
-                "id": f"{action}_{i}",
-                "title": f"{action.capitalize()} {service}",
-                "description": f"{action.capitalize()} the {service} service",
-                "type": "command",
-                "action": {"command": f"sudo systemctl {action} {safe_name}"},
-                "explanation": f"{action.capitalize()} the {service} service",
-            })
-            # Add verification
-            steps.append({
-                "id": f"verify_{i}",
-                "title": f"Verify {service}",
-                "description": f"Check status of {service}",
-                "type": "verify",
-                "action": {"tool": "linux_service_status", "args": {"service_name": service}},
-                "depends_on": [f"{action}_{i}"],
-                "explanation": f"Verify {service} is in expected state",
-            })
-
-    return steps
+    NOTE: Shell execution has been removed. Returns empty list.
+    """
+    return []
 
 
 def _generate_package_steps(action: str, packages: list[str], context: dict[str, Any]) -> list[dict]:
-    """Generate steps for package operations."""
-    import shlex
+    """Generate steps for package operations.
 
-    # Detect package manager
-    pkg_manager = context.get("package_manager", "sudo apt")
-
-    steps = []
-
-    if action == "install":
-        # Update cache first
-        steps.append({
-            "id": "update_cache",
-            "title": "Update package cache",
-            "description": "Refresh package manager cache",
-            "type": "command",
-            "action": {"command": f"{pkg_manager} update"},
-            "explanation": "Update package lists to get latest versions",
-        })
-        for i, package in enumerate(packages):
-            safe_pkg = shlex.quote(package)
-            steps.append({
-                "id": f"install_{i}",
-                "title": f"Install {package}",
-                "description": f"Install the {package} package",
-                "type": "command",
-                "action": {"command": f"{pkg_manager} install -y {safe_pkg}"},
-                "depends_on": ["update_cache"],
-                "explanation": f"Install {package}",
-            })
-
-    elif action == "remove":
-        for i, package in enumerate(packages):
-            safe_pkg = shlex.quote(package)
-            steps.append({
-                "id": f"remove_{i}",
-                "title": f"Remove {package}",
-                "description": f"Remove the {package} package",
-                "type": "command",
-                "action": {"command": f"{pkg_manager} remove -y {safe_pkg}"},
-                "explanation": f"Remove {package}",
-            })
-
-    return steps
+    NOTE: Shell execution has been removed. Returns empty list.
+    """
+    return []

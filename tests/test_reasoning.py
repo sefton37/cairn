@@ -216,24 +216,20 @@ class TestTaskPlanner:
         plan = self.planner.create_plan("set up a web server")
 
         assert plan.id is not None
-        assert len(plan.steps) > 0
         assert plan.original_request == "set up a web server"
 
     def test_plan_has_dependencies(self) -> None:
-        """Plan steps should have proper dependencies."""
+        """Shell-based plans return empty steps (linux tools removed)."""
         plan = self.planner.create_plan("install and configure nginx")
 
-        # Later steps should depend on earlier ones
-        has_dependency = any(len(s.depends_on) > 0 for s in plan.steps)
-        assert has_dependency or len(plan.steps) == 1
+        # With shell tools removed, package plans produce no steps
+        assert len(plan.steps) == 0
 
     def test_plan_risk_assessment(self) -> None:
         """Plan should have aggregated risk assessment."""
-        # Use a request that creates a command-based plan
         plan = self.planner.create_plan("install nginx")
 
         assert plan.highest_risk is not None
-        # Package install template should have medium risk
         assert plan.highest_risk.value in ("safe", "low", "medium", "high", "critical")
 
     def test_add_step_to_plan(self) -> None:

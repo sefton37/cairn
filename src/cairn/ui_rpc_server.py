@@ -2855,17 +2855,8 @@ def _load_persisted_safety_settings(db: Database) -> None:
 
     This ensures user's safety settings persist across restarts.
     """
-    from . import linux_tools, security
+    from . import security
     from .code_mode import executor as code_executor
-
-    # Load sudo limit
-    val = db.get_state(key="safety_sudo_limit")
-    if val and isinstance(val, str):
-        try:
-            linux_tools._MAX_SUDO_ESCALATIONS = int(val)
-            logger.debug("Loaded safety_sudo_limit: %s", val)
-        except ValueError:
-            pass
 
     # Load command length
     val = db.get_state(key="safety_command_length")

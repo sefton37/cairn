@@ -1632,19 +1632,17 @@ class ChatAgent:
             "You are a TOOL SELECTOR. You MUST return ONLY a JSON object with tool_calls.\n"
             "DO NOT answer the question. DO NOT make up data. ONLY select tools.\n\n"
             + "CALENDAR/SCHEDULE questions → Use cairn_get_calendar\n"
-            + "SYSTEM questions (CPU, memory, disk) → Use linux_system_info\n"
             + "PERSONAL questions (about me, my goals) → Return empty tool_calls\n\n"
             + "TOOLS:\n"
             + "- cairn_get_calendar: Get calendar events (USE FOR ANY CALENDAR QUESTION)\n"
             + "- cairn_get_upcoming_events: Get upcoming events\n"
-            + "- linux_system_info: CPU, memory, disk info\n"
-            + "- linux_run_command: Execute shell commands\n\n"
+            + "- cairn_get_todos: Get tasks and todos\n"
+            + "- cairn_surface_today: Get today's priorities\n\n"
             + "OUTPUT FORMAT (STRICT - no other format allowed):\n"
             + '{"tool_calls": [{"name": "TOOL_NAME", "arguments": {}}]}\n\n'
             + "EXAMPLES:\n"
             + 'User: \'what does my calendar look like\' → {"tool_calls": [{"name": "cairn_get_calendar", "arguments": {}}]}\n'
             + 'User: \'show me my schedule\' → {"tool_calls": [{"name": "cairn_get_calendar", "arguments": {}}]}\n'
-            + 'User: \'how much RAM do I have\' → {"tool_calls": [{"name": "linux_system_info", "arguments": {}}]}\n'
             + "User: 'what are my goals' → {\"tool_calls\": []}\n"
         )
 
@@ -1698,17 +1696,6 @@ class ChatAgent:
 
             # Map common LLM mistakes to actual tool names
             name_mapping = {
-                "uptime": "linux_system_info",
-                "system_info": "linux_system_info",
-                "services": "linux_list_services",
-                "list_services": "linux_list_services",
-                "run_command": "linux_run_command",
-                "run": "linux_run_command",
-                "packages": "linux_list_packages",
-                "docker": "linux_docker_containers",
-                "containers": "linux_docker_containers",
-                "list_docker_containers": "linux_docker_containers",
-                "docker_containers": "linux_docker_containers",
                 # CAIRN tool mappings
                 "get_calendar": "cairn_get_calendar",
                 "calendar": "cairn_get_calendar",

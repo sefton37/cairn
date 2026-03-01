@@ -233,152 +233,9 @@ class TaskPlan:
 
 
 # Common task templates for caching
-TASK_TEMPLATES = {
-    "install_package": {
-        "pattern": r"install\s+(\w+)",
-        "steps": [
-            {
-                "id": "update_cache",
-                "title": "Update package cache",
-                "description": "Refresh package manager cache",
-                "step_type": StepType.COMMAND,
-                "action": {"command": "{pkg_manager} update"},
-                "risk_level": RiskLevel.LOW,
-            },
-            {
-                "id": "install",
-                "title": "Install package",
-                "description": "Install the requested package",
-                "step_type": StepType.COMMAND,
-                "action": {"command": "{pkg_manager} install -y {package}"},
-                "depends_on": ["update_cache"],
-                "risk_level": RiskLevel.MEDIUM,
-            },
-            {
-                "id": "verify",
-                "title": "Verify installation",
-                "description": "Check that the package is installed",
-                "step_type": StepType.VERIFICATION,
-                "action": {"tool": "linux_run_command", "args": {"command": "which {package} || dpkg -l {package}"}},
-                "depends_on": ["install"],
-            },
-        ],
-    },
-    "service_restart": {
-        "pattern": r"restart\s+(\w+)\s+service",
-        "steps": [
-            {
-                "id": "check_status",
-                "title": "Check current status",
-                "description": "Verify service exists and get current state",
-                "step_type": StepType.DIAGNOSTIC,
-                "action": {"tool": "linux_service_status", "args": {"service_name": "{service}"}},
-            },
-            {
-                "id": "restart",
-                "title": "Restart service",
-                "description": "Restart the service",
-                "step_type": StepType.COMMAND,
-                "action": {"command": "sudo systemctl restart {service}"},
-                "depends_on": ["check_status"],
-                "rollback_command": "sudo systemctl start {service}",
-                "risk_level": RiskLevel.MEDIUM,
-            },
-            {
-                "id": "verify",
-                "title": "Verify restart",
-                "description": "Confirm service is running",
-                "step_type": StepType.VERIFICATION,
-                "action": {"tool": "linux_service_status", "args": {"service_name": "{service}"}},
-                "depends_on": ["restart"],
-            },
-        ],
-    },
-    # Docker container operations
-    "container_stop": {
-        "pattern": r"stop\s+(?:the\s+)?(\S+)\s*container",
-        "steps": [
-            {
-                "id": "list_containers",
-                "title": "List running containers",
-                "description": "Find the container to stop",
-                "step_type": StepType.DIAGNOSTIC,
-                "action": {"tool": "linux_containers", "args": {}},
-            },
-            {
-                "id": "stop_container",
-                "title": "Stop container",
-                "description": "Stop the container: {container}",
-                "step_type": StepType.COMMAND,
-                "action": {"tool": "linux_run_command", "args": {"command": "docker stop {container}"}},
-                "depends_on": ["list_containers"],
-                "rollback_command": "docker start {container}",
-                "risk_level": RiskLevel.MEDIUM,
-            },
-        ],
-    },
-    "container_remove": {
-        "pattern": r"(?:remove|delete|rm)\s+(?:the\s+)?(\S+)\s*container",
-        "steps": [
-            {
-                "id": "list_containers",
-                "title": "List containers",
-                "description": "Find the container to remove",
-                "step_type": StepType.DIAGNOSTIC,
-                "action": {"tool": "linux_containers", "args": {}},
-            },
-            {
-                "id": "stop_container",
-                "title": "Stop container (if running)",
-                "description": "Stop the container before removing: {container}",
-                "step_type": StepType.COMMAND,
-                "action": {"tool": "linux_run_command", "args": {"command": "docker stop {container} 2>/dev/null || true"}},
-                "depends_on": ["list_containers"],
-                "risk_level": RiskLevel.MEDIUM,
-            },
-            {
-                "id": "remove_container",
-                "title": "Remove container",
-                "description": "Remove the container: {container}",
-                "step_type": StepType.COMMAND,
-                "action": {"tool": "linux_run_command", "args": {"command": "docker rm {container}"}},
-                "depends_on": ["stop_container"],
-                "risk_level": RiskLevel.HIGH,
-            },
-        ],
-    },
-    "container_stop_remove": {
-        "pattern": r"stop\s+(?:and\s+)?(?:remove|delete)\s+(?:the\s+)?(\S+)\s*container",
-        "steps": [
-            {
-                "id": "list_containers",
-                "title": "List running containers",
-                "description": "Find the container",
-                "step_type": StepType.DIAGNOSTIC,
-                "action": {"tool": "linux_containers", "args": {}},
-            },
-            {
-                "id": "stop_container",
-                "title": "Stop container",
-                "description": "Stop the container: {container}",
-                "step_type": StepType.COMMAND,
-                "action": {"tool": "linux_run_command", "args": {"command": "docker stop {container}"}},
-                "depends_on": ["list_containers"],
-                "rollback_command": "docker start {container}",
-                "risk_level": RiskLevel.MEDIUM,
-            },
-            {
-                "id": "remove_container",
-                "title": "Remove container",
-                "description": "Remove the container: {container}",
-                "step_type": StepType.COMMAND,
-                "action": {"tool": "linux_run_command", "args": {"command": "docker rm {container}"}},
-                "depends_on": ["stop_container"],
-                "risk_level": RiskLevel.HIGH,
-            },
-        ],
-    },
-}
+# NOTE: Shell execution templates removed (linux_run_command no longer available).
+# This dict can be extended with CAIRN tool-based templates in the future.
+TASK_TEMPLATES: dict[str, Any] = {}
 
 
 class TaskPlanner:
@@ -588,8 +445,8 @@ class TaskPlanner:
         """Parse steps from LLM response.
 
         Handles action format conversion:
-        - If action has 'tool: linux_run_command' with args.command, extract as COMMAND type
-        - Other tools become TOOL_CALL type
+        - Tool actions become TOOL_CALL type
+        - Command actions become COMMAND type
         """
         steps = []
         for i, step_data in enumerate(llm_steps):
@@ -610,15 +467,8 @@ class TaskPlanner:
             if isinstance(raw_action, dict) and "tool" in raw_action:
                 tool_name = raw_action.get("tool", "")
                 tool_args = raw_action.get("args", {})
-
-                if tool_name == "linux_run_command" and "command" in tool_args:
-                    # Extract command for direct execution
-                    action = {"command": tool_args["command"]}
-                    step_type = StepType.COMMAND
-                else:
-                    # Use as tool call
-                    action = {"tool": tool_name, "args": tool_args}
-                    step_type = StepType.TOOL_CALL
+                action = {"tool": tool_name, "args": tool_args}
+                step_type = StepType.TOOL_CALL
             elif isinstance(raw_action, dict) and "command" in raw_action:
                 # Already in correct format
                 action = raw_action
@@ -785,72 +635,10 @@ class TaskPlanner:
                 ),
             ]
 
-        steps = []
-
-        # Create steps for each matching container
-        for i, container in enumerate(matching):
-            step_id = f"{action}_{i}"
-
-            if action == "stop":
-                steps.append(TaskStep(
-                    id=step_id,
-                    title=f"Stop {container}",
-                    description=f"Stop container: {container}",
-                    step_type=StepType.COMMAND,
-                    action={"tool": "linux_run_command", "args": {"command": f"docker stop {shlex.quote(container)}"}},
-                    rollback_command=f"docker start {shlex.quote(container)}",
-                    explanation=f"Stop the {container} container",
-                ))
-            elif action == "remove":
-                # Stop first, then remove
-                stop_id = f"stop_{i}"
-                steps.append(TaskStep(
-                    id=stop_id,
-                    title=f"Stop {container}",
-                    description=f"Stop container before removal: {container}",
-                    step_type=StepType.COMMAND,
-                    action={"tool": "linux_run_command", "args": {"command": f"docker stop {shlex.quote(container)} 2>/dev/null || true"}},
-                    explanation=f"Stop {container} before removing it",
-                ))
-                steps.append(TaskStep(
-                    id=step_id,
-                    title=f"Remove {container}",
-                    description=f"Remove container: {container}",
-                    step_type=StepType.COMMAND,
-                    action={"tool": "linux_run_command", "args": {"command": f"docker rm {shlex.quote(container)}"}},
-                    depends_on=[stop_id],
-                    explanation=f"Remove the {container} container",
-                ))
-            elif action == "restart":
-                steps.append(TaskStep(
-                    id=step_id,
-                    title=f"Restart {container}",
-                    description=f"Restart container: {container}",
-                    step_type=StepType.COMMAND,
-                    action={"tool": "linux_run_command", "args": {"command": f"docker restart {shlex.quote(container)}"}},
-                    explanation=f"Restart the {container} container",
-                ))
-            elif action == "start":
-                steps.append(TaskStep(
-                    id=step_id,
-                    title=f"Start {container}",
-                    description=f"Start container: {container}",
-                    step_type=StepType.COMMAND,
-                    action={"tool": "linux_run_command", "args": {"command": f"docker start {shlex.quote(container)}"}},
-                    explanation=f"Start the {container} container",
-                ))
-            elif action == "kill":
-                steps.append(TaskStep(
-                    id=step_id,
-                    title=f"Kill {container}",
-                    description=f"Force kill container: {container}",
-                    step_type=StepType.COMMAND,
-                    action={"tool": "linux_run_command", "args": {"command": f"docker kill {shlex.quote(container)}"}},
-                    rollback_command=f"docker start {shlex.quote(container)}",
-                    explanation=f"Force kill the {container} container",
-                ))
-
-        return steps
+        # Shell execution tools have been removed; container operations
+        # are no longer available through the planning system.
+        logger.warning("Container operations unavailable: shell tools removed")
+        return []
 
     def _plan_service_action(
         self,
@@ -867,38 +655,10 @@ class TaskPlanner:
         else:
             resolved = filter_term
 
-        steps = []
-
-        if action in ("stop", "start", "restart", "enable", "disable"):
-            steps.append(TaskStep(
-                id=f"{action}_service",
-                title=f"{action.capitalize()} {resolved}",
-                description=f"{action.capitalize()} the {resolved} service",
-                step_type=StepType.COMMAND,
-                action={"tool": "linux_run_command", "args": {"command": f"sudo systemctl {action} {shlex.quote(resolved)}"}},
-                explanation=f"{action.capitalize()} the {resolved} service using systemctl",
-            ))
-            # Add verification step
-            steps.append(TaskStep(
-                id="verify_service",
-                title=f"Verify {resolved} status",
-                description=f"Check the status of {resolved}",
-                step_type=StepType.VERIFICATION,
-                action={"tool": "linux_service_status", "args": {"service_name": resolved}},
-                depends_on=[f"{action}_service"],
-                explanation=f"Verify that {resolved} is in the expected state",
-            ))
-        elif action == "status":
-            steps.append(TaskStep(
-                id="check_status",
-                title=f"Check {resolved} status",
-                description=f"Get status of {resolved}",
-                step_type=StepType.DIAGNOSTIC,
-                action={"tool": "linux_service_status", "args": {"service_name": resolved}},
-                explanation=f"Check the current status of {resolved}",
-            ))
-
-        return steps
+        # Shell execution tools have been removed; service operations
+        # are no longer available through the planning system.
+        logger.warning("Service operations unavailable: shell tools removed")
+        return []
 
     def _plan_package_action(
         self,
@@ -907,58 +667,10 @@ class TaskPlanner:
         context: dict[str, Any],
     ) -> list[TaskStep]:
         """Create plan for package operations."""
-        pkg_manager = context.get("package_manager") or self._detect_pkg_manager()
-
-        steps = []
-
-        if action == "install":
-            steps.append(TaskStep(
-                id="update_cache",
-                title="Update package cache",
-                description="Refresh package manager cache",
-                step_type=StepType.COMMAND,
-                action={"tool": "linux_run_command", "args": {"command": f"{pkg_manager} update"}},
-                explanation="Update package lists to get latest versions",
-            ))
-            steps.append(TaskStep(
-                id="install_package",
-                title=f"Install {package}",
-                description=f"Install the {package} package",
-                step_type=StepType.COMMAND,
-                action={"tool": "linux_run_command", "args": {"command": f"{pkg_manager} install -y {shlex.quote(package)}"}},
-                depends_on=["update_cache"],
-                explanation=f"Install {package} using {pkg_manager}",
-            ))
-        elif action == "remove":
-            steps.append(TaskStep(
-                id="remove_package",
-                title=f"Remove {package}",
-                description=f"Remove the {package} package",
-                step_type=StepType.COMMAND,
-                action={"tool": "linux_run_command", "args": {"command": f"{pkg_manager} remove -y {shlex.quote(package)}"}},
-                explanation=f"Remove {package} using {pkg_manager}",
-            ))
-        elif action in ("update", "upgrade"):
-            if package:
-                steps.append(TaskStep(
-                    id="upgrade_package",
-                    title=f"Upgrade {package}",
-                    description=f"Upgrade the {package} package",
-                    step_type=StepType.COMMAND,
-                    action={"tool": "linux_run_command", "args": {"command": f"{pkg_manager} install --only-upgrade -y {shlex.quote(package)}"}},
-                    explanation=f"Upgrade {package} to the latest version",
-                ))
-            else:
-                steps.append(TaskStep(
-                    id="upgrade_all",
-                    title="Upgrade all packages",
-                    description="Upgrade all installed packages",
-                    step_type=StepType.COMMAND,
-                    action={"tool": "linux_run_command", "args": {"command": f"{pkg_manager} upgrade -y"}},
-                    explanation="Upgrade all packages to their latest versions",
-                ))
-
-        return steps
+        # Shell execution tools have been removed; package operations
+        # are no longer available through the planning system.
+        logger.warning("Package operations unavailable: shell tools removed")
+        return []
 
     def _plan_generic_action(self, request: str, context: dict[str, Any]) -> list[TaskStep]:
         """Create a generic plan when intent is unclear but request is actionable."""
