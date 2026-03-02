@@ -180,8 +180,8 @@ class TestVerifyCommandSafetyLlmFailClosed:
         assert is_safe is False
         assert reason == "LLM safety check unavailable"
 
-    def test_missing_safe_key_defaults_to_safe_true(self):
-        """Valid JSON missing the 'safe' key defaults to safe=True (within try block)."""
+    def test_missing_safe_key_defaults_to_unsafe(self):
+        """Valid JSON missing the 'safe' key defaults to unsafe (fail-closed)."""
         provider = MagicMock()
         provider.chat_json.return_value = '{"status": "ok"}'
 
@@ -191,11 +191,11 @@ class TestVerifyCommandSafetyLlmFailClosed:
             provider=provider,
         )
 
-        assert is_safe is True
+        assert is_safe is False
         assert reason is None
 
-    def test_empty_json_object_defaults_to_safe_true(self):
-        """Empty JSON object missing 'safe' key defaults to safe=True (within try block)."""
+    def test_empty_json_object_defaults_to_unsafe(self):
+        """Empty JSON object missing 'safe' key defaults to unsafe (fail-closed)."""
         provider = MagicMock()
         provider.chat_json.return_value = "{}"
 
@@ -205,11 +205,11 @@ class TestVerifyCommandSafetyLlmFailClosed:
             provider=provider,
         )
 
-        assert is_safe is True
+        assert is_safe is False
         assert reason is None
 
-    def test_provider_returns_none_falls_open(self):
-        """None response from provider causes fail-open behavior."""
+    def test_provider_returns_none_fails_closed(self):
+        """None response from provider fails closed."""
         provider = MagicMock()
         provider.chat_json.return_value = None
 
@@ -219,5 +219,5 @@ class TestVerifyCommandSafetyLlmFailClosed:
             provider=provider,
         )
 
-        assert is_safe is True
-        assert reason is None
+        assert is_safe is False
+        assert reason == "LLM returned empty or non-string response"

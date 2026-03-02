@@ -5,8 +5,10 @@ def _rpc(db: object, *, req_id: int, method: str, params: dict | None = None) ->
     import cairn.ui_rpc_server as ui
 
     req: dict = {"jsonrpc": "2.0", "id": req_id, "method": method}
-    if params is not None:
-        req["params"] = params
+    # Inject __session for non-exempt methods (session enforcement)
+    p = dict(params) if params else {}
+    p.setdefault("__session", "test-session")
+    req["params"] = p
     resp = ui._handle_jsonrpc_request(db, req)
     assert resp is not None
     return resp

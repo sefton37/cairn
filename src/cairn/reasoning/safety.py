@@ -21,6 +21,46 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _get_crypto():
+    """Return the active CryptoStorage, or None if not authenticated."""
+    from cairn.crypto_storage import get_active_crypto
+
+    return get_active_crypto()
+
+
+def _write_json(path: Path, data: dict | list) -> None:
+    """Write JSON data, encrypting if CryptoStorage is active."""
+    content = json.dumps(data, indent=2, ensure_ascii=False)
+    crypto = _get_crypto()
+    if crypto:
+        path.write_bytes(crypto.encrypt(content.encode("utf-8")))
+        os.chmod(path, 0o600)
+    else:
+        path.write_text(content, encoding="utf-8")
+
+
+def _read_json(path: Path) -> dict | list:
+    """Read JSON data, decrypting if CryptoStorage is active."""
+    crypto = _get_crypto()
+    if crypto:
+        try:
+            raw = crypto.decrypt(path.read_bytes())
+            return json.loads(raw.decode("utf-8"))
+        except Exception:
+            pass  # Pre-encryption data fallback
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _write_text(path: Path, text: str) -> None:
+    """Write text data, encrypting if CryptoStorage is active."""
+    crypto = _get_crypto()
+    if crypto:
+        path.write_bytes(crypto.encrypt(text.encode("utf-8")))
+        os.chmod(path, 0o600)
+    else:
+        path.write_text(text, encoding="utf-8")
+
+
 class RiskLevel(Enum):
     """Risk classification for operations."""
 
@@ -179,8 +219,7 @@ class SafetyManager:
         stack_file = self.state.backup_dir / "rollback_stack.json"
         if stack_file.exists():
             try:
-                with open(stack_file) as f:
-                    data = json.load(f)
+                data = _read_json(stack_file)
                 for item in data:
                     self.state.rollback_stack.append(
                         RollbackAction(
@@ -211,8 +250,7 @@ class SafetyManager:
             }
             for action in self.state.rollback_stack
         ]
-        with open(stack_file, "w") as f:
-            json.dump(data, f, indent=2)
+        _write_json(stack_file, data)
 
     def assess_command_risk(self, command: str) -> RiskAssessment:
         """Assess the risk level of a shell command.
@@ -372,8 +410,7 @@ class SafetyManager:
             if path.is_file():
                 with open(path, "rb") as f:
                     file_hash = hashlib.sha256(f.read()).hexdigest()
-                with open(backup_path.with_suffix(".sha256"), "w") as f:
-                    f.write(file_hash)
+                _write_text(backup_path.with_suffix(".sha256"), file_hash)
 
             logger.info("Created backup: %s -> %s", path, backup_path)
             self.state.config_backups[str(path)] = backup_path
@@ -591,7 +628,6 @@ class SafetyManager:
 
         # Save snapshot
         snapshot_path = self.state.backup_dir / f"snapshot_{name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        with open(snapshot_path, "w") as f:
-            json.dump(snapshot, f, indent=2)
+        _write_json(snapshot_path, snapshot)
 
         return snapshot

@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+
+from cairn import db_crypto
 from dataclasses import dataclass
 from typing import Any, Optional, Protocol
 
@@ -229,6 +231,6 @@ def create_processor(
     Returns:
         Configured AtomicOpsProcessor.
     """
-    conn = sqlite3.connect(db_path)
+    conn = db_crypto.connect(db_path)
     conn.row_factory = sqlite3.Row
     return AtomicOpsProcessor(conn=conn, llm=llm)

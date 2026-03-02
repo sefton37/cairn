@@ -721,14 +721,16 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
             refreshed = auth.refresh_session(session_token)
             return _jsonrpc_result(req_id=req_id, result={"success": refreshed})
 
-        # Defense-in-depth: verify __session exists for non-auth methods.
+        # Defense-in-depth: reject calls without __session for non-auth methods.
         # Rust frontend injects __session into params after validating the session.
-        # This is a warning (not hard reject) until all Rust paths are confirmed.
         _EXEMPT_METHODS = {"ping", "initialize", "debug/log"}
-        if isinstance(params, dict) and "__session" not in params:
-            if method not in _EXEMPT_METHODS and not method.startswith("auth/"):
+        if method not in _EXEMPT_METHODS and not method.startswith("auth/"):
+            if not isinstance(params, dict) or "__session" not in params:
                 logger.warning(
-                    "RPC call without __session: method=%s (defense-in-depth check)", method
+                    "RPC call rejected: missing __session for method=%s", method
+                )
+                return _jsonrpc_error(
+                    req_id=req_id, code=-32003, message="Session required"
                 )
 
         # Fast path: Check simple handler registries first

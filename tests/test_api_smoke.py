@@ -3,6 +3,11 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from cairn.app import app
+from cairn.http_rpc import require_auth
+
+
+async def _mock_require_auth() -> str:
+    return "test-session"
 
 
 def test_health_ok(isolated_db_singleton) -> None:  # noqa: ANN001
@@ -15,19 +20,23 @@ def test_health_ok(isolated_db_singleton) -> None:  # noqa: ANN001
 
 
 def test_ingest_event_and_reflect(isolated_db_singleton) -> None:  # noqa: ANN001
-    client = TestClient(app)
+    app.dependency_overrides[require_auth] = _mock_require_auth
+    try:
+        client = TestClient(app)
 
-    res = client.post(
-        "/events",
-        json={"source": "test", "payload_metadata": {"kind": "smoke"}},
-    )
-    assert res.status_code == 200
-    body = res.json()
-    assert body["stored"] is True
-    assert "event_id" in body
+        res = client.post(
+            "/events",
+            json={"source": "test", "payload_metadata": {"kind": "smoke"}},
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["stored"] is True
+        assert "event_id" in body
 
-    res = client.get("/reflections")
-    assert res.status_code == 200
-    data = res.json()
-    assert "reflections" in data
-    assert isinstance(data["reflections"], list)
+        res = client.get("/reflections")
+        assert res.status_code == 200
+        data = res.json()
+        assert "reflections" in data
+        assert isinstance(data["reflections"], list)
+    finally:
+        app.dependency_overrides.pop(require_auth, None)

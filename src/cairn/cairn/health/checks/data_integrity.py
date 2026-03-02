@@ -10,6 +10,7 @@ import logging
 import sqlite3
 from pathlib import Path
 
+from cairn import db_crypto
 from cairn.cairn.health.runner import HealthCheckResult, Severity
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ class DataIntegrityCheck:
             return results
 
         try:
-            conn = sqlite3.connect(str(self._db_path))
+            conn = db_crypto.connect(str(self._db_path))
             try:
                 # PRAGMA integrity_check
                 integrity_result = conn.execute("PRAGMA integrity_check").fetchone()

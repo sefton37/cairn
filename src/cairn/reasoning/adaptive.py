@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import subprocess
 import time
@@ -28,6 +29,36 @@ from .planner import TaskPlan, TaskStep, StepType, StepStatus
 from .executor import StepResult
 
 logger = logging.getLogger(__name__)
+
+
+def _get_crypto():
+    """Return the active CryptoStorage, or None if not authenticated."""
+    from cairn.crypto_storage import get_active_crypto
+
+    return get_active_crypto()
+
+
+def _write_json(path: Path, data: dict | list) -> None:
+    """Write JSON data, encrypting if CryptoStorage is active."""
+    content = json.dumps(data, indent=2, ensure_ascii=False)
+    crypto = _get_crypto()
+    if crypto:
+        path.write_bytes(crypto.encrypt(content.encode("utf-8")))
+        os.chmod(path, 0o600)
+    else:
+        path.write_text(content, encoding="utf-8")
+
+
+def _read_json(path: Path) -> dict | list:
+    """Read JSON data, decrypting if CryptoStorage is active."""
+    crypto = _get_crypto()
+    if crypto:
+        try:
+            raw = crypto.decrypt(path.read_bytes())
+            return json.loads(raw.decode("utf-8"))
+        except Exception:
+            pass  # Pre-encryption data fallback
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 # =============================================================================
@@ -749,8 +780,7 @@ class ExecutionLearner:
             return
 
         try:
-            with open(self.storage_path) as f:
-                data = json.load(f)
+            data = _read_json(self.storage_path)
             self.memory.successful_patterns = data.get("successful_patterns", {})
             self.memory.failed_patterns = data.get("failed_patterns", {})
             self.memory.system_quirks = data.get("system_quirks", {})
@@ -776,8 +806,7 @@ class ExecutionLearner:
             "limit": self.limits.max_learned_patterns,
         }
         try:
-            with open(self.storage_path, "w") as f:
-                json.dump(data, f, indent=2)
+            _write_json(self.storage_path, data)
         except Exception as e:
             logger.warning("Failed to save learning data: %s", e)
 

@@ -5,14 +5,14 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import get_db
 from .errors import record_error
-from .http_rpc import router as http_rpc_router
+from .http_rpc import require_auth, router as http_rpc_router
 from .logging_setup import configure_logging
 from .models import (
     Event,
@@ -104,13 +104,15 @@ def health() -> HealthResponse:
 
 
 @app.post("/events", response_model=EventIngestResponse)
-def ingest_event(event: Event) -> EventIngestResponse:
+def ingest_event(event: Event, _session: str = Depends(require_auth)) -> EventIngestResponse:
     event_id = append_event(event)
     return EventIngestResponse(stored=True, event_id=event_id)
 
 
 @app.get("/reflections", response_model=ReflectionsResponse)
-def reflections(window_minutes: int = 30) -> ReflectionsResponse:
+def reflections(
+    window_minutes: int = 30, _session: str = Depends(require_auth)
+) -> ReflectionsResponse:
     # Simple heuristic placeholder: count recent events as switches.
     recent = list(iter_events())
     switches = len(recent)
@@ -143,7 +145,7 @@ def ollama_health() -> OllamaHealthResponse:
 
 
 @app.get("/tools")
-def tools() -> list[dict[str, str]]:
+def tools(_session: str = Depends(require_auth)) -> list[dict[str, str]]:
     # MCP-ready: stable, explicit tool catalog for a future MCP server.
     return [
         {

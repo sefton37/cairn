@@ -15,6 +15,34 @@ from .settings import settings
 logger = logging.getLogger(__name__)
 
 
+def _get_crypto():
+    """Return the active CryptoStorage, or None if not authenticated."""
+    from cairn.crypto_storage import get_active_crypto
+
+    return get_active_crypto()
+
+
+def _write_text(path: Path, text: str) -> None:
+    """Write text data, encrypting if CryptoStorage is active."""
+    crypto = _get_crypto()
+    if crypto:
+        path.write_bytes(crypto.encrypt(text.encode("utf-8")))
+        os.chmod(path, 0o600)
+    else:
+        path.write_text(text, encoding="utf-8")
+
+
+def _read_text(path: Path) -> str:
+    """Read text data, decrypting if CryptoStorage is active."""
+    crypto = _get_crypto()
+    if crypto:
+        try:
+            return crypto.decrypt(path.read_bytes()).decode("utf-8")
+        except Exception:
+            pass  # Pre-encryption data fallback
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
 # =============================================================================
 # Constants for "Your Story" Act and Stage Direction
 # =============================================================================
@@ -170,18 +198,19 @@ def ensure_play_skeleton() -> None:
 
     me = _me_path()
     if not me.exists():
-        me.write_text(
+        _write_text(
+            me,
             "# Me (The Play)\n\n"
             "Personal facts, principles, constraints, and identity-level context.\n"
             "\n"
             "This is read-mostly and slow-changing. It is not a task list.\n",
-            encoding="utf-8",
         )
 
     acts = _acts_path()
     if not acts.exists():
-        acts.write_text(
-            json.dumps({"acts": []}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        _write_text(
+            acts,
+            json.dumps({"acts": []}, ensure_ascii=False, indent=2) + "\n",
         )
 
 
@@ -213,13 +242,13 @@ def ensure_your_story_act() -> tuple[list["Act"], str]:
 
 def read_me_markdown() -> str:
     ensure_play_skeleton()
-    return _me_path().read_text(encoding="utf-8", errors="replace")
+    return _read_text(_me_path())
 
 
 def write_me_markdown(text: str) -> None:
     """Write the me.md file (Your Story / Play level content)."""
     ensure_play_skeleton()
-    _me_path().write_text(text, encoding="utf-8")
+    _write_text(_me_path(), text)
 
 
 def _dict_to_act(d: dict[str, Any]) -> Act:
@@ -685,7 +714,7 @@ def kb_list_files(*, act_id: str, scene_id: str | None = None) -> list[str]:
     kb_root.mkdir(parents=True, exist_ok=True)
     default = kb_root / "kb.md"
     if not default.exists():
-        default.write_text("# KB\n\n", encoding="utf-8")
+        _write_text(default, "# KB\n\n")
 
     files: list[str] = []
     for path in kb_root.rglob("*"):
@@ -731,12 +760,12 @@ This is **Your Story**—the autobiographical entry point. Use it to capture:
 
 Select an Act from the sidebar to focus on a specific narrative, or start writing here to build your story.
 """
-                target.write_text(default_content, encoding="utf-8")
+                _write_text(target, default_content)
             else:
-                target.write_text("# KB\n\n", encoding="utf-8")
+                _write_text(target, "# KB\n\n")
         else:
             raise FileNotFoundError(path)
-    content = target.read_text(encoding="utf-8", errors="replace")
+    content = _read_text(target)
     print(
         f"[kb_read] Read {len(content)} chars, first 100: {content[:100]!r}",
         file=sys.stderr,
@@ -778,7 +807,7 @@ def kb_write_preview(
     print(f"[kb_write_preview] target={target}", file=sys.stderr, flush=True)
 
     exists = target.exists() and target.is_file()
-    current = target.read_text(encoding="utf-8", errors="replace") if exists else ""
+    current = _read_text(target) if exists else ""
     current_sha = _sha256_text(current)
     new_sha = _sha256_text(text)
     print(
@@ -832,7 +861,7 @@ def kb_write_apply(
     print(f"[kb_write_apply] target={target}", file=sys.stderr, flush=True)
 
     exists = target.exists() and target.is_file()
-    current = target.read_text(encoding="utf-8", errors="replace") if exists else ""
+    current = _read_text(target) if exists else ""
     current_sha = _sha256_text(current)
     print(
         f"[kb_write_apply] current_sha={current_sha[:16]}..., match={current_sha == expected_sha256_current}",
@@ -848,7 +877,7 @@ def kb_write_apply(
         raise ValueError("conflict: file changed since preview")
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(text, encoding="utf-8")
+    _write_text(target, text)
     print(
         f"[kb_write_apply] SUCCESS - wrote {len(text)} chars to {target}",
         file=sys.stderr,

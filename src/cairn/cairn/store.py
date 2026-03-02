@@ -13,6 +13,8 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+
+from cairn import db_crypto
 from pathlib import Path
 from typing import Any
 
@@ -57,7 +59,7 @@ class CairnStore:
                 self._local.conn = None
 
         if conn is None:
-            self._local.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+            self._local.conn = db_crypto.connect(str(self.db_path), check_same_thread=False)
             self._local.conn.row_factory = sqlite3.Row
             self._local.conn.execute("PRAGMA foreign_keys = ON")
             self._local.conn.execute("PRAGMA journal_mode = WAL")

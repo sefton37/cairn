@@ -286,44 +286,22 @@ class ExecutionEngine:
                 error=warning or "Command blocked for safety",
             )
 
-        # Check if we're running in terminal mode (from shell_cli)
-        # In terminal mode, commands run with full terminal access
-        terminal_mode = os.environ.get("REOS_TERMINAL_MODE") == "1"
-
         try:
             timeout_seconds = step.risk.estimated_duration_seconds * 2 if step.risk else 120
 
-            if terminal_mode:
-                # Terminal mode: use os.system() for full terminal pass-through
-                # This is more reliable than subprocess.run() for interactive commands
-                returncode = os.system(command)
-                # os.system returns wait status, extract exit code
-                if hasattr(os, 'waitstatus_to_exitcode'):
-                    returncode = os.waitstatus_to_exitcode(returncode)
-                else:
-                    returncode = returncode >> 8
-
-                return StepResult(
-                    step_id=step.id,
-                    success=returncode == 0,
-                    output="(executed in terminal)",
-                    error=None if returncode == 0 else "Command failed",
-                )
-            else:
-                # Non-terminal mode: capture output
-                result = subprocess.run(
-                    command,
-                    shell=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout_seconds,
-                )
-                return StepResult(
-                    step_id=step.id,
-                    success=result.returncode == 0,
-                    output=result.stdout[:10000] if result.stdout else "",
-                    error=result.stderr if result.returncode != 0 else None,
-                )
+            result = subprocess.run(
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+            )
+            return StepResult(
+                step_id=step.id,
+                success=result.returncode == 0,
+                output=result.stdout[:10000] if result.stdout else "",
+                error=result.stderr if result.returncode != 0 else None,
+            )
 
         except subprocess.TimeoutExpired:
             return StepResult(

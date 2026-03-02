@@ -296,10 +296,10 @@ def verify_command_safety_llm(
         )
 
         if not response or not isinstance(response, str):
-            return True, None
+            return False, "LLM returned empty or non-string response"
 
         result = json.loads(response)
-        is_safe = result.get("safe", True)
+        is_safe = result.get("safe", False)
         reason = result.get("reason")
 
         if not is_safe:

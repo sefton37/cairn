@@ -366,6 +366,52 @@ class TestSecurityIntegration:
         assert len(rate_limit_calls) > 0, "Rate limit should be audited"
 
 
+class TestSessionEnforcement:
+    """Test that non-exempt RPC methods require __session."""
+
+    def test_missing_session_rejected_for_non_exempt_method(self, db: Database) -> None:
+        """A non-exempt method without __session must return error -32003."""
+        from cairn.ui_rpc_server import _handle_jsonrpc_request
+
+        req = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "play/list_acts",
+            "params": {},
+        }
+        result = _handle_jsonrpc_request(db, req)
+        assert result is not None
+        assert "error" in result
+        assert result["error"]["code"] == -32003
+        assert "Session required" in result["error"]["message"]
+
+    def test_exempt_methods_pass_without_session(self, db: Database) -> None:
+        """Exempt methods (ping, initialize, debug/log) must not require __session."""
+        from cairn.ui_rpc_server import _handle_jsonrpc_request
+
+        req = {"jsonrpc": "2.0", "id": 2, "method": "ping", "params": {}}
+        result = _handle_jsonrpc_request(db, req)
+        assert result is not None
+        # ping bypasses session check — it may return another error but NOT -32003
+        if "error" in result:
+            assert result["error"]["code"] != -32003
+
+    def test_auth_methods_pass_without_session(self, db: Database) -> None:
+        """auth/* methods must not require __session."""
+        from cairn.ui_rpc_server import _handle_jsonrpc_request
+
+        req = {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "auth/validate",
+            "params": {"session_token": "fake-token"},
+        }
+        result = _handle_jsonrpc_request(db, req)
+        assert result is not None
+        # Should reach the handler, not be blocked by session check
+        assert result["error"]["code"] != -32003 if "error" in result else True
+
+
 class TestJsonRpcProtocol:
     """Test JSON-RPC 2.0 protocol compliance."""
 

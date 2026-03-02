@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -29,6 +30,36 @@ if TYPE_CHECKING:
     from cairn.cairn.store import CairnStore
 
 logger = logging.getLogger(__name__)
+
+
+def _get_crypto():
+    """Return the active CryptoStorage, or None if not authenticated."""
+    from cairn.crypto_storage import get_active_crypto
+
+    return get_active_crypto()
+
+
+def _write_json(path: Path, data: dict | list) -> None:
+    """Write JSON data, encrypting if CryptoStorage is active."""
+    content = json.dumps(data, indent=2, ensure_ascii=False)
+    crypto = _get_crypto()
+    if crypto:
+        path.write_bytes(crypto.encrypt(content.encode("utf-8")))
+        os.chmod(path, 0o600)
+    else:
+        path.write_text(content, encoding="utf-8")
+
+
+def _read_json(path: Path) -> dict | list:
+    """Read JSON data, decrypting if CryptoStorage is active."""
+    crypto = _get_crypto()
+    if crypto:
+        try:
+            raw = crypto.decrypt(path.read_bytes())
+            return json.loads(raw.decode("utf-8"))
+        except Exception:
+            pass  # Pre-encryption data fallback
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _anti_patterns_path() -> Path:
@@ -197,7 +228,7 @@ def load_anti_patterns() -> list[str]:
         return []
 
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = _read_json(path)
         patterns = data.get("anti_patterns", [])
         return [p for p in patterns if isinstance(p, str) and p.strip()]
     except Exception as e:
@@ -224,7 +255,7 @@ def add_anti_pattern(pattern: str, reason: str | None = None) -> list[str]:
     # Load existing patterns
     if path.exists():
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = _read_json(path)
         except (json.JSONDecodeError, OSError) as e:
             logger.warning("Failed to load anti-patterns file: %s", e)
             data = {}
@@ -257,7 +288,7 @@ def add_anti_pattern(pattern: str, reason: str | None = None) -> list[str]:
     data["anti_patterns"] = patterns
     data["history"] = history[-100:]  # Keep last 100 history entries
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    _write_json(path, data)
 
     logger.info("Added anti-pattern: %s", pattern)
     return patterns
@@ -279,7 +310,7 @@ def remove_anti_pattern(pattern: str) -> list[str]:
         return []
 
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = _read_json(path)
     except (json.JSONDecodeError, OSError) as e:
         logger.warning("Failed to load anti-patterns for removal: %s", e)
         return []
@@ -307,7 +338,7 @@ def remove_anti_pattern(pattern: str) -> list[str]:
     # Save
     data["anti_patterns"] = patterns
     data["history"] = history[-100:]
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    _write_json(path, data)
 
     logger.info("Removed anti-pattern: %s", pattern)
     return patterns
