@@ -114,15 +114,22 @@ When a conversation ends, CAIRN extracts the meaning — what was decided, what 
 
 ---
 
-## Small Models, Outsized Impact
+## Smart Models, Outsized Impact
 
-True democratization means running on hardware people actually have. A 70B model that needs a $2000 GPU isn't democratized — it's just a different kind of paywall.
+Using cheap local LLM calls is Talking Rock's superpower. Binary confidence,
+structured prompts, and multi-layer verification make 8B parameter models
+outperform 70B models used naively — because architecture multiplies capability.
 
-**Target: 1B parameter models.** These run on 8GB RAM, integrated graphics, and five-year-old laptops. If your computer can run a web browser, it should be able to run Talking Rock.
+**Target: 8B parameter models (3B stretch goal).** These run on 16GB RAM —
+hardware most laptops have shipped with for the last five years. Larger models
+are welcome if you have the hardware, but Talking Rock is designed and tested
+at 8B.
 
-CAIRN is an attention minder. Surfacing tasks, managing priorities, understanding your context, and helping you focus are achievable at 1B parameters. The model needs to understand intent and match patterns, not generate complex code.
-
-Because inference is local, it's essentially free after download. Every verification pass, every analysis, every safety check costs nothing extra. Cloud services charge per token and minimize verification to save money. We can verify every decision, analyze every context, check every action — because the economics don't punish thoroughness.
+CAIRN is an attention minder. Surfacing tasks, managing priorities,
+understanding your context, and helping you focus are well within reach of 8B
+parameters with the right architecture. Every intent is classified, every
+action verified, every decision auditable — because local inference is free
+and verification costs nothing extra.
 
 ---
 
@@ -133,7 +140,7 @@ Because inference is local, it's essentially free after download. Every verifica
 ```bash
 # 1. Install Ollama (runs AI models locally)
 curl -fsSL https://ollama.com/install.sh | sh
-ollama pull llama3.2:1b
+ollama pull llama3.1:8b
 
 # 2. Clone and install Talking Rock
 git clone https://github.com/sefton37/cairn.git
@@ -157,7 +164,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 
 Then download a small model:
 ```bash
-ollama pull llama3.2:1b
+ollama pull llama3.1:8b
 ```
 
 **Step 2: Install Talking Rock**
@@ -182,9 +189,8 @@ A window will open. Start talking to CAIRN.
 
 - Linux (Ubuntu, Fedora, Mint, Arch, etc.)
 - Python 3.12+
-- 8GB RAM
+- 16GB RAM
 - 10GB disk space
-- No GPU required
 
 ---
 
@@ -194,7 +200,7 @@ Talking Rock is for you if:
 - You want an AI that partners with your values, not one that automates you
 - You're tired of subscription fatigue
 - You want a calm, non-judgmental organizer for your life
-- You have modest hardware (8GB RAM, no GPU required)
+- You have modest hardware (16GB RAM)
 - You believe your data should be centered around you, not in a data center
 
 ### How It Compares
@@ -205,7 +211,7 @@ Talking Rock is for you if:
 | Your data stays private | No | No | **Yes** |
 | Free forever | No | No | **Yes** |
 | Open source | No | No | **Yes** |
-| Runs on 8GB RAM | N/A | N/A | **Yes** |
+| Runs on 16GB RAM | N/A | N/A | **Yes** |
 | Life organization | No | No | **Yes** |
 | Learns from conversations | No | No | **Yes** |
 | Learning auditable/editable | No | No | **Yes** |
@@ -227,7 +233,7 @@ Talking Rock is for you if:
 - [x] Memory architecture (extraction, routing, Your Story, semantic search)
 - [x] Memory-augmented reasoning (memories inform classification, decomposition, verification)
 - [x] Health Pulse (data freshness, calibration, system health — no nagging)
-- [ ] 1B model optimization and testing
+- [ ] 8B model optimization and testing (3B stretch goal)
 
 ### Infrastructure
 - [x] 5-layer verification pipeline (intent always verified)
@@ -273,8 +279,8 @@ Talking Rock is open source (MIT license). We welcome:
 See [CONTRIBUTING.md](.github/CONTRIBUTING.md) for guidelines.
 
 **Current focus areas:**
-1. CAIRN performance on 1B models
-2. Prompt engineering for small models
+1. CAIRN performance on 8B models (3B stretch goal)
+2. Prompt engineering for local models
 3. Hardware compatibility testing
 
 ---

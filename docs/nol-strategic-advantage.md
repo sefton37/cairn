@@ -190,7 +190,7 @@ NOL is this philosophy applied to code: one representation instead of infinite, 
 
 ## Current Status
 
-RIVA's development is frozen while CAIRN and ReOS prove small-model viability on 1-3B parameter hardware. The NOL integration infrastructure is complete:
+RIVA's development is frozen while CAIRN and ReOS prove smart-model viability on 3-8B parameter models. The NOL integration infrastructure is complete:
 
 - **NOL engine** (Rust): 65 opcodes, 4 verification layers, sandbox model, 591 tests passing
 - **NolBridge** (Python): Subprocess wrapper around the `nolang` CLI, fully tested

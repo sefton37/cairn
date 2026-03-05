@@ -478,7 +478,7 @@ A single conversation can produce memories in multiple destinations. Each memory
 
 ## LLM Prompt Templates
 
-Local inference is the engine for every stage. These prompts are designed for 1-3B parameter models running on Ollama.
+Local inference is the engine for every stage. These prompts are designed for 3-8B parameter models running on Ollama.
 
 ### Entity Extraction Prompt
 

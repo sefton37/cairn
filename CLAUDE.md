@@ -11,7 +11,7 @@
 > **Vision:** AI that partners with you and your values, not to automate you. Intent always verified, permission always requested, all learning available to be audited and edited by you.
 
 **Talking Rock** is a local-first personal attention minder with one agent:
-- **CAIRN** — Attention minder and life organizer (1B models)
+- **CAIRN** — Attention minder and life organizer (8B models)
 
 ---
 
@@ -496,7 +496,7 @@ When working with the orchestration system from `~/.claude/CLAUDE.md`:
 
 ## Summary
 
-Cairn is a local-first personal attention minder focused on small models (1B parameters) that run on accessible hardware (8GB RAM, no GPU). The architecture decomposes operations into atomic units, uses a 2-tier life organization system (Acts → Scenes), and features a conversation lifecycle that extracts meaning into persistent memory.
+Cairn is a local-first personal attention minder focused on smart local models (8B parameters) that run on accessible hardware (16GB RAM). The architecture decomposes operations into atomic units, uses a 2-tier life organization system (Acts → Scenes), and features a conversation lifecycle that extracts meaning into persistent memory.
 
 **When in doubt:**
 1. Check this file for conventions and file locations

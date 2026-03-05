@@ -128,7 +128,7 @@ A 70B parameter model running in a data center must handle infinite representati
 
 A 7-8B parameter model generating canonical form doesn't face this problem. There is one representation. The model's capacity is entirely spent on the computation itself — what to compute, not how to dress it.
 
-This is the same principle that makes local compute viable. A data center exists because individual machines can't run 70B parameter models. But if the representation is canonical and the output space is collapsed, a smaller model suffices. And a smaller model runs on accessible hardware. 8GB of RAM. No GPU. The machine you already own.
+This is the same principle that makes local compute viable. A data center exists because individual machines can't run 70B parameter models. But if the representation is canonical and the output space is collapsed, a smaller model suffices. And a smaller model runs on accessible hardware. 16GB of RAM. The machine you already own.
 
 The chain is direct:
 

@@ -20,7 +20,7 @@ Talking Rock is an AI assistant that runs entirely on your computer. Not a thin 
 
 - **When your data is centered around you**, no one else can read your conversations, train on your patterns, or sell your attention. The architecture makes this true by default, not by policy.
 - **When inference is local and free**, every intent can be verified before execution, every classification decision can be inspected, and every memory the system builds about you can be read, corrected, or deleted. You audit the AI that knows you.
-- **Small models on accessible hardware** — 1B parameters, 8GB RAM, no GPU — mean this isn't a privilege for the well-resourced. Outsized impact from a small footprint.
+- **Smart models on accessible hardware** — 8B parameters, 16GB RAM — mean this isn't a privilege for the well-resourced. Outsized impact from a modest footprint.
 
 ---
 
@@ -107,7 +107,7 @@ User Request
 
 ### CAIRN: The Attention Minder
 
-**Target: 1B parameters.** Surfacing and prioritization are pattern-matching tasks.
+**Target: 8B parameters (3B stretch goal).** Surfacing and prioritization are pattern-matching tasks.
 
 CAIRN helps you focus on what matters by:
 - Surfacing the **next thing**, not everything

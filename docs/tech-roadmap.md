@@ -84,7 +84,7 @@ Your data lives on your machine. Every intent is verified before execution. Ever
 │  │                     Model Backend (Ollama Only)                     │     │
 │  │                                                                     │     │
 │  │   Ollama (Local)                                                    │     │
-│  │   └── llama3.2 (1B)     └── qwen      └── mistral                 │     │
+│  │   └── llama3.1 (8B)     └── qwen      └── mistral                 │     │
 │  │   └── nomic-embed (embeddings)                                     │     │
 │  └────────────────────────────────────────────────────────────────────┘     │
 │                                      │                                       │
@@ -489,7 +489,7 @@ class DocumentationLookup:
 3. **Auditable Learning**: Every memory CAIRN builds about you is visible and editable.
 4. **Open Source**: Security audits, bug fixes, feature additions by community.
 5. **No Rent**: One install, free forever.
-6. **Small Footprint**: 1B models, 8GB RAM, no GPU required.
+6. **Small Footprint**: 8B models, 16GB RAM.
 
 **User perception we design for:**
 > "Takes longer than the cloud tools, but I trust it completely. It's mine."
