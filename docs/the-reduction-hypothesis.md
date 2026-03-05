@@ -162,7 +162,7 @@ What canonical form eliminates is the ability to *mask* the wrong thing behind a
 
 **This is not a claim that local compute solves all problems.**
 
-A 7-8B parameter model running locally cannot do everything a 70B+ model running in a data center can do. Creative tasks, complex reasoning, novel problem solving — these benefit from scale. Talking Rock's position is not that small models are universally better. It's that for constrained problems — attention management (1B), system control (1-3B), canonical code generation (7-8B) — the reduction in output space makes small models *sufficient*. And sufficiency on accessible hardware is democratization.
+A 7-8B parameter model running locally cannot do everything a 70B+ model running in a data center can do. Creative tasks, complex reasoning, novel problem solving — these benefit from scale. Talking Rock's position is not that small models are universally better. It's that for constrained problems — attention management (3-8B), system control (3-8B), canonical code generation (7-8B) — the reduction in output space makes modest models *sufficient*. And sufficiency on accessible hardware is democratization.
 
 ---
 

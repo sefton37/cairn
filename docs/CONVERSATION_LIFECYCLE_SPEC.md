@@ -697,7 +697,7 @@ def check_thread_resolution(new_entities: list, user_id: str) -> list:
 
 Every other AI system treats memory as a nice-to-have — a way to recall your name or preferences. Talking Rock treats memory as the **primary substrate for reasoning**. When a request arrives, before classification, before decomposition, before verification, memories are searched. They inform every stage of the pipeline.
 
-This is what transforms a 1-3B parameter model from a generic assistant into an assistant that *knows you*. The model's weights encode general capability. The memories encode *your* patterns, *your* context, *your* open threads, *your* vocabulary.
+This is what transforms a 3-8B parameter model from a generic assistant into an assistant that *knows you*. The model's weights encode general capability. The memories encode *your* patterns, *your* context, *your* open threads, *your* vocabulary.
 
 ### Integration with the Atomic Operations Pipeline
 

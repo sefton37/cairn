@@ -286,7 +286,7 @@ This module handles:
 | Component | Time | Notes |
 |-----------|------|-------|
 | Context building | < 10ms | Database query for examples |
-| LLM inference | ~ 500-1500ms | Depends on model size (1-3B) |
+| LLM inference | ~ 500-1500ms | Depends on model size (3-8B) |
 | Response parsing | < 5ms | JSON validation |
 | **Total** | ~ 500-1500ms | Acceptable for interactive use |
 
