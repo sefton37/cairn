@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -14,7 +15,7 @@ from .settings import settings
 
 
 class Database:
-    """Local SQLite database for ReOS events, sessions, and classifications."""
+    """Local SQLite database for Talking Rock events, sessions, and classifications."""
 
     db_path: Path | str  # Can be Path or ":memory:" string
 
@@ -22,7 +23,10 @@ class Database:
         if db_path == ":memory:":
             self.db_path = ":memory:"
         elif db_path is None:
-            self.db_path = settings.data_dir / "reos.db"
+            # Check env vars at call time to support test overrides
+            _env = os.environ.get("TALKINGROCK_DATA_DIR") or os.environ.get("REOS_DATA_DIR")
+            base = Path(_env) if _env else settings.data_dir
+            self.db_path = base / "talkingrock.db"
         elif isinstance(db_path, str):
             self.db_path = Path(db_path)
         else:

@@ -44,53 +44,97 @@ export async function showLockScreen(root: HTMLElement, options: LockScreenOptio
     align-items: center;
     justify-content: center;
     height: 100vh;
-    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    background: #0f172a;
     font-family: system-ui, -apple-system, sans-serif;
+    position: relative;
+    overflow: hidden;
   `;
 
-  const card = el('div');
-  card.className = 'lock-card';
-  card.style.cssText = `
-    background: rgba(30, 41, 59, 0.8);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 16px;
+  // Background image
+  const bgImage = el('div');
+  bgImage.style.cssText = `
+    position: absolute;
+    inset: 0;
+    background-image: url('/sonora-sunrise.webp');
+    background-size: cover;
+    background-position: center;
+    opacity: 0.4;
+  `;
+  container.appendChild(bgImage);
+
+  // Gradient overlay for readability
+  const overlay = el('div');
+  overlay.style.cssText = `
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      180deg,
+      rgba(15, 23, 42, 0.3) 0%,
+      rgba(15, 23, 42, 0.6) 50%,
+      rgba(15, 23, 42, 0.85) 100%
+    );
+  `;
+  container.appendChild(overlay);
+
+  // Content wrapper (above background)
+  const content = el('div');
+  content.style.cssText = `
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    width: 100%;
     padding: 40px;
-    width: 320px;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-    text-align: center;
   `;
 
-  // Logo/Title
-  const logo = el('div');
-  logo.style.cssText = `margin-bottom: 32px;`;
-
+  // Title
   const logoText = el('div');
   logoText.textContent = 'Talking Rock';
   logoText.style.cssText = `
-    font-size: 32px;
+    font-size: 42px;
     font-weight: 700;
     color: #f1f5f9;
     letter-spacing: -0.5px;
+    margin-bottom: 16px;
+    text-shadow: 0 2px 20px rgba(0,0,0,0.5);
   `;
 
-  const subtitle = el('div');
-  subtitle.textContent = options.isReauth ? 'Session Expired' : 'Natural Language Linux';
-  subtitle.style.cssText = `
-    font-size: 14px;
-    color: rgba(148, 163, 184, 0.8);
-    margin-top: 4px;
+  // Mission statement (under the name)
+  const mission = el('div');
+  mission.textContent = 'Local, open source, zero trust AI. Small models and footprint, outsized impact and trust.';
+  mission.style.cssText = `
+    font-size: 16px;
+    color: rgba(226, 232, 240, 0.9);
+    max-width: 460px;
+    text-align: center;
+    line-height: 1.6;
+    margin-bottom: 40px;
+    text-shadow: 0 1px 10px rgba(0,0,0,0.5);
+    font-style: italic;
   `;
 
-  logo.appendChild(logoText);
-  logo.appendChild(subtitle);
+  // Auth card
+  const card = el('div');
+  card.className = 'lock-card';
+  card.style.cssText = `
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 32px 40px;
+    width: 340px;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    text-align: center;
+    margin-bottom: 40px;
+  `;
 
   // User info
-  const userSection = el('div');
-  userSection.style.cssText = `margin-bottom: 24px;`;
-
   const userIcon = el('div');
   userIcon.textContent = '👤';
-  userIcon.style.cssText = `font-size: 48px; margin-bottom: 12px;`;
+  userIcon.style.cssText = `font-size: 40px; margin-bottom: 10px;`;
 
   const userLabel = el('div');
   userLabel.textContent = username || 'Unknown User';
@@ -98,18 +142,17 @@ export async function showLockScreen(root: HTMLElement, options: LockScreenOptio
     font-size: 18px;
     font-weight: 500;
     color: #e2e8f0;
+    margin-bottom: 8px;
   `;
 
-  userSection.appendChild(userIcon);
-  userSection.appendChild(userLabel);
-
-  // Info text
   const infoText = el('div');
-  infoText.textContent = 'Click below to authenticate with your system credentials';
+  infoText.textContent = options.isReauth
+    ? 'Your session has expired. Please re-authenticate.'
+    : 'Click below to authenticate with your system credentials';
   infoText.style.cssText = `
     font-size: 13px;
     color: rgba(148, 163, 184, 0.7);
-    margin-bottom: 24px;
+    margin-bottom: 20px;
     line-height: 1.5;
   `;
 
@@ -184,24 +227,41 @@ export async function showLockScreen(root: HTMLElement, options: LockScreenOptio
     }
   });
 
-  card.appendChild(logo);
-  card.appendChild(userSection);
+  card.appendChild(userIcon);
+  card.appendChild(userLabel);
   card.appendChild(infoText);
   card.appendChild(errorMsg);
   card.appendChild(authBtn);
-  container.appendChild(card);
+
+  // Vision statement (below card)
+  const vision = el('div');
+  vision.textContent = 'Center your data around you, not a data center.';
+  vision.style.cssText = `
+    font-size: 14px;
+    color: rgba(148, 163, 184, 0.7);
+    max-width: 400px;
+    text-align: center;
+    line-height: 1.5;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.4);
+  `;
 
   // Security note
   const secNote = el('div');
   secNote.style.cssText = `
-    margin-top: 24px;
+    margin-top: 20px;
     font-size: 11px;
-    color: rgba(148, 163, 184, 0.5);
+    color: rgba(148, 163, 184, 0.4);
     text-align: center;
     max-width: 280px;
   `;
-  secNote.textContent = 'Authentication via Polkit using your system credentials. Supports password, fingerprint, and smartcard.';
-  container.appendChild(secNote);
+  secNote.textContent = 'Authentication via Polkit using your system credentials.';
+
+  content.appendChild(logoText);
+  content.appendChild(mission);
+  content.appendChild(card);
+  content.appendChild(vision);
+  content.appendChild(secNote);
+  container.appendChild(content);
 
   root.appendChild(container);
 }

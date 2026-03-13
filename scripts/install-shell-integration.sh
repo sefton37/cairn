@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# ReOS Shell Integration Installer
+# Cairn Shell Integration Installer
 #
-# This script adds ReOS shell integration to your shell configuration.
+# This script adds Cairn shell integration to your shell configuration.
 # It enables natural language processing directly in your terminal.
 #
 # Usage:
@@ -58,14 +58,14 @@ install_integration() {
     rc_file="$(detect_shell_rc)"
 
     if [[ -z "$rc_file" ]]; then
-        echo -e "${RED}Error:${NC} Unsupported shell. ReOS shell integration supports bash and zsh." >&2
+        echo -e "${RED}Error:${NC} Unsupported shell. Cairn shell integration supports bash and zsh." >&2
         echo "You can manually add this to your shell config:" >&2
         echo "  source \"$INTEGRATION_SCRIPT\"" >&2
         exit 1
     fi
 
     if is_installed "$rc_file"; then
-        echo -e "${YELLOW}Note:${NC} ReOS shell integration is already installed in $rc_file"
+        echo -e "${YELLOW}Note:${NC} Cairn shell integration is already installed in $rc_file"
         echo "To reinstall, run: $0 --uninstall && $0"
         exit 0
     fi
@@ -83,14 +83,14 @@ install_integration() {
         exit 1
     fi
 
-    echo -e "${CYAN}ReOS Shell Integration Installer${NC}"
+    echo -e "${CYAN}Cairn Shell Integration Installer${NC}"
     echo ""
-    echo "This will add ReOS shell integration to: $rc_file"
+    echo "This will add Cairn shell integration to: $rc_file"
     echo ""
     echo "Features:"
     echo "  - Type natural language directly in terminal"
-    echo "  - ReOS intercepts 'command not found' errors"
-    echo "  - Use 'reos \"query\"' for direct queries"
+    echo "  - Cairn intercepts 'command not found' errors"
+    echo "  - Use 'cairn \"query\"' for direct queries"
     echo "  - Use 'ask \"query\"' as a shortcut"
     echo ""
     echo -n "Proceed? [Y/n] "
@@ -107,14 +107,14 @@ install_integration() {
     # Add to shell config
     cat >> "$rc_file" << EOF
 
-# ReOS Shell Integration (added by install-shell-integration.sh)
+# Cairn Shell Integration (added by install-shell-integration.sh)
 if [[ -f "$INTEGRATION_SCRIPT" ]]; then
     source "$INTEGRATION_SCRIPT"
 fi
 EOF
 
     echo ""
-    echo -e "${GREEN}Success!${NC} ReOS shell integration installed."
+    echo -e "${GREEN}Success!${NC} Cairn shell integration installed."
     echo ""
     echo "To activate now, run:"
     echo "  source $rc_file"
@@ -122,8 +122,7 @@ EOF
     echo "Or open a new terminal."
     echo ""
     echo "Configuration options (add to $rc_file before the source line):"
-    echo "  export REOS_SHELL_AUTO=1      # Skip confirmation prompts"
-    echo "  export REOS_SHELL_DISABLED=1  # Temporarily disable"
+    echo "  export TALKINGROCK_SHELL_DISABLED=1  # Temporarily disable"
 }
 
 # Uninstall the integration
@@ -141,9 +140,9 @@ uninstall_integration() {
         exit 0
     fi
 
-    echo -e "${CYAN}Uninstalling ReOS Shell Integration${NC}"
+    echo -e "${CYAN}Uninstalling Cairn Shell Integration${NC}"
     echo ""
-    echo "This will remove ReOS shell integration from: $rc_file"
+    echo "This will remove Cairn shell integration from: $rc_file"
     echo -n "Proceed? [Y/n] "
 
     local response
@@ -158,21 +157,21 @@ uninstall_integration() {
     # Create backup
     cp "$rc_file" "$rc_file.bak"
 
-    # Remove the integration block
-    sed -i '/# ReOS Shell Integration/,/^fi$/d' "$rc_file"
+    # Remove the integration block (matches both old "ReOS" and new "Cairn" header)
+    sed -i '/# \(ReOS\|Cairn\) Shell Integration/,/^fi$/d' "$rc_file"
 
     echo ""
-    echo -e "${GREEN}Success!${NC} ReOS shell integration removed."
+    echo -e "${GREEN}Success!${NC} Cairn shell integration removed."
     echo "Backup saved to: $rc_file.bak"
     echo ""
     echo "To deactivate in current session, run:"
-    echo "  unset -f command_not_found_handle reos _reos_find_root"
+    echo "  unset -f command_not_found_handle cairn _reos_find_root"
     echo "  unalias ask 2>/dev/null"
 }
 
 # Show usage
 show_usage() {
-    echo "ReOS Shell Integration Installer"
+    echo "Cairn Shell Integration Installer"
     echo ""
     echo "Usage:"
     echo "  $0            Install shell integration"

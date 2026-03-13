@@ -96,7 +96,7 @@ def _make_service_with_real_graph(
 @pytest.fixture(autouse=True)
 def _fresh_db(tmp_path, monkeypatch):
     """Fresh isolated database for each test."""
-    monkeypatch.setenv("REOS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TALKINGROCK_DATA_DIR", str(tmp_path))
     close_connection()
     init_db()
     yield

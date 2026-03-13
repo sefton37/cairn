@@ -271,7 +271,7 @@ class TestChatAgentPersona:
         persona = agent._get_persona()
 
         assert "system_prompt" in persona
-        assert "ReOS" in persona["system_prompt"]
+        assert "CAIRN" in persona["system_prompt"]
         assert persona.get("temperature", 0.2) == 0.2
         assert persona.get("top_p", 0.9) == 0.9
         assert persona.get("tool_call_limit", 5) == 5

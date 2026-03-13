@@ -403,7 +403,7 @@ class OllamaProvider:
             logger.debug("Failed to auto-detect Ollama model: %s", e)
 
         raise LLMError(
-            "No Ollama model configured. Set REOS_OLLAMA_MODEL or pull a model."
+            "No Ollama model configured. Set TALKINGROCK_OLLAMA_MODEL or pull a model."
         )
 
 

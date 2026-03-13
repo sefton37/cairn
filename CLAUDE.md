@@ -196,7 +196,7 @@ strict_equality = true
 ### 4. ReOS/RIVA Extraction (2026-02)
 **Decision:** Extract ReOS (Linux system control) and RIVA (code verification) into separate archive directories. Cairn is now a single-agent system.
 
-**Backward compat preserved:** `reos.db` filename, `~/.reos-data/` directory, `com.reos.providers` keyring service, crypto salts — all kept to avoid data loss.
+**Database consolidation complete:** Storage moved to `~/.talkingrock/talkingrock.db`. The old `reos.db` filename and `~/.reos-data/` directory have been superseded.
 
 **Archives:** `/home/kellogg/dev/ReOS/`, `/home/kellogg/dev/RIVA/`
 
@@ -402,7 +402,7 @@ pypdf, python-docx, openpyxl        # Document ingestion (PDF, DOCX, XLSX)
 src/cairn/
 ├── agent.py                 # Main chat agent
 ├── app.py                   # FastAPI app
-├── db.py                    # Database singleton (reos.db)
+├── db.py                    # Database singleton (talkingrock.db)
 ├── ui_rpc_server.py         # Tauri RPC server (stdio)
 ├── http_rpc.py              # HTTP RPC client
 ├── mcp_tools.py             # MCP tool registry

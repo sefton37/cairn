@@ -8,7 +8,7 @@ use kernel::{KernelError, KernelProcess};
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 
-use tauri::State;
+use tauri::{Manager, State};
 
 struct KernelState(Arc<Mutex<Option<KernelProcess>>>);
 
@@ -284,6 +284,28 @@ fn main() {
             kernel_start,
             kernel_request,
         ])
+        .setup(|app| {
+            // Set the window icon from the bundled PNG
+            let icon_bytes = include_bytes!("../icons/icon.png");
+            match tauri::image::Image::from_bytes(icon_bytes) {
+                Ok(icon) => {
+                    // Try setting on the specific window
+                    if let Some(window) = app.get_webview_window("main") {
+                        eprintln!("[icon] Found main window, setting icon");
+                        if let Err(e) = window.set_icon(icon.clone()) {
+                            eprintln!("[icon] set_icon failed: {e}");
+                        }
+                    } else {
+                        eprintln!("[icon] No 'main' window found, listing windows...");
+                        for w in app.webview_windows().keys() {
+                            eprintln!("[icon]   window label: {w}");
+                        }
+                    }
+                }
+                Err(e) => eprintln!("[icon] Failed to decode icon PNG: {e}"),
+            }
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

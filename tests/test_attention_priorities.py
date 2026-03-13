@@ -26,7 +26,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Create isolated data directory for play_db."""
     data_dir = tmp_path / "reos-data"
     data_dir.mkdir()
-    monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("TALKINGROCK_DATA_DIR", str(data_dir))
 
     import cairn.play_db as play_db
 
@@ -88,10 +88,11 @@ class TestSchemaV14Migration:
         assert row is not None
         assert row["type"] == "conversation"
 
-    def test_schema_version_is_14(self, initialized_db) -> None:
+    def test_schema_version_is_current(self, initialized_db) -> None:
+        from cairn.play_db import SCHEMA_VERSION
         conn = initialized_db._get_connection()
         cursor = conn.execute("SELECT version FROM schema_version")
-        assert cursor.fetchone()[0] == 14
+        assert cursor.fetchone()[0] == SCHEMA_VERSION
 
     def test_migration_idempotent(self, initialized_db) -> None:
         """Running migration again should not fail."""

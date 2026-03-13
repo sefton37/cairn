@@ -1,4 +1,4 @@
-"""Task planning for ReOS reasoning system.
+"""Task planning for Cairn reasoning system.
 
 Decomposes complex requests into discrete, verifiable steps with
 dependency management and risk assessment.

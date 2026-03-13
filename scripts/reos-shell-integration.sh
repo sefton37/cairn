@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ReOS Shell Integration - Parse Gate Architecture
+# Cairn Shell Integration - Parse Gate Architecture
 #
 # KERNEL PRINCIPLE: "Native until foreign. Foreign until confirmed."
 #
@@ -17,9 +17,9 @@
 #
 # Installation:
 #   Add to your ~/.bashrc or ~/.zshrc:
-#     source /path/to/reos/scripts/reos-shell-integration.sh
+#     source /path/to/cairn/scripts/reos-shell-integration.sh
 
-# Find the ReOS installation directory
+# Find the Cairn installation directory
 _reos_find_root() {
     local script_path
     script_path="${BASH_SOURCE[0]:-$0}"
@@ -31,13 +31,19 @@ _reos_find_root() {
     local dir
     dir="$(cd "$(dirname "$script_path")/.." 2>/dev/null && pwd)"
 
+    if [[ -f "$dir/cairn" ]]; then
+        echo "$dir"
+        return 0
+    fi
+
+    # Fallback: check for reos binary (backward compat)
     if [[ -f "$dir/reos" ]]; then
         echo "$dir"
         return 0
     fi
 
-    if command -v reos >/dev/null 2>&1; then
-        echo "$(dirname "$(command -v reos)")"
+    if command -v cairn >/dev/null 2>&1; then
+        echo "$(dirname "$(command -v cairn)")"
         return 0
     fi
 
@@ -109,8 +115,8 @@ command_not_found_handle() {
     shift
     local full_input="$cmd${*:+ $*}"
 
-    # Disabled check
-    if [[ -n "${REOS_SHELL_DISABLED:-}" ]]; then
+    # Disabled check (TALKINGROCK_SHELL_DISABLED is primary; REOS_SHELL_DISABLED accepted as fallback)
+    if [[ -n "${TALKINGROCK_SHELL_DISABLED:-}" || -n "${REOS_SHELL_DISABLED:-}" ]]; then
         printf 'bash: %s: command not found\n' "$cmd" >&2
         return 127
     fi
@@ -131,7 +137,7 @@ command_not_found_handle() {
     # NL INTERPRETATION - Propose only, never execute
     # ═══════════════════════════════════════════════════════════════
 
-    _reos_color cyan "🐧 ReOS: "
+    _reos_color cyan "🪨 Cairn: "
     _reos_color dim "Interpreting: "
     echo "$full_input"
     echo ""
@@ -142,7 +148,7 @@ command_not_found_handle() {
     local result
 
     if [[ ! -x "$_REOS_PYTHON" ]]; then
-        _reos_color red "Error: ReOS Python not found at $_REOS_PYTHON"
+        _reos_color red "Error: Cairn Python not found at $_REOS_PYTHON"
         echo ""
         return 1
     fi
@@ -223,29 +229,29 @@ command_not_found_handle() {
     esac
 }
 
-# Direct invocation: reos "natural language query"
-reos() {
+# Direct invocation: cairn "natural language query"
+cairn() {
     if [[ -z "$_REOS_ROOT" ]]; then
-        echo "ReOS: Could not find ReOS installation" >&2
+        echo "Cairn: Could not find Cairn installation" >&2
         return 1
     fi
 
     if [[ ! -x "$_REOS_PYTHON" ]]; then
-        echo "ReOS: Python venv not found at $_REOS_PYTHON" >&2
+        echo "Cairn: Python venv not found at $_REOS_PYTHON" >&2
         return 1
     fi
 
     if [[ $# -eq 0 ]]; then
         # No args - launch GUI
-        "$_REOS_ROOT/reos" "$@"
+        "$_REOS_ROOT/cairn" "$@"
     elif [[ "$1" == "--"* ]]; then
         # Has flags - pass to main launcher
-        "$_REOS_ROOT/reos" "$@"
+        "$_REOS_ROOT/cairn" "$@"
     else
         # Explicit NL request - goes through same flow as command_not_found
         local full_input="$*"
 
-        _reos_color cyan "🐧 ReOS: "
+        _reos_color cyan "🪨 Cairn: "
         _reos_color dim "Interpreting: "
         echo "$full_input"
         echo ""
@@ -319,11 +325,11 @@ reos() {
 }
 
 # Alias for convenience
-alias ask='reos'
+alias ask='cairn'
 
 # Export for subshells
 export -f command_not_found_handle
-export -f reos
+export -f cairn
 export -f _reos_find_root
 export -f _reos_is_typo
 export -f _reos_is_natural_language
@@ -333,6 +339,6 @@ export _REOS_PYTHON
 
 # Announce (minimal - we're not intercepting anything)
 if [[ -n "${BASH_VERSION:-}" && -t 0 ]]; then
-    echo "🐧 ReOS: Natural language available. Just type what you want." >&2
+    echo "🪨 Cairn: Natural language available. Just type what you want." >&2
     echo "   Valid commands run normally. Unknown input gets interpreted." >&2
 fi

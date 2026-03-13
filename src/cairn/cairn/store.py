@@ -255,6 +255,95 @@ class CairnStore:
                     ON pending_confirmations(confirmed, executed, cancelled);
             """)
 
+            # Email Intelligence tables
+            conn.executescript("""
+                -- Email metadata cache (synced from Thunderbird Gloda)
+                CREATE TABLE IF NOT EXISTS email_cache (
+                    gloda_message_id INTEGER PRIMARY KEY,
+                    folder_name TEXT NOT NULL,
+                    account_email TEXT NOT NULL DEFAULT '',
+                    subject TEXT NOT NULL,
+                    sanitized_subject TEXT,
+                    subject_is_suspicious INTEGER DEFAULT 0,
+                    sender_name TEXT NOT NULL,
+                    sender_email TEXT NOT NULL,
+                    recipients_json TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    is_read INTEGER NOT NULL DEFAULT 0,
+                    is_starred INTEGER NOT NULL DEFAULT 0,
+                    is_replied INTEGER NOT NULL DEFAULT 0,
+                    is_forwarded INTEGER NOT NULL DEFAULT 0,
+                    has_attachments INTEGER NOT NULL DEFAULT 0,
+                    notability INTEGER DEFAULT 0,
+                    importance_score REAL,
+                    people_score REAL,
+                    play_score REAL,
+                    behavioral_score REAL,
+                    importance_reason TEXT,
+                    subject_embedding BLOB,
+                    body_embedding BLOB,
+                    embedding_model TEXT DEFAULT 'all-MiniLM-L6-v2',
+                    surfaced INTEGER NOT NULL DEFAULT 0,
+                    surfaced_at TEXT,
+                    dismissed INTEGER NOT NULL DEFAULT 0,
+                    snoozed_until TEXT,
+                    first_seen_at TEXT NOT NULL,
+                    last_synced_at TEXT NOT NULL,
+                    read_state_changed_at TEXT,
+                    header_message_id TEXT
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_email_cache_date
+                    ON email_cache(date);
+                CREATE INDEX IF NOT EXISTS idx_email_cache_sender
+                    ON email_cache(sender_email);
+                CREATE INDEX IF NOT EXISTS idx_email_cache_unread_importance
+                    ON email_cache(is_read, importance_score);
+                CREATE INDEX IF NOT EXISTS idx_email_cache_surfaced
+                    ON email_cache(surfaced, dismissed);
+
+                -- Sender behavior profiles (aggregated from email_cache)
+                CREATE TABLE IF NOT EXISTS email_sender_profiles (
+                    sender_email TEXT PRIMARY KEY,
+                    sender_name TEXT NOT NULL,
+                    total_received INTEGER DEFAULT 0,
+                    total_read INTEGER DEFAULT 0,
+                    total_replied INTEGER DEFAULT 0,
+                    total_starred INTEGER DEFAULT 0,
+                    avg_read_delay_seconds REAL,
+                    read_rate REAL,
+                    reply_rate REAL,
+                    star_rate REAL,
+                    contact_id TEXT,
+                    memory_entity_id TEXT,
+                    linked_act_ids TEXT,
+                    linked_scene_ids TEXT,
+                    behavioral_importance REAL DEFAULT 0.0,
+                    people_importance REAL DEFAULT 0.0,
+                    first_seen_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                -- Email to Play entity links (knowledge graph connections)
+                CREATE TABLE IF NOT EXISTS email_play_links (
+                    id TEXT PRIMARY KEY,
+                    gloda_message_id INTEGER NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    link_type TEXT NOT NULL,
+                    confidence REAL NOT NULL DEFAULT 0.0,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(gloda_message_id, entity_type, entity_id, link_type)
+                );
+
+                -- Email sync state tracking
+                CREATE TABLE IF NOT EXISTS email_sync_state (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+            """)
+
             # Health Pulse tables (Anti-Nag Protocol + Snapshots)
             from cairn.cairn.health.anti_nag import (
                 init_health_check_defaults,
@@ -308,6 +397,29 @@ class CairnStore:
             except sqlite3.OperationalError:
                 # Column already exists
                 pass
+
+        # Add snoozed_until to email_cache if missing
+        try:
+            conn.execute("ALTER TABLE email_cache ADD COLUMN snoozed_until TEXT")
+            logger.debug("Added column snoozed_until to email_cache")
+        except sqlite3.OperationalError:
+            pass
+
+        # Add header_message_id to email_cache if missing
+        try:
+            conn.execute("ALTER TABLE email_cache ADD COLUMN header_message_id TEXT")
+            logger.debug("Added column header_message_id to email_cache")
+        except sqlite3.OperationalError:
+            pass
+
+        # Add account_email to email_cache if missing
+        try:
+            conn.execute(
+                "ALTER TABLE email_cache ADD COLUMN account_email TEXT NOT NULL DEFAULT ''"
+            )
+            logger.debug("Added column account_email to email_cache")
+        except sqlite3.OperationalError:
+            pass
 
     # =========================================================================
     # Metadata CRUD
@@ -2004,3 +2116,16 @@ class CairnStore:
                 (trace_id,),
             )
             return cursor.rowcount > 0
+
+
+def get_cairn_store() -> CairnStore:
+    """Get a CairnStore connected to the unified talkingrock database."""
+    import os
+    from pathlib import Path
+
+    from cairn.settings import settings
+
+    # Check env vars at call time to support test overrides
+    _env = os.environ.get("TALKINGROCK_DATA_DIR") or os.environ.get("REOS_DATA_DIR")
+    base = Path(_env) if _env else settings.data_dir
+    return CairnStore(base / "talkingrock.db")

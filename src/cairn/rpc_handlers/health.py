@@ -7,7 +7,6 @@ and acknowledge/snooze health findings.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
 from cairn.db import Database
@@ -29,14 +28,15 @@ def _get_health_components(db: Database) -> tuple:
     from cairn.cairn.health.checks.context_freshness import ContextFreshnessCheck
     from cairn.cairn.health.checks.data_integrity import DataIntegrityCheck
     from cairn.cairn.health.runner import HealthCheckRunner
-    from cairn.cairn.store import CairnStore
+    from cairn.cairn.store import get_cairn_store
+    from cairn.settings import settings
 
     play_path = get_current_play_path(db)
     if not play_path:
         raise RpcError(code=-32603, message="No active play")
 
-    cairn_db_path = Path(play_path) / ".cairn" / "cairn.db"
-    store = CairnStore(cairn_db_path)
+    cairn_db_path = settings.data_dir / "talkingrock.db"
+    store = get_cairn_store()
 
     # Build runner with Phase 1 checks
     runner = HealthCheckRunner()

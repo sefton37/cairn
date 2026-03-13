@@ -74,7 +74,7 @@ Talking Rock is **not** a productivity tracker or surveillance tool. It is a loc
 - Use: "coherent/fragmented", "what needs attention", "what's your intention?"
 
 **Local Data**:
-- All data in `.reos-data/` (git-ignored)
+- All data in `~/.talkingrock/` (git-ignored)
 - SQLite for persistence
 - Never commit DB files, only schemas in code
 

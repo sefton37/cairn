@@ -217,7 +217,7 @@ class ConversationService:
 
         Args:
             conversation_id: The conversation to add the message to.
-            role: Message role ('user', 'cairn', 'reos', 'riva', 'system').
+            role: Message role ('user', 'cairn', 'system').
             content: Message content text.
             active_act_id: Optional Act context when this message was sent.
             active_scene_id: Optional Scene context when this message was sent.

@@ -32,12 +32,11 @@ def handle_chat_respond(
     *,
     text: str,
     conversation_id: str | None = None,
-    use_code_mode: bool = False,
     agent_type: str | None = None,
     extended_thinking: bool | None = None,
 ) -> dict[str, Any]:
     """Process a chat message and get AI response."""
-    agent = ChatAgent(db=db, use_code_mode=use_code_mode)
+    agent = ChatAgent(db=db)
 
     # Check for conversational intents (Phase 6)
     if conversation_id:

@@ -155,8 +155,8 @@ def play_root() -> Path:
     """Return the on-disk root for the theatrical model.
 
     If running with an authenticated session, uses per-user isolated storage
-    at ~/.reos-data/{username}/play. Otherwise falls back to the repo-local
-    .reos-data/ directory.
+    at ~/.talkingrock/{username}/play. Otherwise falls back to the default
+    ~/.talkingrock/ directory.
 
     Security:
         - Per-user data isolation when session context is active
@@ -168,10 +168,10 @@ def play_root() -> Path:
         # Use per-user isolated storage
         return crypto.user_data_root / "play"
 
-    # Fallback to default location (development/unauthenticated mode)
-    base = (
-        Path(os.environ["REOS_DATA_DIR"]) if os.environ.get("REOS_DATA_DIR") else settings.data_dir
-    )
+    # Fallback to default location (development/unauthenticated mode).
+    # Check env vars at call time (not import time) to support test overrides.
+    env_dir = os.environ.get("TALKINGROCK_DATA_DIR") or os.environ.get("REOS_DATA_DIR")
+    base = Path(env_dir) if env_dir else settings.data_dir
     return base / "play"
 
 
@@ -466,34 +466,6 @@ def assign_repo_to_act(
         act_id=act_id,
         repo_path=repo_path,
         artifact_type=artifact_type,
-        code_config=code_config,
-    )
-    return [_dict_to_act(d) for d in acts_data], active_id
-
-
-def configure_code_mode(
-    *,
-    act_id: str,
-    code_config: dict[str, Any],
-) -> tuple[list[Act], str | None]:
-    """Update Code Mode configuration for an Act.
-
-    Args:
-        act_id: The Act to modify
-        code_config: Code configuration dict (test_command, build_command, etc.)
-
-    Returns:
-        Updated acts list and active_id
-    """
-    _validate_id(name="act_id", value=act_id)
-
-    if not isinstance(code_config, dict):
-        raise ValueError("code_config must be a dictionary")
-
-    from . import play_db
-
-    acts_data, active_id = play_db.configure_code_mode(
-        act_id=act_id,
         code_config=code_config,
     )
     return [_dict_to_act(d) for d in acts_data], active_id

@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,7 @@ class CairnSurfacer:
         thunderbird: ThunderbirdBridge | None = None,
         llm: "LLMProvider | None" = None,
         play_path: Path | None = None,
+        email_service: Any | None = None,
     ):
         """Initialize the surfacer.
 
@@ -63,12 +64,14 @@ class CairnSurfacer:
             thunderbird: Optional Thunderbird bridge for calendar.
             llm: Optional LLM provider for coherence verification.
             play_path: Path to The Play root (for identity extraction).
+            email_service: Optional EmailIntelligenceService for email surfacing.
         """
         self.store = cairn_store
         self.play = play_store
         self.thunderbird = thunderbird
         self.llm = llm
         self.play_path = play_path
+        self.email_service = email_service
         self._identity_model = None  # Cached identity model
         self._identity_model_time = None  # When it was built
 
@@ -294,10 +297,20 @@ class CairnSurfacer:
                 )
             )
 
-        # 3. Add any overdue items (secondary)
+        # 3. Important unread emails (sync from Thunderbird first, like calendar)
+        if self.email_service:
+            try:
+                self.email_service.sync_emails()
+                self.email_service.update_sender_profiles()
+                self.email_service.score_importance()
+            except Exception as e:
+                logger.warning("Failed to sync/score emails: %s", e)
+            candidates.extend(self._get_important_emails())
+
+        # 4. Add any overdue items (secondary)
         candidates.extend(self._get_overdue_items()[:3])
 
-        # 4. Items due today
+        # 5. Items due today
         candidates.extend(self._get_due_today()[:3])
 
         return self._rank_and_dedupe(candidates, max_items=limit)
@@ -553,6 +566,43 @@ class CairnSurfacer:
         return surfaced
 
     # =========================================================================
+    # Email Intelligence
+    # =========================================================================
+
+    def _get_important_emails(self) -> list[SurfacedItem]:
+        """Get all emails from the last 30 days, sorted by score then recency."""
+        if not self.email_service:
+            return []
+
+        try:
+            emails = self.email_service.get_recent_emails(days=30)
+        except Exception as e:
+            logger.warning("Failed to get recent emails: %s", e)
+            return []
+
+        surfaced = []
+        for email in emails:
+            surfaced.append(
+                SurfacedItem(
+                    entity_type="email",
+                    entity_id=str(email["gloda_message_id"]),
+                    title=email.get("subject") or "[No subject]",
+                    reason=email.get("reason") or "Important email",
+                    urgency=email.get("urgency", "medium"),
+                    sender_name=email.get("sender_name"),
+                    sender_email=email.get("sender_email"),
+                    account_email=email.get("account_email") or "",
+                    email_date=datetime.fromisoformat(email["date"]) if email.get("date") else None,
+                    importance_score=email.get("importance_score"),
+                    importance_reason=email.get("reason"),
+                    email_message_id=email["gloda_message_id"],
+                    is_read=email.get("is_read", False),
+                )
+            )
+
+        return surfaced
+
+    # =========================================================================
     # Coherence Verification
     # =========================================================================
 
@@ -723,10 +773,32 @@ class CairnSurfacer:
             if item.entity_id in priorities:
                 item.user_priority = priorities[item.entity_id]
 
+        # Compute learned boosts from reorder history
+        from cairn.services.priority_learning_service import PriorityLearningService
+
+        try:
+            learner = PriorityLearningService()
+            item_boosts = learner.compute_boosts_for_items(deduped)
+        except Exception:
+            item_boosts = {}
+
+        # Attach boost info to items
+        if item_boosts:
+            boosts_map = learner.get_active_boosts()
+            for item in deduped:
+                boost_val = item_boosts.get(item.entity_id, 0.0)
+                if boost_val:
+                    item.learned_boost = boost_val
+                    try:
+                        item.boost_reasons = learner.get_boost_reasons(item, boosts_map)
+                    except Exception:
+                        pass
+
         deduped.sort(key=lambda x: (
             urgency_order.get(x.urgency, 4),
             x.entity_id not in priorities,  # False < True → prioritized first
             priorities.get(x.entity_id, 999),
+            -item_boosts.get(x.entity_id, 0.0),  # Higher boost → earlier (negated)
         ))
 
         return deduped[:max_items]

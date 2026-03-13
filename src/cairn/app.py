@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     yield
 
 app = FastAPI(
-    title="ReOS Local Kernel",
+    title="Cairn Local Kernel",
     version="0.0.0a0",
     description=(
         "Local-only attention kernel scaffold. No cloud calls. "
@@ -82,7 +82,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
         status_code=500,
         content={
             "status": "error",
-            "message": "Internal error (local-only). See .reos-data/reos.log for details.",
+            "message": "Internal error (local-only). See .talkingrock/cairn.log for details.",
         },
     )
 
@@ -90,7 +90,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 @app.get("/")
 def root() -> dict[str, str]:
     return {
-        "name": "ReOS Local Kernel",
+        "name": "Cairn Local Kernel",
         "privacy": "local-only; metadata-only by default",
         "health": "/health",
         "ingest": "/events",

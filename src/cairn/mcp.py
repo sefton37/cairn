@@ -1,9 +1,9 @@
-"""Run ReOS MCP server.
+"""Run CAIRN MCP server.
 
 Usage:
-  /path/to/python -m reos.mcp
+  /path/to/python -m cairn.mcp
 
-This runs a stdio JSON-RPC server that exposes ReOS tools to an MCP client.
+This runs a stdio JSON-RPC server that exposes CAIRN tools to an MCP client.
 """
 
 from __future__ import annotations

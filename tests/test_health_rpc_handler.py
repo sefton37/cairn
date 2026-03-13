@@ -22,15 +22,20 @@ from cairn.rpc_handlers.health import (
 
 @pytest.fixture
 def tmp_play_path(tmp_path: Path) -> Path:
-    """Create a temporary play directory with cairn database."""
+    """Create a temporary play directory with cairn database.
+
+    Also patches settings.data_dir so that get_cairn_store() resolves to
+    the same temporary directory used by tests that construct CairnStore
+    directly.
+    """
     play_path = tmp_path / "play"
     play_path.mkdir()
 
     cairn_dir = play_path / ".cairn"
     cairn_dir.mkdir()
 
-    # Create a cairn database (initializes schema)
-    cairn_db = cairn_dir / "cairn.db"
+    # Create a cairn database (initializes schema) at the unified path
+    cairn_db = cairn_dir / "talkingrock.db"
     CairnStore(cairn_db)
 
     return play_path
@@ -41,9 +46,12 @@ def mock_db(tmp_play_path: Path) -> Database:
     """Create a mock Database that returns our test play path."""
     db = MagicMock(spec=Database)
 
-    # Mock get_current_play_path to return our test path
+    # Patch get_current_play_path and get_cairn_store so health handlers
+    # use the test's .cairn directory instead of the real settings.data_dir.
+    test_store = CairnStore(tmp_play_path / ".cairn" / "talkingrock.db")
     with patch("cairn.rpc_handlers.health.get_current_play_path", return_value=str(tmp_play_path)):
-        yield db
+        with patch("cairn.cairn.store.get_cairn_store", return_value=test_store):
+            yield db
 
 
 def test_handle_health_status_returns_expected_format(mock_db: Database, tmp_play_path: Path):
@@ -72,7 +80,7 @@ def test_handle_health_status_fresh_database_is_healthy(mock_db: Database, tmp_p
 def test_handle_health_status_with_stale_acts(mock_db: Database, tmp_play_path: Path):
     """Status should reflect warnings from stale acts."""
     # Create a stale act
-    cairn_db = tmp_play_path / ".cairn" / "cairn.db"
+    cairn_db = tmp_play_path / ".cairn" / "talkingrock.db"
     store = CairnStore(cairn_db)
 
     store.touch("act", "act-stale")
@@ -110,7 +118,7 @@ def test_handle_health_findings_returns_expected_format(mock_db: Database, tmp_p
 def test_handle_health_findings_with_stale_acts(mock_db: Database, tmp_play_path: Path):
     """Findings should include details about stale acts."""
     # Create a stale act
-    cairn_db = tmp_play_path / ".cairn" / "cairn.db"
+    cairn_db = tmp_play_path / ".cairn" / "talkingrock.db"
     store = CairnStore(cairn_db)
 
     store.touch("act", "act-stale")
@@ -153,8 +161,8 @@ def test_handle_health_findings_excludes_healthy_results(mock_db: Database, tmp_
 
 def test_handle_health_acknowledge_with_valid_log_id(mock_db: Database, tmp_play_path: Path):
     """handle_health_acknowledge should work with valid log_id."""
-    # Create a finding to acknowledge
-    cairn_db = tmp_play_path / ".cairn" / "cairn.db"
+    # Create a finding to acknowledge in the unified talkingrock.db
+    cairn_db = tmp_play_path / ".cairn" / "talkingrock.db"
     store = CairnStore(cairn_db)
 
     from cairn.cairn.health.anti_nag import AntiNagProtocol
@@ -287,8 +295,8 @@ def test_rpc_error_for_no_active_play_in_acknowledge(mock_db: Database):
 
 def test_unacknowledged_count_reflects_anti_nag_state(mock_db: Database, tmp_play_path: Path):
     """unacknowledged_count should reflect anti-nag protocol state."""
-    # Create and surface a finding
-    cairn_db = tmp_play_path / ".cairn" / "cairn.db"
+    # Create and surface a finding in the unified talkingrock.db
+    cairn_db = tmp_play_path / ".cairn" / "talkingrock.db"
     store = CairnStore(cairn_db)
 
     from cairn.cairn.health.anti_nag import AntiNagProtocol

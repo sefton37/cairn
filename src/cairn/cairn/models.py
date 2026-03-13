@@ -389,5 +389,19 @@ class SurfacedItem:
     coherence_score: float | None = None  # -1.0 to 1.0, None = not checked
     coherence_recommendation: str | None = None  # "accept", "defer", "reject"
 
+    # Email-specific fields (for entity_type="email")
+    sender_name: str | None = None
+    sender_email: str | None = None
+    account_email: str | None = None  # Which Thunderbird account received this email
+    email_date: datetime | None = None
+    importance_score: float | None = None
+    importance_reason: str | None = None
+    email_message_id: int | None = None
+    is_read: bool = False
+
     # User-set priority from drag-reorder (lower = higher priority)
     user_priority: int | None = None
+
+    # Learned priority boost from reorder history
+    learned_boost: float | None = None
+    boost_reasons: list[str] | None = None

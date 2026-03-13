@@ -13,8 +13,42 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Service name for ReOS credentials in the keyring
-SERVICE_NAME = "com.reos.providers"
+# Service name for Talking Rock credentials in the keyring
+SERVICE_NAME = "com.talkingrock.providers"
+
+# Legacy service name — kept for one-time migration only
+_LEGACY_SERVICE_NAME = "com.reos.providers"
+
+
+def _migrate_keyring_service(old_service: str, new_service: str, key: str) -> str | None:
+    """Check old service name for a key, migrate to new service if found.
+
+    On first access after renaming, transparently copies the credential
+    from the old keyring entry to the new one so users don't lose access.
+
+    Args:
+        old_service: The legacy service name to check.
+        new_service: The new service name to migrate to.
+        key: The credential key (provider name or username).
+
+    Returns:
+        The credential value if found under either service, None otherwise.
+    """
+    try:
+        import keyring
+
+        value = keyring.get_password(new_service, key)
+        if value is not None:
+            return value
+        old_value = keyring.get_password(old_service, key)
+        if old_value is not None:
+            keyring.set_password(new_service, key, old_value)
+            logger.info("Migrated keyring entry '%s' from %s to %s", key, old_service, new_service)
+            return old_value
+        return None
+    except Exception as e:
+        logger.debug("Keyring migration check failed for '%s': %s", key, e)
+        return None
 
 
 def store_api_key(provider: str, api_key: str) -> None:
@@ -50,9 +84,9 @@ def get_api_key(provider: str) -> str | None:
         The API key if found, None otherwise.
     """
     try:
-        import keyring
+        import keyring  # noqa: F401 — presence check before delegation
 
-        return keyring.get_password(SERVICE_NAME, provider)
+        return _migrate_keyring_service(_LEGACY_SERVICE_NAME, SERVICE_NAME, provider)
     except ImportError:
         logger.warning("keyring library not installed")
         return None

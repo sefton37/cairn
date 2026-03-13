@@ -209,7 +209,7 @@ class ContextService:
 
         # System prompt (approximate)
         system_prompt = (
-            "You are ReOS. You embody No One: presence that waits to be invited..."
+            "You are CAIRN. You embody No One: presence that waits to be invited..."
             # This is just an approximation for token counting
         )
 

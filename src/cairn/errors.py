@@ -849,7 +849,6 @@ def record_error(
             )
             return event_id
 
-        # Imported lazily to avoid circular imports (storage -> alignment -> errors).
         from .storage import append_event
 
         append_event(Event(source=source, ts=now, payload_metadata=payload))

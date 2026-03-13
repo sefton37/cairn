@@ -233,7 +233,7 @@ def handle_play_acts_assign_repo(
         # Create initial commit to have a valid repo
         readme = path / "README.md"
         if not readme.exists():
-            readme.write_text("# Project\n\nCreated by ReOS\n")
+            readme.write_text("# Project\n\nCreated by Cairn\n")
         subprocess.run(["git", "add", "."], cwd=str(path), capture_output=True, check=True)
         subprocess.run(
             ["git", "commit", "-m", "Initial commit"],
@@ -357,11 +357,12 @@ def handle_play_scenes_list_all(db: Database) -> dict[str, Any]:
     play_path = get_current_play_path(db)
     if play_path:
         try:
-            cairn_db_path = Path(play_path) / ".cairn" / "cairn.db"
-            if cairn_db_path.exists():
-                from cairn.cairn.store import CairnStore
+            from cairn.cairn.store import get_cairn_store
+            from cairn.settings import settings
 
-                store = CairnStore(cairn_db_path)
+            cairn_db_path = settings.data_dir / "talkingrock.db"
+            if cairn_db_path.exists():
+                store = get_cairn_store()
                 from cairn.cairn.thunderbird import ThunderbirdBridge
 
                 thunderbird = ThunderbirdBridge.auto_detect()

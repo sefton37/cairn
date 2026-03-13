@@ -167,9 +167,9 @@ For first Tauri cut: **chat/respond only**, with trace in inspection pane.
 ## Packaging Notes
 
 - TS desktop app spawns Python kernel, manages lifecycle.
-- Local data in `.reos-data/` (already established).
-- Kernel uses `settings.data_dir / reos.db`.
-- Logs: `.reos-data/reos.log`.
+- Local data in `~/.talkingrock/` (already established).
+- Kernel uses `settings.data_dir / talkingrock.db`.
+- Logs: `~/.talkingrock/cairn.log`.
 
 ---
 

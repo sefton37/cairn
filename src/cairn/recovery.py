@@ -38,12 +38,12 @@ class RecoveryError(Exception):
 
 
 # Recovery file locations
-RECOVERY_DIR = Path.home() / ".reos-recovery"
+RECOVERY_DIR = Path.home() / ".talkingrock" / "recovery"
 RECOVERY_KEY_FILE = RECOVERY_DIR / "recovery.enc"
 RECOVERY_META_FILE = RECOVERY_DIR / "recovery.meta"
 
 # Admin escrow location (requires root)
-ESCROW_DIR = Path("/var/lib/reos/escrow")
+ESCROW_DIR = Path("/var/lib/talkingrock/escrow")
 
 
 def _derive_recovery_key(username: str, passphrase: str) -> bytes:
@@ -368,7 +368,7 @@ def rekey_user_data(
         - Recovery keys updated separately
     """
     if user_data_root is None:
-        user_data_root = Path.home() / ".reos-data" / username
+        user_data_root = Path.home() / ".talkingrock" / username
 
     if not user_data_root.exists():
         return {"files_processed": 0, "status": "no_data"}

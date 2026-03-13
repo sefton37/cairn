@@ -163,7 +163,7 @@ class TestDatabaseInit:
         with patch("cairn.db.settings") as mock_settings:
             mock_settings.data_dir = Path("/tmp/test_data")
             db = Database(db_path=None)
-            assert db.db_path == Path("/tmp/test_data/reos.db")
+            assert db.db_path == Path("/tmp/test_data/talkingrock.db")
 
     def test_init_with_string_path(self) -> None:
         """Database should convert string path to Path."""

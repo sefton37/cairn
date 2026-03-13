@@ -130,7 +130,7 @@ class TestSession:
         data_root = session.get_user_data_root()
 
         assert "alice" in str(data_root), "Data root should include username"
-        assert ".reos-data" in str(data_root), "Data root should be in .reos-data"
+        assert ".talkingrock" in str(data_root), "Data root should be in .talkingrock"
 
     def test_key_material_not_in_repr(self) -> None:
         """Key material should not appear in repr (security)."""

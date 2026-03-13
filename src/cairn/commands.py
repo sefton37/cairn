@@ -90,7 +90,7 @@ def get_command_registry() -> list[Command]:
             description=(
                 "Review how your current code changes relate to the project roadmap and charter. "
                 "Uses git metadata (changed files + diffstat) and compares to docs/tech-roadmap.md "
-                "and ReOS_charter.md. Default is metadata-only; optionally include diffs "
+                "and Cairn_charter.md. Default is metadata-only; optionally include diffs "
                 "(local-only)."
             ),
             parameters={
@@ -120,7 +120,7 @@ def get_command_registry() -> list[Command]:
                         "type": "string",
                         "description": (
                             "Optional path to a repo/workspace folder. If omitted, inferred from "
-                            "REOS_REPO_PATH or the current workspace root."
+                            "TALKINGROCK_REPO_PATH or the current workspace root."
                         ),
                     }
                 },
@@ -225,7 +225,7 @@ def handle_review_trigger_status(params: dict[str, Any]) -> str:
             return json.dumps(
                 {
                     "status": "no_repo_detected",
-                    "message": "No git repo detected. Set REOS_REPO_PATH or run inside a repo.",
+                    "message": "No git repo detected. Set TALKINGROCK_REPO_PATH or run inside a repo.",
                 },
                 indent=2,
             )

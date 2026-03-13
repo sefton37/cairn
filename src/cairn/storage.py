@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 
 from pathlib import Path
 
-from .db import Database, get_db
+from .db import get_db
 from .models import Event
 from .settings import settings
 
@@ -60,18 +60,6 @@ def append_event(event: Event) -> str:
         with settings.events_path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, ensure_ascii=True) + "\n")
         return event_id
-
-
-def _maybe_emit_review_trigger(
-    *,
-    db: Database,
-    recent_event_payload: dict[str, object] | None,
-) -> None:
-    """Insert a review-trigger event if context budget is nearing capacity.
-
-    Disabled — alignment module was extracted with ReOS.
-    """
-    return
 
 
 def iter_events(limit: int | None = None) -> Iterable[tuple[str, Event]]:

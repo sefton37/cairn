@@ -1,17 +1,12 @@
 """Atomic Operations Processor - The main pipeline.
 
-.. deprecated::
-    For new code, prefer importing from the ``routing`` package::
-
-        from routing import RequestRouter
-
 This module orchestrates the full atomic operations pipeline:
 1. Classification into 3x2x3 taxonomy (LLM-native)
 2. Decomposition of complex requests (LLM-based)
 3. Storage of operations for verification
 
-This is the primary interface for agents (CAIRN, ReOS, RIVA) to
-convert user requests into atomic operations.
+This is the primary interface for CAIRN to convert user requests
+into atomic operations.
 """
 
 from __future__ import annotations
@@ -111,7 +106,7 @@ class AtomicOpsProcessor:
         Args:
             request: User's natural language request.
             user_id: User identifier.
-            source_agent: Source agent (cairn, reos, riva).
+            source_agent: Source agent (only 'cairn' is active now).
             context: Optional context for classification.
             force_decomposition: Force decomposition even if not needed.
             memory_context: Relevant memories from prior conversations.
@@ -137,6 +132,7 @@ class AtomicOpsProcessor:
             user_id=user_id,
             source_agent=source_agent,
             force_decomposition=force_decomposition,
+            memory_context=memory_context,
         )
 
         # Store all operations

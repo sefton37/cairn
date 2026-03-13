@@ -204,7 +204,7 @@ class TestSecrets:
 
     def test_service_name(self) -> None:
         """Should have correct service name."""
-        assert SERVICE_NAME == "com.reos.providers"
+        assert SERVICE_NAME == "com.talkingrock.providers"
 
     def test_keyring_backend_name(self) -> None:
         """Should return a backend name string."""

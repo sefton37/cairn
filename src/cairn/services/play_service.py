@@ -19,24 +19,18 @@ logger = logging.getLogger(__name__)
 class ActInfo:
     """Information about an Act.
 
-    When repo_path is set, this Act is in "Code Mode" - ReOS will
-    automatically detect code-related requests and provide agentic
-    coding capabilities sandboxed to the assigned repository.
+    When repo_path is set, a repository is linked to this Act,
+    enabling repo-aware features for the act.
     """
 
     act_id: str
     title: str
     active: bool = False
     notes: str = ""
-    # Code Mode fields
+    # Repository fields (set when a repo is linked to this Act)
     repo_path: str | None = None
     artifact_type: str | None = None
     code_config: dict[str, Any] | None = None
-
-    @property
-    def has_repo(self) -> bool:
-        """Check if this Act has an assigned repository (Code Mode enabled)."""
-        return self.repo_path is not None
 
     def to_dict(self) -> dict[str, Any]:
         result = {
@@ -247,42 +241,6 @@ class PlayService:
             code_config=code_config,
         )
         return [ActInfo.from_play_fs(a) for a in acts], active_id
-
-    def configure_code_mode(
-        self,
-        act_id: str,
-        code_config: dict[str, Any],
-    ) -> tuple[list[ActInfo], str | None]:
-        """Update Code Mode configuration for an Act.
-
-        Args:
-            act_id: The Act to modify
-            code_config: Code configuration dict (test_command, build_command, etc.)
-
-        Returns:
-            Tuple of (updated act list, active_act_id)
-        """
-        acts, active_id = play_fs.configure_code_mode(
-            act_id=act_id,
-            code_config=code_config,
-        )
-        return [ActInfo.from_play_fs(a) for a in acts], active_id
-
-    def get_active_act_with_repo(self) -> ActInfo | None:
-        """Get the active Act if it has a repo assigned (Code Mode enabled).
-
-        Returns:
-            ActInfo if active Act has repo_path, else None
-        """
-        acts, active_id = self.list_acts()
-        if not active_id:
-            return None
-
-        active_act = next((a for a in acts if a.act_id == active_id), None)
-        if not active_act or not active_act.has_repo:
-            return None
-
-        return active_act
 
     # --- Scenes ---
 

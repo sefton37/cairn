@@ -8,29 +8,28 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from .cairn.extended_thinking import CAIRNExtendedThinking, ExtendedThinkingTrace
+from .cairn.identity import build_identity_model
+from .certainty import CertaintyWrapper, create_certainty_prompt_addition
 from .db import Database
 from .mcp_tools import Tool, ToolError, call_tool, list_tools, render_tool_result
-from .providers import LLMProvider, get_provider
+from .memory import MemoryRetriever
+from .play_fs import Act
 from .play_fs import list_acts as play_list_acts
 from .play_fs import list_scenes as play_list_scenes
 from .play_fs import read_me_markdown as play_read_me_markdown
-from .play_fs import Act
+from .providers import LLMProvider, get_provider
+from .quality import (
+    create_quality_prompt_addition,
+    get_quality_framework,
+)
 from .reasoning import (
-    ReasoningEngine,
     ReasoningConfig,
+    ReasoningEngine,
     TaskPlan,
     create_llm_planner_callback,
 )
-from .certainty import CertaintyWrapper, create_certainty_prompt_addition
-from .security import detect_prompt_injection, audit_log, AuditEventType
-from .quality import (
-    get_quality_framework,
-    create_quality_prompt_addition,
-)
-from .cairn.extended_thinking import CAIRNExtendedThinking, ExtendedThinkingTrace
-from .cairn.identity import build_identity_model
-from .cairn.store import CairnStore
-from .memory import MemoryRetriever
+from .security import AuditEventType, audit_log, detect_prompt_injection
 
 logger = logging.getLogger(__name__)
 
@@ -437,8 +436,8 @@ class ChatAgent:
         """Get persona settings for the specified agent type.
 
         Args:
-            agent_type: The agent type ('cairn', 'riva', 'reos').
-                       If None, falls back to active_persona_id from settings.
+            agent_type: The agent type. Only 'cairn' is active. If None, falls back
+                       to active_persona_id from settings.
         """
         # Try to load per-agent persona if agent_type specified
         if agent_type:
@@ -456,7 +455,7 @@ class ChatAgent:
 
         return {
             "system_prompt": (
-                "You are ReOS.\n"
+                "You are CAIRN.\n"
                 "You embody No One: presence that waits to be invited, reflects rather than commands, never coerces.\n"
                 "You are expert in computer science and human language. Translate intent into action. Make the machine serve the person.\n\n"
                 "Principles:\n"
@@ -530,8 +529,8 @@ class ChatAgent:
             user_text: The user's message
             conversation_id: Optional conversation ID for context continuity.
                            If None, creates a new conversation.
-            agent_type: The agent type ('cairn', 'riva', 'reos') for persona selection.
-                       If None, uses the active persona from settings.
+            agent_type: The agent type for persona selection. Only 'cairn' is
+                       active. If None, uses the active persona from settings.
             extended_thinking: Enable extended thinking mode.
                              If None, auto-detects based on prompt complexity.
                              If True, always runs extended thinking.
@@ -626,15 +625,15 @@ class ChatAgent:
 
             print(f"[CAIRN] Using AtomicBridge for: {user_text[:100]!r}", file=sys.stderr)
 
-            from cairn.cairn.intent_engine import CairnIntentEngine
             from cairn.atomic_ops.cairn_integration import CairnAtomicBridge
+            from cairn.cairn.intent_engine import CairnIntentEngine
 
             # Get available tool names
             available_tools = {t.name for t in tools}
 
             # Create tool executor function
             def execute_tool(name: str, args: dict) -> dict:
-                from cairn.mcp_tools import call_tool, ToolError
+                from cairn.mcp_tools import ToolError, call_tool
 
                 try:
                     return call_tool(self._db, name=name, arguments=args)
@@ -674,16 +673,23 @@ class ChatAgent:
                     memory_context=ctx.memory_context,
                 )
 
+            # Apply verification directive to shape response behavior
+            if bridge_result.directive and bridge_result.response:
+                # Prepend directive to guide agent's response style
+                bridge_result.response = (
+                    f"{bridge_result.directive}\n\n{bridge_result.response}"
+                )
+
             # Extract result from bridge
             result = bridge_result.intent_result
             if result is None:
                 # Bridge didn't execute through intent engine (e.g., needs approval)
                 from cairn.cairn.intent_engine import (
+                    ExtractedIntent,
+                    IntentAction,
+                    IntentCategory,
                     IntentResult,
                     VerifiedIntent,
-                    ExtractedIntent,
-                    IntentCategory,
-                    IntentAction,
                 )
 
                 result = IntentResult(
@@ -965,15 +971,11 @@ class ChatAgent:
         Returns:
             ExtendedThinkingTrace if ran, None otherwise
         """
-        from pathlib import Path
-
         try:
-            # Get data directory for CAIRN store
-            data_dir = Path(self._db.db_path).parent / ".reos-data"
-            cairn_db_path = data_dir / "cairn.db"
+            from cairn.cairn.store import get_cairn_store
 
             # Build identity model from The Play
-            cairn_store = CairnStore(cairn_db_path)
+            cairn_store = get_cairn_store()
             identity = build_identity_model(store=cairn_store)
 
             if identity is None or not identity.facets:
@@ -1043,10 +1045,11 @@ class ChatAgent:
         - Selected Act + all its Scenes (if an act is selected)
         """
         from pathlib import Path
+
         from .play_fs import (
-            list_scenes,
             kb_read,
             list_attachments,
+            list_scenes,
         )
 
         ctx_parts: list[str] = []
@@ -1060,7 +1063,7 @@ class ChatAgent:
                 cap = 4000
                 if len(readme_content) > cap:
                     readme_content = readme_content[:cap] + "\n…"
-                ctx_parts.append(f"REOS_README:\n{readme_content}")
+                ctx_parts.append(f"PROJECT_README:\n{readme_content}")
         except (FileNotFoundError, PermissionError, OSError):
             pass
 
@@ -1185,18 +1188,13 @@ class ChatAgent:
     def _get_codebase_context(self) -> str:
         """Get codebase self-awareness context.
 
-        This allows ReOS to answer questions about its own implementation,
+        Allows CAIRN to answer questions about its own implementation,
         architecture, and source code structure.
 
         Uses the architecture module which provides:
         1. Compressed architecture blueprint (~8K tokens)
         2. ADR summaries
         3. Codebase stats
-
-        For deeper queries, use the RAG tools:
-        - reos_search_codebase: Find relevant code
-        - reos_get_architecture: Full architecture doc
-        - reos_file_summary: File contents summary
         """
         try:
             from .architecture import get_architecture_context
@@ -1204,9 +1202,8 @@ class ChatAgent:
             arch_ctx = get_architecture_context(max_tokens=6000)
             if arch_ctx.strip():
                 return (
-                    "ARCHITECTURE_REFERENCE (ReOS system architecture):\n"
-                    "Use this to understand how ReOS works. For deeper queries, "
-                    "use reos_search_codebase or reos_file_summary tools.\n\n"
+                    "ARCHITECTURE_REFERENCE (Cairn system architecture):\n"
+                    "Use this to understand how Cairn works.\n\n"
                     f"{arch_ctx}"
                 )
             return ""
@@ -1295,7 +1292,7 @@ class ChatAgent:
         Args:
             user_text: The user's message
             conversation_id: Current conversation ID
-            agent_type: Agent type (cairn, riva, etc.)
+            agent_type: Agent type for persona selection (only 'cairn' is active)
 
         Returns:
             ConversationContext with all context loaded once

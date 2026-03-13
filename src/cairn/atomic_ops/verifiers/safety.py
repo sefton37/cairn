@@ -136,6 +136,12 @@ class SafetyVerifier(BaseVerifier):
         level_issues = self._apply_safety_level(operation, context)
         issues.extend(level_issues)
 
+        # LLM-based safety check (secondary signal — catches social engineering)
+        if context.llm_available and not issues:
+            llm_issue = self._quick_judge_safety(request)
+            if llm_issue:
+                issues.append(llm_issue)
+
         # Determine result
         if any("BLOCKED" in issue or "blocked" in issue.lower() for issue in issues):
             return self._fail(issues, confidence=1.0)
@@ -267,6 +273,23 @@ class SafetyVerifier(BaseVerifier):
         # Permissive mode - minimal restrictions (already handled by blocked patterns)
 
         return issues
+
+    def _quick_judge_safety(self, request: str) -> Optional[str]:
+        """LLM-based safety check for social engineering that regex can't catch.
+
+        Fail-open: returns None on any error (regex patterns remain primary defense).
+        """
+        try:
+            from cairn.providers.factory import create_provider
+            from trcore.providers.quick_judge import SAFETY_JUDGE_SYSTEM, quick_judge
+
+            provider = create_provider()
+            is_safe = quick_judge(provider, SAFETY_JUDGE_SYSTEM, request)
+            if not is_safe:
+                return "LLM safety judge flagged this request as potentially manipulative"
+        except Exception:
+            pass  # Fail-open: regex patterns are the primary safety net
+        return None
 
     def reset_counters(self):
         """Reset session counters."""

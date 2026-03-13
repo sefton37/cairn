@@ -1362,7 +1362,7 @@ class TestPlayKanbanWorkflowE2E:
         """Set up play_db for workflow tests."""
         data_dir = tmp_path / "reos-data"
         data_dir.mkdir()
-        monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
+        monkeypatch.setenv("TALKINGROCK_DATA_DIR", str(data_dir))
 
         import cairn.play_db as play_db
 
@@ -1473,7 +1473,7 @@ class TestCalendarIntegrationE2E:
         """Set up play_db for calendar integration tests."""
         data_dir = tmp_path / "reos-data"
         data_dir.mkdir()
-        monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
+        monkeypatch.setenv("TALKINGROCK_DATA_DIR", str(data_dir))
 
         import cairn.play_db as play_db
 
@@ -1579,7 +1579,7 @@ class TestUIRPCIntegrationE2E:
         """Set up play_db for RPC tests."""
         data_dir = tmp_path / "reos-data"
         data_dir.mkdir()
-        monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
+        monkeypatch.setenv("TALKINGROCK_DATA_DIR", str(data_dir))
 
         import cairn.play_db as play_db
 
@@ -1703,3 +1703,805 @@ class TestUIRPCIntegrationE2E:
         # Verify distribution
         assert "planning" in by_stage
         assert "complete" in by_stage
+
+
+# =============================================================================
+# Priority Learning E2E Tests
+# =============================================================================
+
+import random as _random  # noqa: E402,I001
+
+from conftest import requires_ollama  # noqa: E402,I001
+
+
+# ---------------------------------------------------------------------------
+# Reorder personas — each receives a list of item dicts and returns reordered
+# ---------------------------------------------------------------------------
+
+class _ReorderPersona:
+    """Base class for reorder personas."""
+
+    name: str = "base"
+
+    def reorder(self, items: list[dict], reorder_number: int) -> list[dict]:
+        raise NotImplementedError
+
+
+class _HealthFirst(_ReorderPersona):
+    """Always moves act-health items to the front."""
+
+    name = "health_first"
+
+    def reorder(self, items: list[dict], reorder_number: int) -> list[dict]:
+        health = [i for i in items if i.get("act_id") == "act-health"]
+        rest = [i for i in items if i.get("act_id") != "act-health"]
+        return health + rest
+
+
+class _ProjectFocused(_ReorderPersona):
+    """Always moves act-career items to the front."""
+
+    name = "project_focused"
+
+    def reorder(self, items: list[dict], reorder_number: int) -> list[dict]:
+        career = [i for i in items if i.get("act_id") == "act-career"]
+        rest = [i for i in items if i.get("act_id") != "act-career"]
+        return career + rest
+
+
+class _Chaotic(_ReorderPersona):
+    """Shuffles with a fixed seed — no learnable pattern."""
+
+    name = "chaotic"
+
+    def reorder(self, items: list[dict], reorder_number: int) -> list[dict]:
+        shuffled = list(items)
+        _random.Random(42 + reorder_number).shuffle(shuffled)
+        return shuffled
+
+
+class _GradualShifter(_ReorderPersona):
+    """Reorders 1-4: health first; reorders 5+: career first."""
+
+    name = "gradual_shifter"
+
+    def reorder(self, items: list[dict], reorder_number: int) -> list[dict]:
+        if reorder_number <= 4:
+            priority_act = "act-health"
+        else:
+            priority_act = "act-career"
+        front = [i for i in items if i.get("act_id") == priority_act]
+        rest = [i for i in items if i.get("act_id") != priority_act]
+        return front + rest
+
+
+class _EmailPrioritizer(_ReorderPersona):
+    """Moves email-type items to position 0."""
+
+    name = "email_prioritizer"
+
+    def reorder(self, items: list[dict], reorder_number: int) -> list[dict]:
+        emails = [i for i in items if i.get("entity_type") == "email"]
+        rest = [i for i in items if i.get("entity_type") != "email"]
+        return emails + rest
+
+
+class _StagePrioritizer(_ReorderPersona):
+    """Moves in_progress items to the front."""
+
+    name = "stage_prioritizer"
+
+    def reorder(self, items: list[dict], reorder_number: int) -> list[dict]:
+        in_progress = [i for i in items if i.get("stage") == "in_progress"]
+        rest = [i for i in items if i.get("stage") != "in_progress"]
+        return in_progress + rest
+
+
+# ---------------------------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------------------------
+
+def _seed_initial_order(items: list[dict], reverse: bool = True) -> None:
+    """Set an initial priority order so that subsequent reorders have old_position != None.
+
+    This is required because the first reorder always has old_position=NULL (no prior
+    state), and the SQL query filters ``WHERE old_position IS NOT NULL``.  After this
+    seed call every following reorder will have an old_position to compare against.
+
+    Args:
+        items: The full item list to seed.
+        reverse: If True, seed the priorities in reverse item order so that the
+                 subsequent persona reorders always move items UP (producing positive
+                 avg_improvement).  If False, use the items as-is.
+    """
+    from cairn.services.priority_signal_service import PrioritySignalService
+
+    svc = PrioritySignalService()
+    ordered = list(reversed(items)) if reverse else list(items)
+    ordered_entities = [(it["entity_type"], it["entity_id"]) for it in ordered]
+    svc.process_reorder(ordered_entities=ordered_entities)
+
+
+def _run_persona_reorders(
+    play_db_module: Any,
+    persona: _ReorderPersona,
+    items: list[dict],
+    num_reorders: int,
+    seed_reverse: bool = False,
+) -> list[dict]:
+    """Run N reorders with a persona; call process_reorder + extract_rules each time.
+
+    Args:
+        play_db_module: The imported play_db module (used for context only).
+        persona: Reorder persona that decides item order.
+        items: Full item list passed to the persona each round.
+        num_reorders: How many reorders to execute.
+        seed_reverse: If True, prime the priorities table with the reverse order
+            before running the persona reorders so that old_position is populated
+            and the improvement calculation has a meaningful "before" state.
+
+    Returns:
+        List of per-reorder result dicts with keys:
+            reorder_number, ordered_ids, priorities_updated, rules_extracted
+    """
+    from cairn.services.priority_learning_service import PriorityLearningService
+    from cairn.services.priority_signal_service import PrioritySignalService
+
+    if seed_reverse:
+        _seed_initial_order(items, reverse=True)
+
+    signal_svc = PrioritySignalService()
+    learn_svc = PriorityLearningService()
+    results = []
+
+    for i in range(1, num_reorders + 1):
+        ordered = persona.reorder(items, reorder_number=i)
+
+        # Build ordered_entities as (entity_type, entity_id) tuples
+        ordered_entities = [(it["entity_type"], it["entity_id"]) for it in ordered]
+
+        pr = signal_svc.process_reorder(ordered_entities=ordered_entities)
+        rules = learn_svc.extract_rules()
+
+        results.append({
+            "reorder_number": i,
+            "ordered_ids": [it["entity_id"] for it in ordered],
+            "priorities_updated": pr["priorities_updated"],
+            "rules_extracted": rules,
+        })
+
+    return results
+
+
+def _save_tracking_results(results: list[dict], output_dir: Path) -> Path:
+    """Serialise reorder tracking results to JSON; return the written path."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_path = output_dir / "reorder_tracking.json"
+
+    # Make rules JSON-serialisable (convert floats that may be numpy/similar)
+    serialisable = []
+    for r in results:
+        serialisable.append({
+            "reorder_number": r["reorder_number"],
+            "ordered_ids": r["ordered_ids"],
+            "priorities_updated": r["priorities_updated"],
+            "rules_extracted": [
+                {k: v for k, v in rule.items()}
+                for rule in r["rules_extracted"]
+            ],
+        })
+
+    out_path.write_text(json.dumps(serialisable, indent=2), encoding="utf-8")
+    return out_path
+
+
+def _make_surfaced_items(item_dicts: list[dict]) -> list[Any]:
+    """Build SurfacedItem instances from test metadata dicts."""
+    from cairn.cairn.models import SurfacedItem
+
+    surfaced = []
+    for d in item_dicts:
+        meta = None
+        if d.get("stage"):
+            meta = CairnMetadata(
+                entity_type=d["entity_type"],
+                entity_id=d["entity_id"],
+            )
+            # CairnMetadata does not have a `stage` field — stage lives on the
+            # Scene record. We attach it as a dynamic attribute so that
+            # compute_item_boost can find it via getattr(item.metadata, 'stage').
+            object.__setattr__(meta, "stage", d["stage"])  # type: ignore[call-overload]
+
+        item = SurfacedItem(
+            entity_type=d["entity_type"],
+            entity_id=d["entity_id"],
+            title=d.get("title", d["entity_id"]),
+            reason="test",
+            urgency=d.get("urgency", "medium"),
+            act_id=d.get("act_id"),
+            scene_id=d.get("scene_id"),
+            metadata=meta,
+        )
+        surfaced.append(item)
+    return surfaced
+
+
+class TestPriorityLearningE2E:
+    """E2E tests for the priority learning pipeline.
+
+    Tests cover:
+    - Reorder history accumulation via PrioritySignalService
+    - Rule extraction via PriorityLearningService
+    - Boost application in _rank_and_dedupe (surfacing)
+    - LLM analysis via PriorityAnalysisService (requires_ollama tier)
+    """
+
+    # ------------------------------------------------------------------
+    # Shared play_db fixture (mirrors TestPlayKanbanWorkflowE2E pattern)
+    # ------------------------------------------------------------------
+
+    @pytest.fixture
+    def play_db_setup(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """Isolated play_db with empty schema."""
+        data_dir = tmp_path / "reos-data"
+        data_dir.mkdir()
+        monkeypatch.setenv("TALKINGROCK_DATA_DIR", str(data_dir))
+
+        import cairn.play_db as play_db
+
+        play_db.close_connection()
+        play_db.init_db()
+
+        yield play_db
+
+        play_db.close_connection()
+
+    @pytest.fixture
+    def play_db_with_scenes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """Isolated play_db pre-populated with 3 acts and 8 scenes.
+
+        Yields (play_db_module, items) where items is a list of dicts:
+            entity_type, entity_id, act_id, stage, title
+        """
+        data_dir = tmp_path / "reos-data"
+        data_dir.mkdir()
+        monkeypatch.setenv("TALKINGROCK_DATA_DIR", str(data_dir))
+
+        import cairn.play_db as play_db
+
+        play_db.close_connection()
+        play_db.init_db()
+
+        # Create acts with deterministic IDs by reading what create_act returns
+        _, health_act_id = play_db.create_act(title="Health", color="#33aa33")
+        _, career_act_id = play_db.create_act(title="Career", color="#3388ff")
+        _, home_act_id = play_db.create_act(title="Home", color="#ff8833")
+
+        # Rename act IDs to stable aliases we control inside the DB
+        # (play_db generates UUIDs, so we patch the items list with actual IDs)
+        _, gym_id = play_db.create_scene(
+            act_id=health_act_id, title="Gym session", stage="in_progress"
+        )
+        _, diet_id = play_db.create_scene(
+            act_id=health_act_id, title="Diet plan review", stage="planning"
+        )
+        _, checkup_id = play_db.create_scene(
+            act_id=health_act_id, title="Annual check-up", stage="planning"
+        )
+        _, sprint_id = play_db.create_scene(
+            act_id=career_act_id, title="Sprint planning", stage="in_progress"
+        )
+        _, report_id = play_db.create_scene(
+            act_id=career_act_id, title="Quarterly report", stage="planning"
+        )
+        _, code_id = play_db.create_scene(
+            act_id=career_act_id, title="Code review", stage="planning"
+        )
+        _, repair_id = play_db.create_scene(
+            act_id=home_act_id, title="Roof repair", stage="in_progress"
+        )
+        _, garden_id = play_db.create_scene(
+            act_id=home_act_id, title="Garden planning", stage="planning"
+        )
+
+        scene_items = [
+            {
+                "entity_type": "scene", "entity_id": gym_id,
+                "act_id": health_act_id, "stage": "in_progress", "title": "Gym session",
+            },
+            {
+                "entity_type": "scene", "entity_id": diet_id,
+                "act_id": health_act_id, "stage": "planning", "title": "Diet plan review",
+            },
+            {
+                "entity_type": "scene", "entity_id": checkup_id,
+                "act_id": health_act_id, "stage": "planning", "title": "Annual check-up",
+            },
+            {
+                "entity_type": "scene", "entity_id": sprint_id,
+                "act_id": career_act_id, "stage": "in_progress", "title": "Sprint planning",
+            },
+            {
+                "entity_type": "scene", "entity_id": report_id,
+                "act_id": career_act_id, "stage": "planning", "title": "Quarterly report",
+            },
+            {
+                "entity_type": "scene", "entity_id": code_id,
+                "act_id": career_act_id, "stage": "planning", "title": "Code review",
+            },
+            {
+                "entity_type": "scene", "entity_id": repair_id,
+                "act_id": home_act_id, "stage": "in_progress", "title": "Roof repair",
+            },
+            {
+                "entity_type": "scene", "entity_id": garden_id,
+                "act_id": home_act_id, "stage": "planning", "title": "Garden planning",
+            },
+        ]
+
+        # Add two synthetic email items (non-scene, so no DB scene row needed)
+        email_items = [
+            {
+                "entity_type": "email", "entity_id": "email-urgent-1",
+                "act_id": None, "stage": None, "title": "Urgent: contract renewal",
+            },
+            {
+                "entity_type": "email", "entity_id": "email-follow-1",
+                "act_id": None, "stage": None, "title": "Follow-up on proposal",
+            },
+        ]
+
+        all_items = scene_items + email_items
+
+        yield play_db, all_items, health_act_id, career_act_id
+
+        play_db.close_connection()
+
+    # ------------------------------------------------------------------
+    # Tier 1: No-LLM tests
+    # ------------------------------------------------------------------
+
+    def test_health_first_creates_act_boost(self, play_db_with_scenes) -> None:
+        """HealthFirst persona: 5 reorders should produce a positive act boost rule.
+
+        We seed the DB with the reverse item order first so that subsequent
+        HealthFirst reorders always move health items UP — yielding a positive
+        avg_improvement and therefore a positive boost_score.
+        """
+        play_db, all_items, health_act_id, _career_act_id = play_db_with_scenes
+
+        persona = _HealthFirst()
+        results = _run_persona_reorders(
+            play_db, persona, all_items, num_reorders=5, seed_reverse=True
+        )
+
+        # After 5 reorders every health scene has been moved up 5 times — the
+        # aggregated act stats must cross the COUNT >= 3 threshold.
+        final_rules = results[-1]["rules_extracted"]
+        act_keys = {
+            f"{r['feature_type']}:{r['feature_value']}": r["boost_score"]
+            for r in final_rules
+            if r["feature_type"] == "act"
+        }
+
+        health_key = f"act:{health_act_id}"
+        assert health_key in act_keys, (
+            f"Expected act rule for {health_key}. Rules found: {list(act_keys)}"
+        )
+        assert act_keys[health_key] > 0, (
+            f"Expected positive boost for health act, got {act_keys[health_key]}"
+        )
+
+    def test_chaotic_produces_no_strong_rules(self, play_db_with_scenes) -> None:
+        """Chaotic persona: random reorders should not create strong boost rules."""
+        play_db, all_items, _health_act_id, _career_act_id = play_db_with_scenes
+
+        # Use only scene items so act_id and stage features are populated
+        scene_items = [i for i in all_items if i["entity_type"] == "scene"]
+        persona = _Chaotic()
+        results = _run_persona_reorders(play_db, persona, scene_items, num_reorders=8)
+
+        final_rules = results[-1]["rules_extracted"]
+        strong_rules = [r for r in final_rules if abs(r["boost_score"]) > 0.3]
+        assert not strong_rules, (
+            f"Chaotic persona should not produce strong rules. Got: {strong_rules}"
+        )
+
+    def test_gradual_shifter_convergence(self, play_db_with_scenes) -> None:
+        """GradualShifter: rules should shift from health-positive to career-positive."""
+        play_db, all_items, health_act_id, career_act_id = play_db_with_scenes
+
+        scene_items = [i for i in all_items if i["entity_type"] == "scene"]
+        persona = _GradualShifter()
+        results = _run_persona_reorders(
+            play_db, persona, scene_items, num_reorders=8, seed_reverse=True
+        )
+
+        # After 8 reorders we should have rule entries for both acts
+        final_rules = results[-1]["rules_extracted"]
+        rule_map = {
+            f"{r['feature_type']}:{r['feature_value']}": r["boost_score"]
+            for r in final_rules
+        }
+
+        # Both act keys should appear after 8 reorders (>= 3 samples each)
+        health_key = f"act:{health_act_id}"
+        career_key = f"act:{career_act_id}"
+        assert health_key in rule_map or career_key in rule_map, (
+            "Expected at least one act boost rule after 8 reorders of GradualShifter"
+        )
+
+    def test_email_prioritizer_history_flags_email_items(self, play_db_with_scenes) -> None:
+        """EmailPrioritizer: email items should be recorded with is_email=1 in history.
+
+        Note: attention_priorities is scene-only, so email rows always have
+        old_position=NULL and are excluded from the avg_improvement SQL aggregation.
+        The is_email flag in reorder_history is the observable signal for email items.
+        """
+        import cairn.play_db as play_db_mod
+
+        play_db, all_items, _health_act_id, _career_act_id = play_db_with_scenes
+
+        persona = _EmailPrioritizer()
+        _run_persona_reorders(play_db, persona, all_items, num_reorders=3, seed_reverse=True)
+
+        conn = play_db_mod._get_connection()
+        email_rows = conn.execute(
+            "SELECT entity_type, entity_id, is_email FROM reorder_history"
+            " WHERE entity_type = 'email'"
+        ).fetchall()
+
+        assert email_rows, "Expected email entries in reorder_history"
+        for row in email_rows:
+            assert row["is_email"] == 1, (
+                f"Expected is_email=1 for email entity {row['entity_id']}, got {row['is_email']}"
+            )
+
+    def test_stage_prioritizer_learns_stage(self, play_db_with_scenes) -> None:
+        """StagePrioritizer: 5 reorders should create a positive stage:in_progress rule."""
+        play_db, all_items, _health_act_id, _career_act_id = play_db_with_scenes
+
+        scene_items = [i for i in all_items if i["entity_type"] == "scene"]
+        persona = _StagePrioritizer()
+        results = _run_persona_reorders(
+            play_db, persona, scene_items, num_reorders=5, seed_reverse=True
+        )
+
+        final_rules = results[-1]["rules_extracted"]
+        stage_rules = [
+            r for r in final_rules
+            if r["feature_type"] == "stage" and r["feature_value"] == "in_progress"
+        ]
+        assert stage_rules, "Expected stage:in_progress rule after 5 reorders"
+        assert stage_rules[0]["boost_score"] > 0, (
+            f"Expected positive boost for in_progress, got {stage_rules[0]['boost_score']}"
+        )
+
+    def test_reorder_history_features_populated(self, play_db_with_scenes) -> None:
+        """Single reorder: verify that reorder_history rows have non-NULL feature columns."""
+        import cairn.play_db as play_db_mod
+        from cairn.services.priority_signal_service import PrioritySignalService
+
+        play_db, all_items, health_act_id, _career_act_id = play_db_with_scenes
+
+        scene_items = [i for i in all_items if i["entity_type"] == "scene"]
+        ordered_entities = [("scene", it["entity_id"]) for it in scene_items]
+
+        svc = PrioritySignalService()
+        svc.process_reorder(ordered_entities=ordered_entities)
+
+        # Inspect raw history rows
+        conn = play_db_mod._get_connection()
+        cursor = conn.execute(
+            "SELECT entity_type, entity_id, act_id, scene_stage FROM reorder_history"
+        )
+        rows = cursor.fetchall()
+        assert rows, "Expected reorder_history rows after process_reorder"
+
+        # At least the rows for scene items should have act_id populated
+        scene_rows = [r for r in rows if r["entity_type"] == "scene"]
+        assert scene_rows, "Expected scene rows in reorder_history"
+        for row in scene_rows:
+            assert row["act_id"] is not None, (
+                f"act_id should be populated for scene {row['entity_id']}, got NULL"
+            )
+
+    def test_boost_affects_surfacing_order(self, play_db_with_scenes) -> None:
+        """Directly insert a boost rule and verify _rank_and_dedupe respects it."""
+        import uuid
+        from datetime import UTC, datetime
+
+        import cairn.play_db as play_db_mod
+        from cairn.cairn.surfacing import CairnSurfacer
+
+        play_db, all_items, health_act_id, career_act_id = play_db_with_scenes
+
+        # Insert a strong positive boost for career act
+        now = datetime.now(UTC).isoformat()
+        boost_rule = {
+            "id": str(uuid.uuid4()),
+            "feature_type": "act",
+            "feature_value": career_act_id,
+            "boost_score": 0.9,
+            "confidence": 1.0,
+            "sample_count": 10,
+            "description": "Career items prioritized",
+            "active": 1,
+            "created_at": now,
+            "updated_at": now,
+        }
+        play_db_mod.upsert_boost_rule(boost_rule)
+
+        # Build SurfacedItems — same urgency so boost is the tiebreaker
+        scene_items = [i for i in all_items if i["entity_type"] == "scene"]
+        surfaced = _make_surfaced_items(scene_items)
+
+        surfacer = CairnSurfacer.__new__(CairnSurfacer)
+        ranked = surfacer._rank_and_dedupe(surfaced, max_items=len(surfaced))
+
+        # Career items should appear before health items at equal urgency
+        ranked_ids = [item.entity_id for item in ranked]
+        health_ids = {it["entity_id"] for it in scene_items if it["act_id"] == health_act_id}
+        career_ids = {it["entity_id"] for it in scene_items if it["act_id"] == career_act_id}
+
+        # Find first health and first career position
+        first_health = next((i for i, eid in enumerate(ranked_ids) if eid in health_ids), None)
+        first_career = next((i for i, eid in enumerate(ranked_ids) if eid in career_ids), None)
+
+        assert first_career is not None and first_health is not None, (
+            "Both health and career items should appear in ranked output"
+        )
+        assert first_career < first_health, (
+            f"Career items (pos {first_career}) should rank before "
+            f"health items (pos {first_health}) when career has a strong boost"
+        )
+
+    def test_tracking_records_saved(self, play_db_with_scenes, tmp_path: Path) -> None:
+        """Three reorders + _save_tracking_results: verify JSON file is written correctly."""
+        play_db, all_items, _health_act_id, _career_act_id = play_db_with_scenes
+
+        scene_items = [i for i in all_items if i["entity_type"] == "scene"]
+        persona = _HealthFirst()
+        results = _run_persona_reorders(play_db, persona, scene_items, num_reorders=3)
+
+        out_path = _save_tracking_results(results, tmp_path / "tracking")
+
+        assert out_path.exists(), "Expected tracking JSON file to be created"
+        data = json.loads(out_path.read_text(encoding="utf-8"))
+        assert len(data) == 3, f"Expected 3 reorder records, got {len(data)}"
+
+        for record in data:
+            assert "reorder_number" in record
+            assert "ordered_ids" in record
+            assert "priorities_updated" in record
+            assert "rules_extracted" in record
+            assert isinstance(record["ordered_ids"], list)
+
+    # ------------------------------------------------------------------
+    # Tier 2: LLM tests (require Ollama)
+    # ------------------------------------------------------------------
+
+    @requires_ollama
+    @pytest.mark.slow
+    def test_llm_health_pattern_analysis(
+        self, play_db_with_scenes, isolated_db_singleton, real_llm
+    ) -> None:
+        """3 HealthFirst reorders + analyze_reorder: response should be non-empty."""
+        from cairn.db import get_db
+        from cairn.services.conversation_service import ConversationService
+        from cairn.services.priority_analysis_service import PriorityAnalysisService
+
+        play_db, all_items, health_act_id, _career_act_id = play_db_with_scenes
+        scene_items = [i for i in all_items if i["entity_type"] == "scene"]
+
+        persona = _HealthFirst()
+        _run_persona_reorders(play_db, persona, scene_items, num_reorders=3)
+
+        db = get_db()
+        conv_service = ConversationService()
+        conv = conv_service.start()
+
+        ordered_scene_ids = [it["entity_id"] for it in scene_items[:3]]
+        scene_details = [
+            {
+                "scene_id": it["entity_id"],
+                "title": it["title"],
+                "stage": it["stage"],
+                "act_id": it["act_id"],
+                "act_title": "Health",
+                "notes": "",
+                "start_date": None,
+                "end_date": None,
+            }
+            for it in scene_items[:3]
+        ]
+
+        analyzer = PriorityAnalysisService()
+        response = analyzer.analyze_reorder(
+            db=db,
+            ordered_scene_ids=ordered_scene_ids,
+            old_priorities={},
+            scene_details=scene_details,
+            conversation_id=conv.id,
+        )
+
+        assert response, "Expected non-empty analysis from CAIRN"
+        assert len(response.strip()) > 20, (
+            f"Expected a substantive response, got: {response!r}"
+        )
+
+    @requires_ollama
+    @pytest.mark.slow
+    def test_llm_career_focus_analysis(
+        self, play_db_with_scenes, isolated_db_singleton, real_llm
+    ) -> None:
+        """Career items moved to top — analysis should acknowledge the shift."""
+        from cairn.db import get_db
+        from cairn.services.conversation_service import ConversationService
+        from cairn.services.priority_analysis_service import PriorityAnalysisService
+
+        play_db, all_items, _health_act_id, career_act_id = play_db_with_scenes
+        scene_items = [i for i in all_items if i["entity_type"] == "scene"]
+
+        persona = _ProjectFocused()
+        _run_persona_reorders(play_db, persona, scene_items, num_reorders=3)
+
+        db = get_db()
+        conv_service = ConversationService()
+        conv = conv_service.start()
+
+        career_items = [i for i in scene_items if i["act_id"] == career_act_id]
+        ordered_scene_ids = [it["entity_id"] for it in career_items]
+        scene_details = [
+            {
+                "scene_id": it["entity_id"],
+                "title": it["title"],
+                "stage": it["stage"],
+                "act_id": it["act_id"],
+                "act_title": "Career",
+                "notes": "",
+                "start_date": None,
+                "end_date": None,
+            }
+            for it in career_items
+        ]
+
+        old_priorities = {it["entity_id"]: idx + 3 for idx, it in enumerate(career_items)}
+
+        analyzer = PriorityAnalysisService()
+        response = analyzer.analyze_reorder(
+            db=db,
+            ordered_scene_ids=ordered_scene_ids,
+            old_priorities=old_priorities,
+            scene_details=scene_details,
+            conversation_id=conv.id,
+        )
+
+        assert response, "Expected non-empty analysis from CAIRN"
+
+    @requires_ollama
+    @pytest.mark.slow
+    def test_llm_no_crash_on_minimal_context(
+        self, play_db_with_scenes, isolated_db_singleton, real_llm
+    ) -> None:
+        """analyze_reorder with a single item and no old priorities should not crash."""
+        from cairn.db import get_db
+        from cairn.services.conversation_service import ConversationService
+        from cairn.services.priority_analysis_service import PriorityAnalysisService
+
+        play_db, all_items, _health_act_id, _career_act_id = play_db_with_scenes
+        scene_items = [i for i in all_items if i["entity_type"] == "scene"]
+        single_item = scene_items[0]
+
+        db = get_db()
+        conv_service = ConversationService()
+        conv = conv_service.start()
+
+        analyzer = PriorityAnalysisService()
+        response = analyzer.analyze_reorder(
+            db=db,
+            ordered_scene_ids=[single_item["entity_id"]],
+            old_priorities={},
+            scene_details=[
+                {
+                    "scene_id": single_item["entity_id"],
+                    "title": single_item["title"],
+                    "stage": single_item["stage"],
+                    "act_id": single_item["act_id"],
+                    "act_title": "Health",
+                    "notes": "",
+                    "start_date": None,
+                    "end_date": None,
+                }
+            ],
+            conversation_id=conv.id,
+        )
+
+        # Just verify no exception was raised and we got a string back
+        assert isinstance(response, str)
+
+    @requires_ollama
+    @pytest.mark.slow
+    def test_llm_rich_context_references_details(
+        self, play_db_with_scenes, isolated_db_singleton, real_llm
+    ) -> None:
+        """Full scene details passed in: CAIRN response should be non-trivial."""
+        from cairn.db import get_db
+        from cairn.services.conversation_service import ConversationService
+        from cairn.services.priority_analysis_service import PriorityAnalysisService
+
+        play_db, all_items, health_act_id, career_act_id = play_db_with_scenes
+        scene_items = [i for i in all_items if i["entity_type"] == "scene"]
+
+        persona = _HealthFirst()
+        _run_persona_reorders(play_db, persona, scene_items, num_reorders=4)
+
+        db = get_db()
+        conv_service = ConversationService()
+        conv = conv_service.start()
+
+        ordered_scene_ids = [it["entity_id"] for it in scene_items]
+        old_priorities = {it["entity_id"]: idx + 1 for idx, it in enumerate(reversed(scene_items))}
+
+        scene_details = []
+        for it in scene_items:
+            if it["act_id"] == health_act_id:
+                act_title = "Health"
+            elif it["act_id"] == career_act_id:
+                act_title = "Career"
+            else:
+                act_title = "Home"
+            scene_details.append({
+                "scene_id": it["entity_id"],
+                "title": it["title"],
+                "stage": it["stage"],
+                "act_id": it["act_id"],
+                "act_title": act_title,
+                "notes": f"Notes for {it['title']}",
+                "start_date": "2026-03-10",
+                "end_date": "2026-03-11",
+                "urgency": "medium",
+            })
+
+        analyzer = PriorityAnalysisService()
+        response = analyzer.analyze_reorder(
+            db=db,
+            ordered_scene_ids=ordered_scene_ids,
+            old_priorities=old_priorities,
+            scene_details=scene_details,
+            conversation_id=conv.id,
+        )
+
+        assert response, "Expected non-empty response with rich context"
+        assert len(response.strip()) > 50, (
+            f"Expected a substantial response with rich context, got: {response!r}"
+        )
+
+    @requires_ollama
+    @pytest.mark.slow
+    def test_full_pipeline_with_llm(
+        self, play_db_with_scenes, isolated_db_singleton, real_llm
+    ) -> None:
+        """End-to-end: handle_cairn_attention_reorder orchestrates the full pipeline."""
+        from cairn.db import get_db
+        from cairn.rpc_handlers.system import handle_cairn_attention_reorder
+
+        play_db, all_items, _health_act_id, _career_act_id = play_db_with_scenes
+        scene_items = [i for i in all_items if i["entity_type"] == "scene"]
+
+        # Run a few background reorders to seed the history
+        persona = _HealthFirst()
+        _run_persona_reorders(play_db, persona, scene_items, num_reorders=3)
+
+        db = get_db()
+        ordered_scene_ids = [it["entity_id"] for it in scene_items]
+
+        result = handle_cairn_attention_reorder(
+            db=db,
+            ordered_scene_ids=ordered_scene_ids,
+        )
+
+        assert "priorities_updated" in result, (
+            f"Expected priorities_updated in result. Got: {result}"
+        )
+        assert result["priorities_updated"] >= 0

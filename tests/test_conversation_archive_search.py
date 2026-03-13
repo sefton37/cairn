@@ -20,7 +20,7 @@ def search_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Set up a fresh v13 play database for archive search tests."""
     data_dir = tmp_path / "reos-data"
     data_dir.mkdir()
-    monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("TALKINGROCK_DATA_DIR", str(data_dir))
 
     import cairn.play_db as play_db
 

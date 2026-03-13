@@ -7,7 +7,7 @@ and CAIRN attention surfacing.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+from datetime import datetime
 from typing import Any
 
 from cairn.db import Database
@@ -52,7 +52,7 @@ def handle_thunderbird_check(db: Database) -> dict[str, Any]:
         ThunderbirdProfile,
         ThunderbirdAccount,
     )
-    from cairn.cairn.store import CairnStore
+    from cairn.cairn.store import get_cairn_store
 
     # Get integration state from Thunderbird
     integration = get_thunderbird_integration_state()
@@ -60,7 +60,7 @@ def handle_thunderbird_check(db: Database) -> dict[str, Any]:
     # Get stored preferences
     play_path = get_current_play_path(db)
     if play_path:
-        store = CairnStore(Path(play_path) / ".cairn" / "cairn.db")
+        store = get_cairn_store()
         stored_state = store.get_integration_state("thunderbird")
     else:
         stored_state = None
@@ -110,13 +110,13 @@ def handle_thunderbird_configure(
     all_active: bool = False,
 ) -> dict[str, Any]:
     """Configure Thunderbird integration."""
-    from cairn.cairn.store import CairnStore
+    from cairn.cairn.store import get_cairn_store
 
     play_path = get_current_play_path(db)
     if not play_path:
         raise RpcError(code=-32000, message="No Play path configured")
 
-    store = CairnStore(Path(play_path) / ".cairn" / "cairn.db")
+    store = get_cairn_store()
 
     config = {
         "active_profiles": active_profiles,
@@ -131,13 +131,13 @@ def handle_thunderbird_configure(
 
 def handle_thunderbird_decline(db: Database) -> dict[str, Any]:
     """Mark Thunderbird integration as declined (never ask again)."""
-    from cairn.cairn.store import CairnStore
+    from cairn.cairn.store import get_cairn_store
 
     play_path = get_current_play_path(db)
     if not play_path:
         raise RpcError(code=-32000, message="No Play path configured")
 
-    store = CairnStore(Path(play_path) / ".cairn" / "cairn.db")
+    store = get_cairn_store()
     store.set_integration_declined("thunderbird")
 
     return {"success": True}
@@ -145,13 +145,13 @@ def handle_thunderbird_decline(db: Database) -> dict[str, Any]:
 
 def handle_thunderbird_reset(db: Database) -> dict[str, Any]:
     """Reset Thunderbird integration (re-enable prompts)."""
-    from cairn.cairn.store import CairnStore
+    from cairn.cairn.store import get_cairn_store
 
     play_path = get_current_play_path(db)
     if not play_path:
         raise RpcError(code=-32000, message="No Play path configured")
 
-    store = CairnStore(Path(play_path) / ".cairn" / "cairn.db")
+    store = get_cairn_store()
     store.clear_integration_decline("thunderbird")
 
     return {"success": True}
@@ -172,32 +172,45 @@ def handle_cairn_attention(
 
     Shows the next 7 days by default for the 'What Needs My Attention' section.
     """
-    from cairn.cairn.store import CairnStore
+    from cairn.cairn.store import get_cairn_store
     from cairn.cairn.surfacing import CairnSurfacer
     from cairn.cairn.thunderbird import ThunderbirdBridge
     from cairn import play_fs
+    from cairn.settings import settings
 
     play_path = get_current_play_path(db)
     if not play_path:
         return {"count": 0, "items": []}
 
     # Set up CAIRN components
-    cairn_db_path = Path(play_path) / ".cairn" / "cairn.db"
-    store = CairnStore(cairn_db_path)
+    cairn_db_path = settings.data_dir / "talkingrock.db"
+    store = get_cairn_store()
 
     # Get Thunderbird bridge if configured
     thunderbird = None
+    email_service = None
     tb_state = store.get_integration_state("thunderbird")
     if tb_state and tb_state["state"] == "active":
         thunderbird = ThunderbirdBridge.auto_detect()
+
+        # Set up email intelligence if Gloda database is available
+        if thunderbird and thunderbird.has_email_db():
+            try:
+                from cairn.services.email_intelligence import EmailIntelligenceService
+                email_service = EmailIntelligenceService(
+                    cairn_store=store, thunderbird=thunderbird,
+                )
+            except Exception as e:
+                logger.debug("Email intelligence unavailable: %s", e)
 
     # Create surfacer and get attention items
     surfacer = CairnSurfacer(
         cairn_store=store,
         thunderbird=thunderbird,
+        email_service=email_service,
     )
 
-    items = surfacer.surface_attention(hours=hours, limit=limit)
+    items = surfacer.surface_attention(hours=hours, limit=max(limit, 200))
 
     # Build act_id -> title/color lookup from play_fs
     acts, _ = play_fs.list_acts()
@@ -248,6 +261,17 @@ def handle_cairn_attention(
                 "act_title": act_info.get(item.act_id, {}).get("title") if item.act_id else None,
                 "act_color": act_info.get(item.act_id, {}).get("color") if item.act_id else None,
                 "user_priority": priorities.get(item.entity_id),
+                "learned_boost": item.learned_boost,
+                "boost_reasons": item.boost_reasons,
+                # Email-specific fields
+                "sender_name": item.sender_name,
+                "sender_email": item.sender_email,
+                "account_email": item.account_email,
+                "email_date": item.email_date.isoformat() if item.email_date else None,
+                "importance_score": item.importance_score,
+                "importance_reason": item.importance_reason,
+                "email_message_id": item.email_message_id,
+                "is_read": item.is_read,
             }
             for item in items
         ],
@@ -258,21 +282,31 @@ def handle_cairn_attention(
 def handle_cairn_attention_reorder(
     db: Database,
     *,
-    ordered_scene_ids: list[str],
+    ordered_scene_ids: list[str] | None = None,
+    ordered_entities: list[list[str]] | None = None,
 ) -> dict[str, Any]:
     """Reorder attention items based on user drag-and-drop.
 
-    Persists the new order, then asks CAIRN to analyze the reorder
-    and propose memories for user approval via conversation.
+    Persists the new order, records history for priority learning,
+    then asks CAIRN to analyze the reorder and propose memories
+    for user approval via conversation.
     """
     from cairn.cairn.models import ActivityType
-    from cairn.cairn.store import CairnStore
     from cairn.services.priority_signal_service import PrioritySignalService
     from cairn.services.priority_analysis_service import PriorityAnalysisService
     from cairn.services.conversation_service import ConversationService
     from cairn import play_db
 
     play_path = get_current_play_path(db)
+
+    # Normalize ordered_entities from JSON (list of [type, id] arrays) to tuples
+    entity_tuples: list[tuple[str, str]] | None = None
+    if ordered_entities:
+        entity_tuples = [(e[0], e[1]) for e in ordered_entities]
+
+    # Derive ordered_scene_ids from entities for backward compat
+    if entity_tuples and not ordered_scene_ids:
+        ordered_scene_ids = [eid for etype, eid in entity_tuples if etype == "scene"]
 
     # 1. Capture old order BEFORE persisting
     try:
@@ -302,9 +336,12 @@ def handle_cairn_attention_reorder(
         except Exception:
             logger.warning("Failed to look up scene details for reorder", exc_info=True)
 
-    # 3. Persist new order (DB only)
+    # 3. Persist new order and record history (DB only)
     service = PrioritySignalService()
-    result = service.process_reorder(ordered_scene_ids)
+    result = service.process_reorder(
+        ordered_scene_ids=ordered_scene_ids,
+        ordered_entities=entity_tuples,
+    )
 
     # 4. Get active conversation (or create one)
     conversation_id: str | None = None
@@ -345,8 +382,8 @@ def handle_cairn_attention_reorder(
     # 6. Log activity
     if play_path:
         try:
-            cairn_db_path = Path(play_path) / ".cairn" / "cairn.db"
-            store = CairnStore(cairn_db_path)
+            from cairn.cairn.store import get_cairn_store as _get_cairn_store
+            store = _get_cairn_store()
             if ordered_scene_ids:
                 store.log_activity(
                     entity_type="scene",
@@ -355,6 +392,15 @@ def handle_cairn_attention_reorder(
                 )
         except Exception:
             logger.debug("Failed to log priority activity", exc_info=True)
+
+    # 7. Extract/update boost rules from accumulated reorder history
+    try:
+        from cairn.services.priority_learning_service import PriorityLearningService
+
+        learner = PriorityLearningService()
+        learner.extract_rules()
+    except Exception:
+        logger.debug("Rule extraction failed", exc_info=True)
 
     return {
         "priorities_updated": result["priorities_updated"],
@@ -373,3 +419,207 @@ def handle_debug_log(_db: Database, *, msg: str) -> dict[str, Any]:
     import sys
     print(f"[JS] {msg}", file=sys.stderr, flush=True)
     return {"ok": True}
+
+
+# =============================================================================
+# Email Intelligence Handlers
+# =============================================================================
+
+
+def handle_cairn_email_open(db: Database, *, message_id: int) -> dict[str, Any]:
+    """Open a specific email in Thunderbird using the RFC Message-ID (mid: URI)."""
+    import subprocess
+
+    from cairn.cairn.store import get_cairn_store
+
+    store = get_cairn_store()
+    conn = store._get_connection()
+
+    row = conn.execute(
+        "SELECT gloda_message_id, header_message_id FROM email_cache WHERE gloda_message_id = ?",
+        (message_id,),
+    ).fetchone()
+
+    if not row:
+        raise RpcError(code=-32001, message="Email not found in cache")
+
+    # Mark as surfaced
+    conn.execute(
+        "UPDATE email_cache SET surfaced = 1, surfaced_at = ? WHERE gloda_message_id = ?",
+        (datetime.now().isoformat(), message_id),
+    )
+    conn.commit()
+
+    # Open specific message in Thunderbird via mid: URI
+    header_mid = row["header_message_id"]
+    try:
+        if header_mid:
+            subprocess.Popen(
+                ["thunderbird", f"mid:{header_mid}"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            # Fallback: just open Thunderbird mail tab
+            subprocess.Popen(
+                ["thunderbird", "-mail"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+    except FileNotFoundError:
+        logger.warning("Thunderbird not found in PATH")
+
+    return {"success": True, "message_id": message_id}
+
+
+def handle_cairn_email_dismiss(db: Database, *, message_id: int) -> dict[str, Any]:
+    """Dismiss an email from the attention pane."""
+    from cairn.cairn.store import get_cairn_store
+
+    store = get_cairn_store()
+    conn = store._get_connection()
+
+    row = conn.execute(
+        "SELECT gloda_message_id FROM email_cache WHERE gloda_message_id = ?",
+        (message_id,),
+    ).fetchone()
+
+    if not row:
+        raise RpcError(code=-32001, message="Email not found in cache")
+
+    conn.execute(
+        "UPDATE email_cache SET dismissed = 1 WHERE gloda_message_id = ?",
+        (message_id,),
+    )
+    conn.commit()
+
+    return {"success": True, "message_id": message_id}
+
+
+def handle_cairn_email_snooze(
+    db: Database, *, message_id: int, hours: int = 4
+) -> dict[str, Any]:
+    """Snooze an email — hide it from the attention pane for N hours."""
+    from datetime import timedelta
+
+    from cairn.cairn.store import get_cairn_store
+
+    store = get_cairn_store()
+    conn = store._get_connection()
+
+    row = conn.execute(
+        "SELECT gloda_message_id FROM email_cache WHERE gloda_message_id = ?",
+        (message_id,),
+    ).fetchone()
+
+    if not row:
+        raise RpcError(code=-32001, message="Email not found in cache")
+
+    snooze_until = (datetime.now() + timedelta(hours=hours)).isoformat()
+    conn.execute(
+        "UPDATE email_cache SET snoozed_until = ? WHERE gloda_message_id = ?",
+        (snooze_until, message_id),
+    )
+    conn.commit()
+
+    return {"success": True, "message_id": message_id, "snoozed_until": snooze_until}
+
+
+def handle_cairn_email_upvote(
+    db: Database, *, message_id: int
+) -> dict[str, Any]:
+    """Increase an email's importance score and learn a boost rule for its sender."""
+    from cairn.cairn.store import get_cairn_store
+
+    store = get_cairn_store()
+    conn = store._get_connection()
+
+    row = conn.execute(
+        "SELECT gloda_message_id, sender_email, importance_score FROM email_cache WHERE gloda_message_id = ?",
+        (message_id,),
+    ).fetchone()
+
+    if not row:
+        raise RpcError(code=-32001, message="Email not found in cache")
+
+    current_score = row["importance_score"] or 0.0
+    new_score = min(1.0, current_score + 0.15)
+
+    conn.execute(
+        "UPDATE email_cache SET importance_score = ? WHERE gloda_message_id = ?",
+        (new_score, message_id),
+    )
+    conn.commit()
+
+    # Learn a boost rule for this sender
+    sender_email = row["sender_email"]
+    if sender_email:
+        try:
+            from cairn.play_db import upsert_boost_rule
+            now = datetime.now().isoformat()
+            upsert_boost_rule({
+                "id": f"email-sender-{sender_email}",
+                "feature_type": "sender_email",
+                "feature_value": sender_email,
+                "boost_score": 0.15,
+                "confidence": 1.0,
+                "sample_count": 1,
+                "description": f"Upvoted email from {sender_email}",
+                "active": 1,
+                "created_at": now,
+                "updated_at": now,
+            })
+        except Exception as e:
+            logger.warning("Failed to create boost rule: %s", e)
+
+    return {"success": True, "message_id": message_id, "new_score": new_score}
+
+
+def handle_cairn_email_downvote(
+    db: Database, *, message_id: int
+) -> dict[str, Any]:
+    """Decrease an email's importance score and learn a negative boost rule for its sender."""
+    from cairn.cairn.store import get_cairn_store
+
+    store = get_cairn_store()
+    conn = store._get_connection()
+
+    row = conn.execute(
+        "SELECT gloda_message_id, sender_email, importance_score FROM email_cache WHERE gloda_message_id = ?",
+        (message_id,),
+    ).fetchone()
+
+    if not row:
+        raise RpcError(code=-32001, message="Email not found in cache")
+
+    current_score = row["importance_score"] or 0.0
+    new_score = max(0.0, current_score - 0.15)
+
+    conn.execute(
+        "UPDATE email_cache SET importance_score = ? WHERE gloda_message_id = ?",
+        (new_score, message_id),
+    )
+    conn.commit()
+
+    # Learn a negative boost rule for this sender
+    sender_email = row["sender_email"]
+    if sender_email:
+        try:
+            from cairn.play_db import upsert_boost_rule
+            now = datetime.now().isoformat()
+            upsert_boost_rule({
+                "id": f"email-sender-{sender_email}",
+                "feature_type": "sender_email",
+                "feature_value": sender_email,
+                "boost_score": -0.15,
+                "confidence": 1.0,
+                "sample_count": 1,
+                "description": f"Downvoted email from {sender_email}",
+                "active": 1,
+                "created_at": now,
+                "updated_at": now,
+            })
+        except Exception as e:
+            logger.warning("Failed to create boost rule: %s", e)
+
+    return {"success": True, "message_id": message_id, "new_score": new_score}

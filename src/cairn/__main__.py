@@ -1,22 +1,21 @@
-"""ReOS - Local-first AI assistant for Linux.
+"""Cairn — local-first attention minder.
 
-Talking Rock brings AI-powered system management to Linux:
-- Natural language terminal commands
+Talking Rock brings local-first AI to your personal life:
+- Natural language conversation with CAIRN
 - CAIRN: Your attention-aware knowledge companion
-- RIVA: Recursive code execution with verification
-- Local-first with optional cloud AI providers
+- Local-first, Ollama-powered, no cloud dependencies
 
 Usage:
-    reos                Start the RPC server (default)
-    reos --help         Show this help message
-    reos-shell          Natural language terminal integration
+    cairn               Start the RPC server (default)
+    cairn --help        Show this help message
+    cairn-shell         Natural language terminal integration
 
 Environment Variables:
-    REOS_HOST           Server host (default: 127.0.0.1)
-    REOS_PORT           Server port (default: 8010)
-    REOS_OLLAMA_URL     Ollama API URL (default: http://127.0.0.1:11434)
-    REOS_OLLAMA_MODEL   Default Ollama model to use
-    REOS_LOG_LEVEL      Logging level (default: INFO)
+    TALKINGROCK_HOST            Server host (default: 127.0.0.1)
+    TALKINGROCK_PORT            Server port (default: 8010)
+    TALKINGROCK_OLLAMA_URL      Ollama API URL (default: http://127.0.0.1:11434)
+    TALKINGROCK_OLLAMA_MODEL    Default Ollama model to use
+    TALKINGROCK_LOG_LEVEL       Logging level (default: INFO)
 """
 
 from __future__ import annotations
@@ -31,19 +30,19 @@ from .settings import settings
 
 
 def main() -> None:
-    """Main entry point for ReOS server."""
+    """Main entry point for Cairn server."""
     parser = argparse.ArgumentParser(
         prog="cairn",
-        description="ReOS - Local-first AI assistant for Linux",
+        description="Cairn — local-first attention minder",
         epilog="""
 Examples:
-  reos                     Start the RPC server on default port
-  reos --port 8020         Start on custom port
-  reos --no-reload         Disable auto-reload (production mode)
+  cairn                    Start the RPC server on default port
+  cairn --port 8020        Start on custom port
+  cairn --no-reload        Disable auto-reload (production mode)
 
-For natural language shell integration, use reos-shell:
-  reos-shell "what files are here"
-  reos-shell --help
+For natural language shell integration, use cairn-shell:
+  cairn-shell "what files are here"
+  cairn-shell --help
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -79,7 +78,7 @@ For natural language shell integration, use reos-shell:
 
     configure_logging()
 
-    print(f"Starting ReOS server on {args.host}:{args.port}")
+    print(f"Starting Cairn server on {args.host}:{args.port}")
     print("Press Ctrl+C to stop\n")
 
     uvicorn.run(

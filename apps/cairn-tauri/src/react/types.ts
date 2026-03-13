@@ -183,6 +183,7 @@ export interface EditorContext {
 export interface BlockEditorProps {
   actId: string;
   pageId: string | null;
+  sceneId?: string | null;
   kernelRequest: (method: string, params: Record<string, unknown>) => Promise<unknown>;
   onSaveStatusChange?: (isSaving: boolean) => void;
 }

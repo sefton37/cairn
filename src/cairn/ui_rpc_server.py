@@ -532,6 +532,27 @@ from .rpc_handlers.system import (
 from .rpc_handlers.system import (
     handle_thunderbird_reset as _handle_thunderbird_reset,
 )
+from .rpc_handlers.cc import (
+    handle_cc_agents_create as _handle_cc_agents_create,
+)
+from .rpc_handlers.cc import (
+    handle_cc_agents_delete as _handle_cc_agents_delete,
+)
+from .rpc_handlers.cc import (
+    handle_cc_agents_list as _handle_cc_agents_list,
+)
+from .rpc_handlers.cc import (
+    handle_cc_session_history as _handle_cc_session_history,
+)
+from .rpc_handlers.cc import (
+    handle_cc_session_poll as _handle_cc_session_poll,
+)
+from .rpc_handlers.cc import (
+    handle_cc_session_send as _handle_cc_session_send,
+)
+from .rpc_handlers.cc import (
+    handle_cc_session_stop as _handle_cc_session_stop,
+)
 from .security import (
     AuditEventType,
     RateLimitExceeded,
@@ -597,6 +618,17 @@ def _handle_tools_call(db: Database, *, name: str, arguments: dict[str, Any] | N
 
 
 # -------------------------------------------------------------------------
+# ReOS RPC handlers (system control agent)
+# -------------------------------------------------------------------------
+try:
+    from reos.rpc_handlers.system import handle_reos_vitals as _handle_reos_vitals
+
+    _REOS_AVAILABLE = True
+except ImportError:
+    _REOS_AVAILABLE = False
+    logger.info("ReOS not installed — reos/* RPC handlers unavailable")
+
+# -------------------------------------------------------------------------
 # RPC Handler Registry - Simple handlers dispatched via lookup
 # -------------------------------------------------------------------------
 
@@ -617,6 +649,8 @@ _SIMPLE_HANDLERS: dict[str, Callable[[Database], Any]] = {
     "consciousness/snapshot": _handle_consciousness_snapshot,
     "health/status": _handle_health_status,
     "health/findings": _handle_health_findings,
+    "cc/agents/list": _handle_cc_agents_list,
+    **({"reos/vitals": _handle_reos_vitals} if _REOS_AVAILABLE else {}),
 }
 
 # Handlers with single required string param: (handler, param_name)
@@ -2668,6 +2702,74 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 result=_handle_cairn_attention(db, hours=hours, limit=limit),
             )
 
+        if method == "cairn/email/open":
+            if not isinstance(params, dict):
+                return _jsonrpc_error(req_id, -32602, "params must be an object")
+            message_id = params.get("email_message_id")
+            if message_id is None:
+                return _jsonrpc_error(req_id, -32602, "email_message_id required")
+            from cairn.rpc_handlers.system import handle_cairn_email_open
+
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=handle_cairn_email_open(db, message_id=int(message_id)),
+            )
+
+        if method == "cairn/email/dismiss":
+            if not isinstance(params, dict):
+                return _jsonrpc_error(req_id, -32602, "params must be an object")
+            message_id = params.get("email_message_id")
+            if message_id is None:
+                return _jsonrpc_error(req_id, -32602, "email_message_id required")
+            from cairn.rpc_handlers.system import handle_cairn_email_dismiss
+
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=handle_cairn_email_dismiss(db, message_id=int(message_id)),
+            )
+
+        if method == "cairn/email/snooze":
+            if not isinstance(params, dict):
+                return _jsonrpc_error(req_id, -32602, "params must be an object")
+            message_id = params.get("email_message_id")
+            hours = params.get("hours", 4)
+            if message_id is None:
+                return _jsonrpc_error(req_id, -32602, "email_message_id required")
+            from cairn.rpc_handlers.system import handle_cairn_email_snooze
+
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=handle_cairn_email_snooze(
+                    db, message_id=int(message_id), hours=int(hours)
+                ),
+            )
+
+        if method == "cairn/email/upvote":
+            if not isinstance(params, dict):
+                return _jsonrpc_error(req_id, -32602, "params must be an object")
+            message_id = params.get("email_message_id")
+            if message_id is None:
+                return _jsonrpc_error(req_id, -32602, "email_message_id required")
+            from cairn.rpc_handlers.system import handle_cairn_email_upvote
+
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=handle_cairn_email_upvote(db, message_id=int(message_id)),
+            )
+
+        if method == "cairn/email/downvote":
+            if not isinstance(params, dict):
+                return _jsonrpc_error(req_id, -32602, "params must be an object")
+            message_id = params.get("email_message_id")
+            if message_id is None:
+                return _jsonrpc_error(req_id, -32602, "email_message_id required")
+            from cairn.rpc_handlers.system import handle_cairn_email_downvote
+
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=handle_cairn_email_downvote(db, message_id=int(message_id)),
+            )
+
         if method == "cairn/attention/reorder":
             if not isinstance(params, dict):
                 return _jsonrpc_error(req_id, -32602, "params must be an object")
@@ -2684,6 +2786,86 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                     db, ordered_scene_ids=ordered
                 ),
             )
+
+        # -------------------------------------------------------------------------
+        # Attention Rules (Rulebook)
+        # -------------------------------------------------------------------------
+
+        if method == "cairn/attention/rules/list":
+            from cairn.play_db import get_active_boost_rules
+            all_rules = get_active_boost_rules()
+            return _jsonrpc_result(req_id=req_id, result={"rules": all_rules})
+
+        if method == "cairn/attention/rules/list_all":
+            from cairn.play_db import _get_connection as _play_conn
+            conn = _play_conn()
+            cursor = conn.execute(
+                """SELECT id, feature_type, feature_value, boost_score, confidence,
+                          sample_count, description, active, created_at, updated_at
+                   FROM priority_boost_rules ORDER BY updated_at DESC"""
+            )
+            return _jsonrpc_result(
+                req_id=req_id, result={"rules": [dict(r) for r in cursor.fetchall()]}
+            )
+
+        if method == "cairn/attention/rules/create":
+            if not isinstance(params, dict):
+                return _jsonrpc_error(req_id, -32602, "params must be an object")
+            from cairn.play_db import upsert_boost_rule
+            from datetime import datetime as _dt
+            now = _dt.now().isoformat()
+            rule = {
+                "id": str(uuid.uuid4()),
+                "feature_type": params.get("feature_type", ""),
+                "feature_value": params.get("feature_value", ""),
+                "boost_score": float(params.get("boost_score", -1.0)),
+                "confidence": float(params.get("confidence", 1.0)),
+                "sample_count": int(params.get("sample_count", 1)),
+                "description": params.get("description", ""),
+                "active": int(params.get("active", 1)),
+                "created_at": now,
+                "updated_at": now,
+            }
+            upsert_boost_rule(rule)
+            return _jsonrpc_result(req_id=req_id, result={"rule": rule})
+
+        if method == "cairn/attention/rules/update":
+            if not isinstance(params, dict):
+                return _jsonrpc_error(req_id, -32602, "params must be an object")
+            rule_id = params.get("id")
+            if not rule_id:
+                return _jsonrpc_error(req_id, -32602, "id required")
+            from cairn.play_db import _get_connection as _play_conn
+            from datetime import datetime as _dt
+            conn = _play_conn()
+            updates = []
+            values = []
+            for field in ("description", "boost_score", "active", "feature_type", "feature_value"):
+                if field in params:
+                    updates.append(f"{field} = ?")
+                    values.append(params[field])
+            if updates:
+                updates.append("updated_at = ?")
+                values.append(_dt.now().isoformat())
+                values.append(rule_id)
+                conn.execute(
+                    f"UPDATE priority_boost_rules SET {', '.join(updates)} WHERE id = ?",
+                    values,
+                )
+                conn.commit()
+            return _jsonrpc_result(req_id=req_id, result={"ok": True})
+
+        if method == "cairn/attention/rules/delete":
+            if not isinstance(params, dict):
+                return _jsonrpc_error(req_id, -32602, "params must be an object")
+            rule_id = params.get("id")
+            if not rule_id:
+                return _jsonrpc_error(req_id, -32602, "id required")
+            from cairn.play_db import _get_connection as _play_conn
+            conn = _play_conn()
+            conn.execute("DELETE FROM priority_boost_rules WHERE id = ?", (rule_id,))
+            conn.commit()
+            return _jsonrpc_result(req_id=req_id, result={"ok": True})
 
         # -------------------------------------------------------------------------
         # Safety & Security Settings
@@ -2788,6 +2970,90 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 ),
             )
 
+        # --- Claude Code agents (Helm Phase 2) ---
+
+        if method == "cc/agents/create":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            name = params.get("name")
+            if not isinstance(name, str) or not name.strip():
+                raise RpcError(code=-32602, message="name is required")
+            purpose = params.get("purpose", "")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_cc_agents_create(db, name=name, purpose=purpose),
+            )
+
+        if method == "cc/agents/delete":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            agent_id = params.get("agent_id")
+            if not isinstance(agent_id, str) or not agent_id:
+                raise RpcError(code=-32602, message="agent_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_cc_agents_delete(db, agent_id=agent_id),
+            )
+
+        if method == "cc/session/send":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            agent_id = params.get("agent_id")
+            text = params.get("text")
+            if not isinstance(agent_id, str) or not agent_id:
+                raise RpcError(code=-32602, message="agent_id is required")
+            if not isinstance(text, str) or not text.strip():
+                raise RpcError(code=-32602, message="text is required")
+            # NOTE: send is async but ui_rpc_server is sync stdio — caller should
+            # use the HTTP RPC path for async send. For Tauri, wrap in asyncio.run.
+            import asyncio as _aio
+
+            result = _aio.get_event_loop().run_until_complete(
+                _handle_cc_session_send(db, agent_id=agent_id, text=text)
+            )
+            return _jsonrpc_result(req_id=req_id, result=result)
+
+        if method == "cc/session/poll":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            agent_id = params.get("agent_id")
+            since = params.get("since", 0)
+            if not isinstance(agent_id, str) or not agent_id:
+                raise RpcError(code=-32602, message="agent_id is required")
+            if not isinstance(since, int):
+                since = 0
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_cc_session_poll(db, agent_id=agent_id, since=since),
+            )
+
+        if method == "cc/session/stop":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            agent_id = params.get("agent_id")
+            if not isinstance(agent_id, str) or not agent_id:
+                raise RpcError(code=-32602, message="agent_id is required")
+            import asyncio as _aio
+
+            result = _aio.get_event_loop().run_until_complete(
+                _handle_cc_session_stop(db, agent_id=agent_id)
+            )
+            return _jsonrpc_result(req_id=req_id, result=result)
+
+        if method == "cc/session/history":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            agent_id = params.get("agent_id")
+            limit = params.get("limit", 100)
+            if not isinstance(agent_id, str) or not agent_id:
+                raise RpcError(code=-32602, message="agent_id is required")
+            if not isinstance(limit, int):
+                limit = 100
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_cc_session_history(db, agent_id=agent_id, limit=limit),
+            )
+
         raise RpcError(code=-32601, message=f"Method not found: {method}")
 
     except RpcError as exc:
@@ -2858,7 +3124,6 @@ def _load_persisted_safety_settings(db: Database) -> None:
     This ensures user's safety settings persist across restarts.
     """
     from . import security
-    from .code_mode import executor as code_executor
 
     # Load command length
     val = db.get_state(key="safety_command_length")
@@ -2866,24 +3131,6 @@ def _load_persisted_safety_settings(db: Database) -> None:
         try:
             security.MAX_COMMAND_LEN = int(val)
             logger.debug("Loaded safety_command_length: %s", val)
-        except ValueError:
-            pass
-
-    # Load max iterations
-    val = db.get_state(key="safety_max_iterations")
-    if val and isinstance(val, str):
-        try:
-            code_executor.ExecutionState.max_iterations = int(val)
-            logger.debug("Loaded safety_max_iterations: %s", val)
-        except ValueError:
-            pass
-
-    # Load wall clock timeout
-    val = db.get_state(key="safety_wall_clock_timeout")
-    if val and isinstance(val, str):
-        try:
-            code_executor.DEFAULT_WALL_CLOCK_TIMEOUT_SECONDS = int(val)
-            logger.debug("Loaded safety_wall_clock_timeout: %s", val)
         except ValueError:
             pass
 

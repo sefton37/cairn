@@ -73,6 +73,7 @@ class AtomicDecomposer:
         source_agent: str = "",
         parent_id: Optional[str] = None,
         force_decomposition: bool = False,
+        memory_context: str = "",
     ) -> DecompositionResult:
         """Decompose a request into atomic operations.
 
@@ -86,12 +87,13 @@ class AtomicDecomposer:
             source_agent: Source agent (cairn, reos, riva).
             parent_id: Parent operation ID if this is a sub-decomposition.
             force_decomposition: Force decomposition even if not needed.
+            memory_context: Available context from memories, play state, etc.
 
         Returns:
             DecompositionResult with atomic operations.
         """
         # Use LLM to analyze the request
-        analysis = self._analyze_request(request)
+        analysis = self._analyze_request(request, memory_context=memory_context)
 
         # If LLM is uncertain, signal clarification needed
         if analysis.get("needs_clarification") and not analysis.get("confident", True):
@@ -201,7 +203,7 @@ class AtomicDecomposer:
             clarification_prompt=analysis.get("clarification_prompt") if any_needs_clarification else None,
         )
 
-    def _analyze_request(self, request: str) -> dict[str, Any]:
+    def _analyze_request(self, request: str, memory_context: str = "") -> dict[str, Any]:
         """Use LLM to analyze if request needs decomposition and how.
 
         Returns a dict with:
@@ -237,7 +239,11 @@ WHAT DOES NOT COUNT:
 - Compound nouns or multi-word entity names should not be split
 
 IMPORTANT:
-- If you're uncertain which entities the user refers to, signal needs_clarification
+- Check the AVAILABLE CONTEXT first to resolve entity references
+- Only signal needs_clarification if the context cannot resolve the ambiguity
+  AND the ambiguity would cause the wrong operation to execute
+- When in doubt, proceed with the best interpretation from context rather than
+  asking for clarification
 - Only decompose when you're CONFIDENT there are multiple distinct operations
 - Preserve entity references exactly as stated by the user
 
@@ -252,8 +258,19 @@ Return ONLY a JSON object:
     "clarification_prompt": "question to ask if clarification needed"
 }"""
 
-        user = f"""USER REQUEST: "{request}"
+        context_section = ""
+        if memory_context:
+            context_section = f"""
 
+AVAILABLE CONTEXT (what the system already knows):
+{memory_context}
+
+Use this context to resolve ambiguous entity references before signaling
+needs_clarification. Only ask for clarification when this context genuinely
+cannot resolve the ambiguity."""
+
+        user = f"""USER REQUEST: "{request}"
+{context_section}
 Analyze: Does this contain multiple distinct operations? If yes, what are they?"""
 
         try:

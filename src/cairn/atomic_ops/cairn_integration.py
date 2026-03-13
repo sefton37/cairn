@@ -53,6 +53,7 @@ class CairnOperationResult:
     approved: bool = False
     needs_approval: bool = False
     warnings: list[str] = field(default_factory=list)
+    directive: str | None = None  # Verification directive for response shaping
 
 
 # Domain → IntentCategory name mapping for backward compat with agent.py
@@ -326,6 +327,15 @@ class CairnAtomicBridge:
 
         verification = self.verifier.verify(operation, context)
 
+        # Step 5b: Generate verification directive for response shaping
+        directive = None
+        try:
+            from trcore.atomic_ops.verifiers.directives import verification_directive
+
+            directive = verification_directive(verification.results)
+        except Exception:
+            pass  # trcore not available or import error — skip directive
+
         # Step 6: Determine if approval needed
         needs_approval = self._needs_user_approval(operation, verification)
 
@@ -400,6 +410,7 @@ class CairnAtomicBridge:
             approved=auto_approved or (verification.passed and not needs_approval),
             needs_approval=needs_approval,
             warnings=verification.warnings,
+            directive=directive,
         )
 
     def _execute_behavior_mode(

@@ -1,4 +1,4 @@
-"""Safety management for ReOS reasoning system.
+"""Safety management for Cairn reasoning system.
 
 Handles risk analysis, backup creation, and rollback capability
 for system operations.
@@ -17,6 +17,8 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
+
+from cairn.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -205,10 +207,10 @@ class SafetyManager:
         """Initialize the safety manager.
 
         Args:
-            backup_dir: Directory for storing backups. Defaults to ~/.reos-data/backups
+            backup_dir: Directory for storing backups. Defaults to ~/.talkingrock/backups
         """
         if backup_dir is None:
-            backup_dir = Path.home() / ".reos-data" / "backups"
+            backup_dir = settings.data_dir / "backups"
         backup_dir.mkdir(parents=True, exist_ok=True)
 
         self.state = SafetyState(backup_dir=backup_dir)

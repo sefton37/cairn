@@ -756,6 +756,7 @@ function richTextToNodes(spans: RichTextSpan[]): Array<Record<string, unknown>> 
 export function BlockEditor({
   actId,
   pageId,
+  sceneId,
   kernelRequest,
   onSaveStatusChange,
 }: BlockEditorProps) {
@@ -790,7 +791,7 @@ export function BlockEditor({
   // Load blocks from backend
   useEffect(() => {
     // Prevent StrictMode double-execution for the same actId
-    const loadKey = `${actId}-${pageId}`;
+    const loadKey = `${actId}-${pageId}-${sceneId ?? ''}`;
     if (loadInitiatedRef.current === loadKey) {
       void kernelRequest('debug/log', { msg: `LOAD SKIPPED: already initiated for ${loadKey}` }).catch(() => {});
       return;
@@ -809,9 +810,10 @@ export function BlockEditor({
       if (!pageId) {
         try {
           console.log(`[BlockEditor] ========== LOADING ==========`);
-          console.log(`[BlockEditor] Loading kb.md for act: "${actId}"`);
+          console.log(`[BlockEditor] Loading kb.md for act: "${actId}", scene: "${sceneId ?? 'none'}"`);
           const result = (await kernelRequest('play/kb/read', {
             act_id: actId,
+            scene_id: sceneId ?? null,
             path: 'kb.md',
           })) as { text: string };
 
@@ -904,7 +906,7 @@ export function BlockEditor({
       // Reset so a new mount with different actId can load
       loadInitiatedRef.current = null;
     };
-  }, [actId, pageId, kernelRequest]);
+  }, [actId, pageId, sceneId, kernelRequest]);
 
   // Simple hash function for change detection
   const hashContent = useCallback((json: Record<string, unknown>): string => {
@@ -979,6 +981,7 @@ export function BlockEditor({
           console.log(`[BlockEditor] Saving to kb.md via preview/apply`);
           const preview = await kernelRequest('play/kb/write_preview', {
             act_id: actId,
+            scene_id: sceneId ?? null,
             path: 'kb.md',
             text: markdown,
             _debug_source: source,
@@ -988,6 +991,7 @@ export function BlockEditor({
 
           await kernelRequest('play/kb/write_apply', {
             act_id: actId,
+            scene_id: sceneId ?? null,
             path: 'kb.md',
             text: markdown,
             expected_sha256_current: preview.sha256_current,
@@ -1011,7 +1015,7 @@ export function BlockEditor({
         onSaveStatusChange?.(false);
       }
     },
-    [actId, pageId, kernelRequest, onSaveStatusChange, hashContent],
+    [actId, pageId, sceneId, kernelRequest, onSaveStatusChange, hashContent],
   );
 
   // Debounced save - flush-on-unmount disabled to prevent race conditions

@@ -337,14 +337,13 @@ select option {
 }
 
 .play-container {
-	margin: 24px;
+	margin: 0;
 	flex: 1;
 	display: flex;
 	flex-direction: column;
 	background: rgba(26, 26, 46, 0.95);
-	border-radius: 16px;
-	border: 1px solid rgba(255, 255, 255, 0.1);
-	box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+	border-radius: 0;
+	border: none;
 	overflow: hidden;
 }
 

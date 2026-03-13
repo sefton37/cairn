@@ -1,7 +1,7 @@
 """Document storage management.
 
 Handles copying files to managed storage and tracking document metadata.
-Storage location: ~/.reos-data/play/documents/{doc_id}/
+Storage location: ~/.talkingrock/play/documents/{doc_id}/
 
 All file writes are routed through CryptoStorage when available, ensuring
 documents are encrypted at rest.  Falls back to plaintext writes when
@@ -19,6 +19,8 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from cairn.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +46,7 @@ def _read_json_file(path: Path) -> dict[str, Any]:
 
 def _get_documents_base_path() -> Path:
     """Get the base path for document storage."""
-    base = Path(os.path.expanduser("~/.reos-data/play/documents"))
+    base = settings.data_dir / "play" / "documents"
     base.mkdir(parents=True, exist_ok=True)
     os.chmod(base, 0o700)
     return base
@@ -52,7 +54,7 @@ def _get_documents_base_path() -> Path:
 
 def _get_act_documents_path(act_id: str) -> Path:
     """Get the path for act-scoped document references."""
-    base = Path(os.path.expanduser(f"~/.reos-data/play/acts/{act_id}/documents"))
+    base = settings.data_dir / "play" / "acts" / act_id / "documents"
     base.mkdir(parents=True, exist_ok=True)
     os.chmod(base, 0o700)
     return base

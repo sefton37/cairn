@@ -35,7 +35,7 @@ def fresh_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Set up a fresh play database for each test."""
     data_dir = tmp_path / "reos-data"
     data_dir.mkdir()
-    monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("TALKINGROCK_DATA_DIR", str(data_dir))
 
     import cairn.play_db as play_db
 

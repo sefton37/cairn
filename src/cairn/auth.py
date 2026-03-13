@@ -1,4 +1,4 @@
-"""Authentication module for ReOS.
+"""Authentication module for Cairn.
 
 Handles:
 - Polkit authentication via native system dialog
@@ -60,7 +60,7 @@ class Session:
 
     def get_user_data_root(self) -> Path:
         """Get the user's encrypted data directory."""
-        return Path.home() / ".reos-data" / self.username
+        return Path.home() / ".talkingrock" / self.username
 
 
 class SessionStore:

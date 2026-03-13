@@ -50,7 +50,7 @@ class CryptoStorage:
     """Transparent encryption layer for user data.
 
     Encrypts all file operations with the user's session key.
-    Data is stored at ~/.reos-data/{username}/.
+    Data is stored at ~/.talkingrock/{username}/.
     """
 
     # Nonce size for AES-GCM (96 bits = 12 bytes)

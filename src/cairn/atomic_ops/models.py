@@ -192,7 +192,7 @@ class AtomicOperation:
     completed_at: datetime | None = None
 
     # Agent source
-    source_agent: str = ""  # 'cairn', 'reos', 'riva'
+    source_agent: str = ""  # Only 'cairn' used now
 
     @property
     def destination(self) -> DestinationType | None:

@@ -30,11 +30,11 @@ from cairn.services.state_briefing_service import StateBriefing, StateBriefingSe
 @pytest.fixture()
 def briefing_db(tmp_path):
     """Fresh DB for each test."""
-    os.environ["REOS_DATA_DIR"] = str(tmp_path)
+    os.environ["TALKINGROCK_DATA_DIR"] = str(tmp_path)
     init_db()
     yield tmp_path
     close_connection()
-    os.environ.pop("REOS_DATA_DIR", None)
+    os.environ.pop("TALKINGROCK_DATA_DIR", None)
 
 
 def _mock_provider(content: str = "You are working on a great project.") -> MagicMock:

@@ -322,7 +322,7 @@ CAIRN is the attention minder for The Play:
 
 ## Storage
 
-The Play is stored in SQLite (`reos.db`) with tables:
+The Play is stored in SQLite (`talkingrock.db`) with tables:
 - `acts` - Life narratives (with `root_block_id` for block-based content)
 - `pages` - Block container documents within Acts
 - `blocks` - Notion-style content blocks

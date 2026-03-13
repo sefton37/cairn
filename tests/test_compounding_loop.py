@@ -84,12 +84,12 @@ def _make_service(
 @pytest.fixture()
 def mem_db(tmp_path):
     """Fresh isolated database for each test."""
-    os.environ["REOS_DATA_DIR"] = str(tmp_path)
+    os.environ["TALKINGROCK_DATA_DIR"] = str(tmp_path)
     close_connection()  # Ensure any prior connection is dropped before reconnecting
     init_db()
     yield tmp_path
     close_connection()
-    os.environ.pop("REOS_DATA_DIR", None)
+    os.environ.pop("TALKINGROCK_DATA_DIR", None)
 
 
 @pytest.fixture()

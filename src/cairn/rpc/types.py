@@ -8,30 +8,15 @@ from __future__ import annotations
 import sys
 from typing import Any
 
+# RpcError lives in trcore so it can be used by trcore.cc_manager without
+# a reverse dependency on Cairn. Re-exported here so all Cairn code continues
+# to import from cairn.rpc.types as before.
+from trcore.errors import RpcError
+
 # Type alias for JSON-serializable dict
 JSON = dict[str, Any]
 
-
-class RpcError(Exception):
-    """JSON-RPC error with code, message, and optional data."""
-
-    def __init__(
-        self,
-        code: int,
-        message: str,
-        data: Any = None,
-    ) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.data = data
-
-    def to_dict(self) -> JSON:
-        """Convert to JSON-RPC error object."""
-        result: JSON = {"code": self.code, "message": self.message}
-        if self.data is not None:
-            result["data"] = self.data
-        return result
+__all__ = ["RpcError", "JSON", "jsonrpc_error", "jsonrpc_result", "readline", "write"]
 
 
 # Standard JSON-RPC error codes

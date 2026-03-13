@@ -1,4 +1,4 @@
-"""Main reasoning engine for ReOS.
+"""Main reasoning engine for Cairn.
 
 Integrates complexity assessment, planning, execution, and conversation
 into a unified interface for processing user requests.

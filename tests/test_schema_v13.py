@@ -26,7 +26,7 @@ from cairn.play_db import (
 @pytest.fixture(autouse=True)
 def _fresh_db(tmp_path, monkeypatch):
     """Use a fresh temporary database for each test."""
-    monkeypatch.setenv("REOS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TALKINGROCK_DATA_DIR", str(tmp_path))
     close_connection()
     init_db()
     yield
@@ -54,11 +54,11 @@ class TestSchemaV13Fresh:
     """Tests for fresh v13 schema install."""
 
     def test_schema_version_is_current(self):
-        assert SCHEMA_VERSION == 14
+        assert SCHEMA_VERSION >= 14
         conn = _get_connection()
         cursor = conn.execute("SELECT version FROM schema_version LIMIT 1")
         row = cursor.fetchone()
-        assert row[0] == 14
+        assert row[0] == SCHEMA_VERSION
 
     def test_memories_has_source_column(self):
         conn = _get_connection()

@@ -48,11 +48,11 @@ from cairn.services.memory_service import (
 @pytest.fixture()
 def mem_db(tmp_path):
     """Set up a fresh database for memory reasoning tests."""
-    os.environ["REOS_DATA_DIR"] = str(tmp_path)
+    os.environ["TALKINGROCK_DATA_DIR"] = str(tmp_path)
     init_db()
     yield tmp_path
     close_connection()
-    os.environ.pop("REOS_DATA_DIR", None)
+    os.environ.pop("TALKINGROCK_DATA_DIR", None)
 
 
 @pytest.fixture()

@@ -1,3 +1,8 @@
+// NOTE: This component is no longer mounted in the main layout (as of the
+// two-column attention panel redesign). Consciousness events are now captured
+// per-message and rendered inside the "Show details" panel. This file is
+// retained for reference and potential future use (e.g., a debug mode).
+
 /**
  * Consciousness Pane - Real-time visibility into CAIRN's thinking process.
  *

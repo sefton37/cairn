@@ -94,6 +94,22 @@ class IntentVerifier(BaseVerifier):
                 confidence=0.5,
             )
 
+        # Fast pre-check: is the intent clear enough to proceed?
+        try:
+            from trcore.providers.quick_judge import INTENT_JUDGE_SYSTEM, quick_judge
+
+            from cairn.providers.factory import create_provider
+
+            provider = create_provider()
+            is_clear = quick_judge(provider, INTENT_JUDGE_SYSTEM, operation.user_request)
+            if not is_clear:
+                return self._fail(
+                    ["Intent is unclear — ask a clarifying question before proceeding"],
+                    confidence=0.7,
+                )
+        except Exception:
+            pass  # Fail-open: continue to full verify_intent
+
         # Build context string from recent operations
         context_str = None
         if context.recent_operations:
@@ -124,7 +140,7 @@ class IntentVerifier(BaseVerifier):
                     confidence=confidence,
                 )
 
-        except Exception as e:
+        except Exception:
             # LLM call failed - fall back to heuristic
             return self._verify_heuristic(operation, context)
 

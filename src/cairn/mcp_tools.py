@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from .db import Database
@@ -359,7 +358,7 @@ def call_tool(db: Database, *, name: str, arguments: dict[str, Any] | None) -> A
         import logging
 
         from .cairn.mcp_tools import CairnToolError, CairnToolHandler
-        from .cairn.store import CairnStore
+        from .cairn.store import get_cairn_store
         from .play_fs import play_root
 
         def get_current_play_path(db):
@@ -383,8 +382,7 @@ def call_tool(db: Database, *, name: str, arguments: dict[str, Any] | None) -> A
                     "tool": name,
                 }
 
-            store_path = Path(play_path) / ".cairn" / "cairn.db"
-            store = CairnStore(store_path)
+            store = get_cairn_store()
 
             # Get LLM for entity resolution (cheap local inference)
             from cairn.providers import get_provider

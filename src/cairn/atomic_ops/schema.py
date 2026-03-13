@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS atomic_operations (
     status TEXT NOT NULL DEFAULT 'classifying',
 
     -- Agent source
-    source_agent TEXT,  -- 'cairn', 'reos', 'riva'
+    source_agent TEXT,  -- Only 'cairn' used now
 
     -- Timestamps
     created_at TEXT NOT NULL,

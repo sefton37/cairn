@@ -54,10 +54,20 @@ class SecurityLimits:
     MAX_SERVICE_NAME_LEN: int = 256
     MAX_CONTAINER_ID_LEN: int = 256
     MAX_PACKAGE_NAME_LEN: int = 256
-    MAX_COMMAND_LEN: int = _env_int("REOS_MAX_COMMAND_LEN", 4096, min_val=1024, max_val=65536)
+    MAX_COMMAND_LEN: int = _env_int(
+        "TALKINGROCK_MAX_COMMAND_LEN",
+        _env_int("REOS_MAX_COMMAND_LEN", 4096, min_val=1024, max_val=65536),
+        min_val=1024,
+        max_val=65536,
+    )
 
     # Sudo escalation limit (per session)
-    MAX_SUDO_ESCALATIONS: int = _env_int("REOS_MAX_SUDO_ESCALATIONS", 3, min_val=1, max_val=20)
+    MAX_SUDO_ESCALATIONS: int = _env_int(
+        "TALKINGROCK_MAX_SUDO_ESCALATIONS",
+        _env_int("REOS_MAX_SUDO_ESCALATIONS", 3, min_val=1, max_val=20),
+        min_val=1,
+        max_val=20,
+    )
 
     # Output truncation (prevent memory exhaustion)
     MAX_COMMAND_OUTPUT: int = 10000
@@ -125,7 +135,11 @@ class Timeouts:
     PACKAGE_INSTALL: int = 300  # 5 minutes
 
     # Code execution wall-clock limit
-    CODE_EXECUTION: int = _env_int("REOS_CODE_EXECUTION_TIMEOUT", 300, min_val=60)
+    CODE_EXECUTION: int = _env_int(
+        "TALKINGROCK_CODE_EXECUTION_TIMEOUT",
+        _env_int("REOS_CODE_EXECUTION_TIMEOUT", 300, min_val=60),
+        min_val=60,
+    )
 
     # Session idle timeout
     SESSION_IDLE: int = 900  # 15 minutes
@@ -153,7 +167,11 @@ class ExecutionBudgets:
     """
 
     # Code mode iteration limits
-    MAX_ITERATIONS: int = _env_int("REOS_MAX_ITERATIONS", 10, min_val=3)
+    MAX_ITERATIONS: int = _env_int(
+        "TALKINGROCK_MAX_ITERATIONS",
+        _env_int("REOS_MAX_ITERATIONS", 10, min_val=3),
+        min_val=3,
+    )
 
     # Total operations per execution
     MAX_TOTAL_OPERATIONS: int = 25
@@ -275,14 +293,7 @@ WEB_TOOLS = WebToolsConfig()
 class ModelDefaults:
     """Default model configurations."""
 
-    # Default temperature for code operations
-    CODE_TEMPERATURE: float = 0.3
-
-    # Default temperature for chat
-    CHAT_TEMPERATURE: float = 0.7
-
-    # Tool call limits per agent type
-    TOOL_CALLS_RIVA: int = 8
+    # Tool call limits per operation type
     TOOL_CALLS_DEFAULT: int = 5
 
 

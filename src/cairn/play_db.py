@@ -52,13 +52,19 @@ _local = threading.local()
 # v13: Add source column on memories, FTS5 tables, conversation_summaries,
 #      state_briefings, turn_assessments
 # v14: Add attention_priorities table, system-signals conversation
-SCHEMA_VERSION = 14
+# v15: Email intelligence tables (in cairn.db, not play.db — no-op migration here)
+# v16: Phase 4 — cc_agent_id and 'claudecode' source on memories, cc_insights table,
+#      linked_scene_id on cc_agents
+# v17: Priority learning — reorder_history, priority_boost_rules tables
+SCHEMA_VERSION = 17
 
 
 def _play_db_path() -> Path:
     """Get the path to the play database."""
-    base = Path(os.environ.get("REOS_DATA_DIR", settings.data_dir))
-    return base / "play" / "play.db"
+    # Check env vars at call time to support test overrides; settings.data_dir is fallback
+    _env = os.environ.get("TALKINGROCK_DATA_DIR") or os.environ.get("REOS_DATA_DIR")
+    base = Path(_env) if _env else settings.data_dir
+    return base / "talkingrock.db"
 
 
 def _get_connection() -> sqlite3.Connection:
@@ -340,7 +346,8 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             signal_count INTEGER NOT NULL DEFAULT 1,
             last_reinforced_at TEXT,
             source TEXT NOT NULL DEFAULT 'compression'
-                CHECK (source IN ('compression', 'turn_assessment', 'priority_signal')),
+                CHECK (source IN ('compression', 'turn_assessment', 'priority_signal', 'claudecode')),
+            cc_agent_id TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (destination_act_id) REFERENCES acts(act_id) ON DELETE SET NULL,
             CHECK (status IN ('pending_review', 'approved', 'rejected', 'superseded'))
@@ -458,6 +465,95 @@ def _init_schema(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_attention_priorities_rank
             ON attention_priorities(user_priority);
+
+        -- Reorder history (v17: training data for priority learning)
+        CREATE TABLE IF NOT EXISTS reorder_history (
+            id TEXT PRIMARY KEY,
+            reorder_timestamp TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id TEXT NOT NULL,
+            old_position INTEGER,
+            new_position INTEGER NOT NULL,
+            total_items INTEGER NOT NULL,
+            act_id TEXT,
+            act_title TEXT,
+            scene_stage TEXT,
+            urgency_at_reorder TEXT,
+            has_calendar_event INTEGER DEFAULT 0,
+            is_email INTEGER DEFAULT 0,
+            hour_of_day INTEGER,
+            day_of_week INTEGER,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_reorder_history_timestamp
+            ON reorder_history(reorder_timestamp);
+        CREATE INDEX IF NOT EXISTS idx_reorder_history_entity
+            ON reorder_history(entity_type, entity_id);
+
+        -- Learned boost rules (v17: extracted from reorder_history)
+        CREATE TABLE IF NOT EXISTS priority_boost_rules (
+            id TEXT PRIMARY KEY,
+            feature_type TEXT NOT NULL,
+            feature_value TEXT NOT NULL,
+            boost_score REAL NOT NULL,
+            confidence REAL NOT NULL,
+            sample_count INTEGER NOT NULL,
+            description TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(feature_type, feature_value)
+        );
+
+        -- Claude Code agents (v15: Helm Phase 2)
+        CREATE TABLE IF NOT EXISTS cc_agents (
+            id TEXT PRIMARY KEY,
+            username TEXT NOT NULL,
+            name TEXT NOT NULL,
+            slug TEXT NOT NULL UNIQUE,
+            purpose TEXT DEFAULT '',
+            cwd TEXT NOT NULL,
+            session_id TEXT,
+            linked_scene_id TEXT REFERENCES scenes(scene_id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cc_agents_username ON cc_agents(username);
+        CREATE INDEX IF NOT EXISTS idx_cc_agents_slug ON cc_agents(slug);
+
+        -- Claude Code conversation history (v15: Helm Phase 2)
+        CREATE TABLE IF NOT EXISTS cc_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_id TEXT NOT NULL REFERENCES cc_agents(id) ON DELETE CASCADE,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cc_history_agent ON cc_history(agent_id);
+        CREATE INDEX IF NOT EXISTS idx_cc_history_created ON cc_history(created_at);
+
+        -- Claude Code insights (v16: Phase 4 PM observations)
+        CREATE TABLE IF NOT EXISTS cc_insights (
+            id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL REFERENCES cc_agents(id) ON DELETE CASCADE,
+            session_completed_at TEXT NOT NULL,
+            session_duration_s INTEGER,
+            user_messages INTEGER NOT NULL DEFAULT 0,
+            files_touched TEXT,
+            insight_type TEXT NOT NULL,
+            insight_text TEXT NOT NULL,
+            memory_id TEXT REFERENCES memories(id) ON DELETE SET NULL,
+            status TEXT NOT NULL DEFAULT 'pending_review',
+            created_at TEXT NOT NULL,
+            CHECK (insight_type IN ('tracking', 'lesson', 'pattern', 'decision')),
+            CHECK (status IN ('pending_review', 'accepted', 'dismissed'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cc_insights_agent ON cc_insights(agent_id);
+        CREATE INDEX IF NOT EXISTS idx_cc_insights_status ON cc_insights(status);
     """)
 
     conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
@@ -549,6 +645,21 @@ def _run_schema_migrations(conn: sqlite3.Connection, current_version: int) -> No
     if current_version < 14:
         logger.info("Running v14 migration: Add attention priorities, system signals")
         _migrate_v13_to_v14(conn)
+
+    # Migration v14 -> v15: Add cc_agents, cc_history tables (Helm Phase 2)
+    if current_version < 15:
+        logger.info("Running v15 migration: Add Claude Code agent tables")
+        _migrate_v14_to_v15(conn)
+
+    # Migration v15 -> v16: Phase 4 — memories source + cc_agent_id, cc_insights, linked_scene_id
+    if current_version < 16:
+        logger.info("Running v16 migration: Phase 4 memory integration")
+        _migrate_v15_to_v16(conn)
+
+    # Migration v16 -> v17: Priority learning — reorder_history, priority_boost_rules
+    if current_version < 17:
+        logger.info("Running v17 migration: Priority learning tables")
+        _migrate_v16_to_v17(conn)
 
     # Update schema version
     conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
@@ -1382,6 +1493,241 @@ def _migrate_v13_to_v14(conn: sqlite3.Connection) -> None:
     logger.info("v14 migration complete")
 
 
+def _migrate_v14_to_v15(conn: sqlite3.Connection) -> None:
+    """Migrate from v14 to v15 schema.
+
+    Adds cc_agents and cc_history tables for Claude Code agent management
+    (Helm Phase 2: Cairn as service for Claude Code sessions).
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cc_agents (
+            id TEXT PRIMARY KEY,
+            username TEXT NOT NULL,
+            name TEXT NOT NULL,
+            slug TEXT NOT NULL UNIQUE,
+            purpose TEXT DEFAULT '',
+            cwd TEXT NOT NULL,
+            session_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_agents_username ON cc_agents(username)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_agents_slug ON cc_agents(slug)")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cc_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_id TEXT NOT NULL REFERENCES cc_agents(id) ON DELETE CASCADE,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_history_agent ON cc_history(agent_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cc_history_created ON cc_history(created_at)")
+
+    logger.info("v15 migration complete")
+
+
+def _migrate_v15_to_v16(conn: sqlite3.Connection) -> None:
+    """Migrate from v15 to v16 schema.
+
+    Adds:
+    - cc_agent_id column (nullable, no FK) to memories table
+    - Expand source CHECK constraint on memories to include 'claudecode'
+    - linked_scene_id column to cc_agents table
+    - cc_insights table for Phase 4 PM observations
+    """
+    # 4a. Shadow-copy the memories table to add cc_agent_id and expand source CHECK.
+    # Follow the same pattern as _migrate_v13_to_v14 exactly.
+    cursor = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='memories'"
+    )
+    row = cursor.fetchone()
+    if row and "claudecode" not in (row[0] or ""):
+        logger.info("Rebuilding memories table to add cc_agent_id and expand source CHECK")
+        conn.execute("PRAGMA foreign_keys = OFF")
+        try:
+            conn.execute("""
+                CREATE TABLE memories_new (
+                    id TEXT PRIMARY KEY,
+                    block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+                    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+                    narrative TEXT NOT NULL,
+                    narrative_embedding BLOB,
+                    destination_act_id TEXT,
+                    destination_page_id TEXT,
+                    is_your_story BOOLEAN DEFAULT 1,
+                    status TEXT NOT NULL DEFAULT 'pending_review',
+                    user_reviewed BOOLEAN DEFAULT 0,
+                    user_edited BOOLEAN DEFAULT 0,
+                    original_narrative TEXT,
+                    extraction_model TEXT,
+                    extraction_confidence REAL,
+                    signal_count INTEGER NOT NULL DEFAULT 1,
+                    last_reinforced_at TEXT,
+                    source TEXT NOT NULL DEFAULT 'compression'
+                        CHECK (source IN ('compression', 'turn_assessment', 'priority_signal', 'claudecode')),
+                    cc_agent_id TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (destination_act_id) REFERENCES acts(act_id) ON DELETE SET NULL,
+                    CHECK (status IN ('pending_review', 'approved', 'rejected', 'superseded'))
+                )
+            """)
+            conn.execute("""INSERT INTO memories_new
+                (id, block_id, conversation_id, narrative, narrative_embedding,
+                 destination_act_id, destination_page_id, is_your_story, status,
+                 user_reviewed, user_edited, original_narrative, extraction_model,
+                 extraction_confidence, signal_count, last_reinforced_at, source,
+                 cc_agent_id, created_at)
+                SELECT id, block_id, conversation_id, narrative, narrative_embedding,
+                 destination_act_id, destination_page_id, is_your_story, status,
+                 user_reviewed, user_edited, original_narrative, extraction_model,
+                 extraction_confidence, signal_count, last_reinforced_at, source,
+                 NULL, created_at
+                FROM memories
+            """)
+            conn.execute("DROP TABLE memories")
+            conn.execute("ALTER TABLE memories_new RENAME TO memories")
+
+            # Recreate indexes
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memories_conversation "
+                "ON memories(conversation_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memories_destination "
+                "ON memories(destination_act_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memories_your_story "
+                "ON memories(is_your_story)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memories_created "
+                "ON memories(created_at)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memories_status "
+                "ON memories(status)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memories_signal "
+                "ON memories(signal_count)"
+            )
+
+            # Recreate FTS5 virtual table and triggers
+            conn.execute("DROP TABLE IF EXISTS memories_fts")
+            conn.execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+                    narrative, content='memories', content_rowid='rowid'
+                )
+            """)
+            conn.execute(
+                "INSERT INTO memories_fts(rowid, narrative) "
+                "SELECT rowid, narrative FROM memories"
+            )
+            conn.execute("DROP TRIGGER IF EXISTS memories_fts_insert")
+            conn.execute("DROP TRIGGER IF EXISTS memories_fts_delete")
+            conn.execute("DROP TRIGGER IF EXISTS memories_fts_update")
+            _create_fts_triggers(conn)
+        finally:
+            conn.execute("PRAGMA foreign_keys = ON")
+        logger.info("Rebuilt memories table with cc_agent_id and expanded source CHECK")
+
+    # 4b. Add linked_scene_id column to cc_agents
+    cursor = conn.execute("PRAGMA table_info(cc_agents)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if "linked_scene_id" not in columns:
+        conn.execute(
+            "ALTER TABLE cc_agents ADD COLUMN linked_scene_id TEXT "
+            "REFERENCES scenes(scene_id) ON DELETE SET NULL"
+        )
+
+    # 4c. Create cc_insights table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cc_insights (
+            id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL REFERENCES cc_agents(id) ON DELETE CASCADE,
+            session_completed_at TEXT NOT NULL,
+            session_duration_s INTEGER,
+            user_messages INTEGER NOT NULL DEFAULT 0,
+            files_touched TEXT,
+            insight_type TEXT NOT NULL,
+            insight_text TEXT NOT NULL,
+            memory_id TEXT REFERENCES memories(id) ON DELETE SET NULL,
+            status TEXT NOT NULL DEFAULT 'pending_review',
+            created_at TEXT NOT NULL,
+            CHECK (insight_type IN ('tracking', 'lesson', 'pattern', 'decision')),
+            CHECK (status IN ('pending_review', 'accepted', 'dismissed'))
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cc_insights_agent ON cc_insights(agent_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cc_insights_status ON cc_insights(status)"
+    )
+
+    logger.info("v16 migration complete")
+
+
+def _migrate_v16_to_v17(conn: sqlite3.Connection) -> None:
+    """Migrate from v16 to v17 schema.
+
+    Adds:
+    - reorder_history table (training data for priority learning)
+    - priority_boost_rules table (learned boost rules)
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS reorder_history (
+            id TEXT PRIMARY KEY,
+            reorder_timestamp TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id TEXT NOT NULL,
+            old_position INTEGER,
+            new_position INTEGER NOT NULL,
+            total_items INTEGER NOT NULL,
+            act_id TEXT,
+            act_title TEXT,
+            scene_stage TEXT,
+            urgency_at_reorder TEXT,
+            has_calendar_event INTEGER DEFAULT 0,
+            is_email INTEGER DEFAULT 0,
+            hour_of_day INTEGER,
+            day_of_week INTEGER,
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reorder_history_timestamp "
+        "ON reorder_history(reorder_timestamp)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reorder_history_entity "
+        "ON reorder_history(entity_type, entity_id)"
+    )
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS priority_boost_rules (
+            id TEXT PRIMARY KEY,
+            feature_type TEXT NOT NULL,
+            feature_value TEXT NOT NULL,
+            boost_score REAL NOT NULL,
+            confidence REAL NOT NULL,
+            sample_count INTEGER NOT NULL,
+            description TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(feature_type, feature_value)
+        )
+    """)
+
+    logger.info("v17 migration complete")
+
+
 def _create_system_signals_conversation(conn: sqlite3.Connection) -> None:
     """Create the system-signals synthetic conversation as FK target for priority memories.
 
@@ -1496,13 +1842,9 @@ def _migrate_calendar_data_from_cairn(conn: sqlite3.Connection) -> None:
     This is a one-time migration that copies existing calendar metadata from the
     CAIRN store into play.db for consolidation.
     """
-    import os
-    from pathlib import Path
-
-    from .settings import settings
-
-    # Find cairn.db path
-    base = Path(os.environ.get("REOS_DATA_DIR", settings.data_dir))
+    # Check env vars at call time to support test overrides; settings.data_dir is fallback
+    _env = os.environ.get("TALKINGROCK_DATA_DIR") or os.environ.get("REOS_DATA_DIR")
+    base = Path(_env) if _env else settings.data_dir
     cairn_db_path = base / "play" / ".cairn" / "cairn.db"
 
     if not cairn_db_path.exists():
@@ -1590,7 +1932,9 @@ def _migrate_from_json(conn: sqlite3.Connection) -> None:
 
     This handles fresh JSON imports into the v4 schema.
     """
-    base = Path(os.environ.get("REOS_DATA_DIR", settings.data_dir))
+    # Check env vars at call time to support test overrides; settings.data_dir is fallback
+    _env = os.environ.get("TALKINGROCK_DATA_DIR") or os.environ.get("REOS_DATA_DIR")
+    base = Path(_env) if _env else settings.data_dir
     play_root = base / "play"
     acts_json = play_root / "acts.json"
 
@@ -3214,3 +3558,182 @@ def set_attention_priorities(ordered_scene_ids: list[str]) -> None:
                    VALUES (?, ?, ?)""",
                 (scene_id, position, now),
             )
+
+
+# =============================================================================
+# Reorder History & Priority Learning
+# =============================================================================
+
+
+def record_reorder_history(entries: list[dict]) -> None:
+    """Record reorder history entries for priority learning.
+
+    Args:
+        entries: List of dicts with keys matching reorder_history columns.
+    """
+    if not entries:
+        return
+    with _transaction() as conn:
+        for entry in entries:
+            conn.execute(
+                """INSERT INTO reorder_history
+                   (id, reorder_timestamp, entity_type, entity_id,
+                    old_position, new_position, total_items,
+                    act_id, act_title, scene_stage, urgency_at_reorder,
+                    has_calendar_event, is_email, hour_of_day, day_of_week,
+                    created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    entry["id"],
+                    entry["reorder_timestamp"],
+                    entry["entity_type"],
+                    entry["entity_id"],
+                    entry.get("old_position"),
+                    entry["new_position"],
+                    entry["total_items"],
+                    entry.get("act_id"),
+                    entry.get("act_title"),
+                    entry.get("scene_stage"),
+                    entry.get("urgency_at_reorder"),
+                    entry.get("has_calendar_event", 0),
+                    entry.get("is_email", 0),
+                    entry.get("hour_of_day"),
+                    entry.get("day_of_week"),
+                    entry["created_at"],
+                ),
+            )
+
+
+def get_reorder_history_stats() -> list[dict]:
+    """Get aggregated reorder statistics grouped by feature dimensions.
+
+    Returns list of dicts with feature_type, feature_value,
+    avg_position_improvement, and sample_count.
+    """
+    conn = _get_connection()
+    results = []
+
+    # Act-based stats: how much items in each act are moved up on average
+    cursor = conn.execute("""
+        SELECT act_id, act_title,
+               AVG(CAST(old_position AS REAL) - new_position) / AVG(total_items) AS avg_improvement,
+               COUNT(*) AS sample_count
+        FROM reorder_history
+        WHERE act_id IS NOT NULL AND old_position IS NOT NULL
+        GROUP BY act_id
+        HAVING COUNT(*) >= 3
+    """)
+    for row in cursor.fetchall():
+        results.append({
+            "feature_type": "act",
+            "feature_value": row["act_id"],
+            "description_value": row["act_title"] or row["act_id"],
+            "avg_improvement": row["avg_improvement"],
+            "sample_count": row["sample_count"],
+        })
+
+    # Entity type stats
+    cursor = conn.execute("""
+        SELECT entity_type,
+               AVG(CAST(old_position AS REAL) - new_position) / AVG(total_items) AS avg_improvement,
+               COUNT(*) AS sample_count
+        FROM reorder_history
+        WHERE old_position IS NOT NULL
+        GROUP BY entity_type
+        HAVING COUNT(*) >= 3
+    """)
+    for row in cursor.fetchall():
+        results.append({
+            "feature_type": "entity_type",
+            "feature_value": row["entity_type"],
+            "description_value": row["entity_type"],
+            "avg_improvement": row["avg_improvement"],
+            "sample_count": row["sample_count"],
+        })
+
+    # Scene stage stats
+    cursor = conn.execute("""
+        SELECT scene_stage,
+               AVG(CAST(old_position AS REAL) - new_position) / AVG(total_items) AS avg_improvement,
+               COUNT(*) AS sample_count
+        FROM reorder_history
+        WHERE scene_stage IS NOT NULL AND old_position IS NOT NULL
+        GROUP BY scene_stage
+        HAVING COUNT(*) >= 3
+    """)
+    for row in cursor.fetchall():
+        results.append({
+            "feature_type": "stage",
+            "feature_value": row["scene_stage"],
+            "description_value": row["scene_stage"],
+            "avg_improvement": row["avg_improvement"],
+            "sample_count": row["sample_count"],
+        })
+
+    # Time of day stats (morning=5-11, afternoon=12-17, evening=18-23, night=0-4)
+    cursor = conn.execute("""
+        SELECT CASE
+                 WHEN hour_of_day BETWEEN 5 AND 11 THEN 'morning'
+                 WHEN hour_of_day BETWEEN 12 AND 17 THEN 'afternoon'
+                 WHEN hour_of_day BETWEEN 18 AND 23 THEN 'evening'
+                 ELSE 'night'
+               END AS time_bucket,
+               AVG(CAST(old_position AS REAL) - new_position) / AVG(total_items) AS avg_improvement,
+               COUNT(*) AS sample_count
+        FROM reorder_history
+        WHERE hour_of_day IS NOT NULL AND old_position IS NOT NULL
+        GROUP BY time_bucket
+        HAVING COUNT(*) >= 3
+    """)
+    for row in cursor.fetchall():
+        results.append({
+            "feature_type": "time_of_day",
+            "feature_value": row["time_bucket"],
+            "description_value": row["time_bucket"],
+            "avg_improvement": row["avg_improvement"],
+            "sample_count": row["sample_count"],
+        })
+
+    return results
+
+
+def upsert_boost_rule(rule: dict) -> None:
+    """Insert or update a priority boost rule."""
+    conn = _get_connection()
+    conn.execute(
+        """INSERT INTO priority_boost_rules
+           (id, feature_type, feature_value, boost_score, confidence,
+            sample_count, description, active, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(feature_type, feature_value) DO UPDATE SET
+               boost_score = excluded.boost_score,
+               confidence = excluded.confidence,
+               sample_count = excluded.sample_count,
+               description = excluded.description,
+               updated_at = excluded.updated_at""",
+        (
+            rule["id"],
+            rule["feature_type"],
+            rule["feature_value"],
+            rule["boost_score"],
+            rule["confidence"],
+            rule["sample_count"],
+            rule.get("description"),
+            rule.get("active", 1),
+            rule["created_at"],
+            rule["updated_at"],
+        ),
+    )
+    conn.commit()
+
+
+def get_active_boost_rules() -> list[dict]:
+    """Return all active priority boost rules."""
+    conn = _get_connection()
+    cursor = conn.execute(
+        """SELECT id, feature_type, feature_value, boost_score, confidence,
+                  sample_count, description, active, created_at, updated_at
+           FROM priority_boost_rules
+           WHERE active = 1"""
+    )
+    return [dict(row) for row in cursor.fetchall()]

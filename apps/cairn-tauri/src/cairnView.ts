@@ -11,11 +11,72 @@
 import { el, escapeHtml } from './dom';
 import type { ChatRespondResult, ExtendedThinkingTrace, ThinkingNode, FacetCheck, Tension, ConsciousnessEvent } from './types';
 import { highlight, injectSyntaxHighlightStyles } from './syntaxHighlight';
-import { createConsciousnessPane } from './consciousnessPane';
+
+// Event type to CSS class mapping — mirrors consciousnessPane.ts for per-message rendering
+const EVENT_TYPE_CLASSES: Record<string, string> = {
+  PHASE_START: 'event-phase',
+  PHASE_COMPLETE: 'event-phase',
+  INTENT_EXTRACTED: 'event-result',
+  INTENT_VERIFIED: 'event-result',
+  PATTERN_MATCHED: 'event-result',
+  COMPREHENSION_START: 'event-phase',
+  COMPREHENSION_RESULT: 'event-result',
+  DECOMPOSITION_START: 'event-phase',
+  DECOMPOSITION_RESULT: 'event-result',
+  REASONING_START: 'event-phase',
+  REASONING_ITERATION: 'event-reasoning',
+  REASONING_RESULT: 'event-result',
+  COHERENCE_START: 'event-phase',
+  COHERENCE_RESULT: 'event-result',
+  DECISION_START: 'event-phase',
+  DECISION_RESULT: 'event-result',
+  EXPLORE_PASS: 'event-reasoning',
+  IDEATE_PASS: 'event-reasoning',
+  SYNTHESIZE_PASS: 'event-reasoning',
+  LLM_CALL_START: 'event-llm',
+  LLM_CALL_COMPLETE: 'event-llm',
+  TOOL_CALL_START: 'event-llm',
+  TOOL_CALL_COMPLETE: 'event-llm',
+  MEMORY_ASSESSING: 'event-memory',
+  MEMORY_CREATED: 'event-memory',
+  MEMORY_NO_CHANGE: 'event-memory',
+  RESPONSE_READY: 'event-result',
+};
+
+// Compact icons for consciousness event types — mirrors consciousnessPane.ts
+const EVENT_TYPE_ICONS: Record<string, string> = {
+  PHASE_START: '\u25B6',
+  PHASE_COMPLETE: '\u2713',
+  INTENT_EXTRACTED: '\u25C9',
+  INTENT_VERIFIED: '\u2713',
+  COMPREHENSION_START: '\u25B6',
+  COMPREHENSION_RESULT: '\u2713',
+  DECOMPOSITION_START: '\u25B6',
+  DECOMPOSITION_RESULT: '\u2713',
+  REASONING_START: '\u25B6',
+  REASONING_ITERATION: '\u21BB',
+  REASONING_RESULT: '\u2713',
+  COHERENCE_START: '\u25B6',
+  COHERENCE_RESULT: '\u2713',
+  DECISION_START: '\u25B6',
+  DECISION_RESULT: '\u2713',
+  EXPLORE_PASS: '\u25B6',
+  IDEATE_PASS: '\u25B6',
+  SYNTHESIZE_PASS: '\u25B6',
+  TOOL_CALL_START: '\u2699',
+  TOOL_CALL_COMPLETE: '\u2713',
+  LLM_CALL_START: '\u25CF',
+  LLM_CALL_COMPLETE: '\u2713',
+  MEMORY_ASSESSING: '\u25CB',
+  MEMORY_CREATED: '\u2726',
+  MEMORY_NO_CHANGE: '\u2013',
+  RESPONSE_READY: '\u2714',
+};
 
 interface CairnViewCallbacks {
   onSendMessage: (message: string) => Promise<void>;
   kernelRequest: (method: string, params: unknown) => Promise<unknown>;
+  onDismissCard?: (item: { entity_type: string; entity_id: string; title: string; sender_name?: string | null; sender_email?: string | null }) => void;
 }
 
 /** Full message data including LLM context for expandable details */
@@ -36,6 +97,8 @@ interface MessageData {
   messageType?: string;
   // Extended thinking trace for CAIRN deep reasoning
   extendedThinkingTrace?: ExtendedThinkingTrace | null;
+  // Snapshot of consciousness events captured when this message was received
+  consciousnessEvents?: ConsciousnessEvent[];
 }
 
 interface CairnViewState {
@@ -50,6 +113,7 @@ export function createCairnView(
   callbacks: CairnViewCallbacks
 ): {
   container: HTMLElement;
+  chatHeader: HTMLElement;
   addChatMessage: (role: 'user' | 'assistant', content: string) => void;
   addAssistantMessage: (result: ChatRespondResult) => void;
   showThinking: () => void;
@@ -91,7 +155,7 @@ export function createCairnView(
   const surfacedPanel = el('div');
   surfacedPanel.className = 'surfaced-panel';
   surfacedPanel.style.cssText = `
-    width: 320px;
+    width: 800px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -124,22 +188,97 @@ export function createCairnView(
     color: rgba(255,255,255,0.5);
     margin-top: 4px;
   `;
-  surfacedSubtitle.textContent = 'Surfaced by priority and time';
+  surfacedSubtitle.textContent = 'Drag to reorder, right-click to dismiss \u2014 Cairn learns your preferences';
 
   surfacedHeader.appendChild(surfacedTitle);
   surfacedHeader.appendChild(surfacedSubtitle);
 
-  // Surfaced items list
-  const surfacedList = el('div');
-  surfacedList.className = 'surfaced-list';
-  surfacedList.style.cssText = `
+  // Two-column container for calendar/tasks and email
+  const surfacedColumns = el('div');
+  surfacedColumns.className = 'surfaced-columns';
+  surfacedColumns.style.cssText = `
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+  `;
+
+  // Left column: Calendar & Tasks
+  const calendarColumn = el('div');
+  calendarColumn.className = 'surfaced-column';
+  calendarColumn.style.cssText = `
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-right: 1px solid rgba(255,255,255,0.1);
+  `;
+
+  const calendarColumnHeader = el('div');
+  calendarColumnHeader.className = 'surfaced-column-header';
+  calendarColumnHeader.style.cssText = `
+    padding: 10px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.6);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    background: rgba(0,0,0,0.1);
+  `;
+  calendarColumnHeader.textContent = 'Calendar & Tasks';
+
+  const calendarList = el('div');
+  calendarList.className = 'surfaced-list';
+  calendarList.style.cssText = `
     flex: 1;
     overflow-y: auto;
     padding: 12px;
   `;
 
+  calendarColumn.appendChild(calendarColumnHeader);
+  calendarColumn.appendChild(calendarList);
+
+  // Right column: Email
+  const emailColumn = el('div');
+  emailColumn.className = 'surfaced-column';
+  emailColumn.style.cssText = `
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  `;
+
+  const emailColumnHeader = el('div');
+  emailColumnHeader.className = 'surfaced-column-header';
+  emailColumnHeader.style.cssText = `
+    padding: 10px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.6);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    background: rgba(0,0,0,0.1);
+  `;
+  emailColumnHeader.textContent = 'Email';
+
+  const emailList = el('div');
+  emailList.className = 'surfaced-list';
+  emailList.style.cssText = `
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+  `;
+
+  emailColumn.appendChild(emailColumnHeader);
+  emailColumn.appendChild(emailList);
+
+  surfacedColumns.appendChild(calendarColumn);
+  surfacedColumns.appendChild(emailColumn);
+
   surfacedPanel.appendChild(surfacedHeader);
-  surfacedPanel.appendChild(surfacedList);
+  surfacedPanel.appendChild(surfacedColumns);
 
   // ============ RIGHT: Chat Panel ============
   const chatPanel = el('div');
@@ -207,10 +346,9 @@ export function createCairnView(
     color: rgba(255,255,255,0.9);
   `;
   welcomeMsg.innerHTML = `
-    <div style="font-weight: 600; margin-bottom: 8px;">Welcome to CAIRN</div>
+    <div style="font-weight: 600; margin-bottom: 8px;">CAIRN</div>
     <div style="font-size: 13px; line-height: 1.5; color: rgba(255,255,255,0.7);">
-      I help you stay on top of what matters. Ask me about your priorities,
-      what needs attention, or what you should focus on next.
+      Your attention minder. Ask me anything, or type <kbd style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; font-size: 12px;">/</kbd> to see what I can do.
     </div>
   `;
   chatMessages.appendChild(welcomeMsg);
@@ -409,9 +547,94 @@ export function createCairnView(
     gap: 8px;
   `;
 
+  // Command palette — surfaces Cairn capabilities when user types "/"
+  const COMMANDS = [
+    { cmd: 'What needs my attention right now?', label: 'attention', desc: 'What needs attention', icon: '\u{1F50E}' },
+    { cmd: 'Show my calendar for today', label: 'calendar', desc: 'Today\'s calendar', icon: '\u{1F4C5}' },
+    { cmd: 'What\'s coming up in the next few hours?', label: 'upcoming', desc: 'Upcoming events', icon: '\u23F0' },
+    { cmd: 'Show my todos', label: 'todos', desc: 'Task list', icon: '\u2705' },
+    { cmd: 'What should I focus on next?', label: 'focus', desc: 'Next priority', icon: '\u{1F3AF}' },
+    { cmd: 'Show my Acts', label: 'acts', desc: 'Life areas (The Play)', icon: '\u{1F3AD}' },
+    { cmd: 'How are you doing?', label: 'health', desc: 'System health check', icon: '\u{1F4CA}' },
+    { cmd: 'Search my contacts for ', label: 'contacts', desc: 'Search contacts', icon: '\u{1F464}' },
+    { cmd: 'Search my knowledge base for ', label: 'search', desc: 'Search knowledge', icon: '\u{1F4D6}' },
+  ];
+
+  const cmdPalette = el('div');
+  cmdPalette.style.cssText = `
+    display: none;
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    margin-bottom: 4px;
+    background: #1e1e2e;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 100;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.4);
+  `;
+
+  let cmdSelectedIdx = 0;
+  let cmdFiltered: typeof COMMANDS = [];
+
+  function renderCmdPalette(filter: string) {
+    const q = filter.toLowerCase();
+    cmdFiltered = q
+      ? COMMANDS.filter(c => c.label.includes(q) || c.desc.toLowerCase().includes(q))
+      : [...COMMANDS];
+    if (cmdFiltered.length === 0) {
+      cmdPalette.style.display = 'none';
+      return;
+    }
+    cmdSelectedIdx = Math.min(cmdSelectedIdx, cmdFiltered.length - 1);
+    cmdPalette.innerHTML = cmdFiltered.map((c, i) => `
+      <div class="cmd-item${i === cmdSelectedIdx ? ' cmd-selected' : ''}" data-idx="${i}" style="
+        padding: 8px 12px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: rgba(255,255,255,0.85);
+        background: ${i === cmdSelectedIdx ? 'rgba(59,130,246,0.2)' : 'transparent'};
+      ">
+        <span style="font-size: 16px; width: 24px; text-align: center;">${c.icon}</span>
+        <span style="flex:1">${escapeHtml(c.desc)}</span>
+        <span style="color: rgba(255,255,255,0.35); font-size: 11px;">/${escapeHtml(c.label)}</span>
+      </div>
+    `).join('');
+    cmdPalette.style.display = 'block';
+
+    cmdPalette.querySelectorAll('.cmd-item').forEach((item) => {
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const idx = parseInt((item as HTMLElement).dataset.idx || '0');
+        selectCommand(idx);
+      });
+    });
+  }
+
+  function selectCommand(idx: number) {
+    const c = cmdFiltered[idx];
+    if (!c) return;
+    closeCmdPalette();
+    chatInput.value = c.cmd;
+    chatInput.focus();
+    // Place cursor at end (useful for commands that expect a query suffix)
+    chatInput.setSelectionRange(c.cmd.length, c.cmd.length);
+  }
+
+  function closeCmdPalette() {
+    cmdPalette.style.display = 'none';
+    cmdSelectedIdx = 0;
+  }
+
   const chatInput = el('input') as HTMLInputElement;
   chatInput.type = 'text';
-  chatInput.placeholder = 'Ask CAIRN anything...';
+  chatInput.placeholder = 'Ask CAIRN anything... (/ for commands)';
   chatInput.style.cssText = `
     flex: 1;
     padding: 12px 16px;
@@ -471,11 +694,51 @@ export function createCairnView(
     await callbacks.onSendMessage(message);
   };
 
-  chatInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') handleSend();
+  chatInput.addEventListener('keydown', (e) => {
+    // Command palette navigation
+    if (cmdPalette.style.display !== 'none') {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        cmdSelectedIdx = Math.min(cmdSelectedIdx + 1, cmdFiltered.length - 1);
+        renderCmdPalette(chatInput.value.slice(1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        cmdSelectedIdx = Math.max(cmdSelectedIdx - 1, 0);
+        renderCmdPalette(chatInput.value.slice(1));
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        selectCommand(cmdSelectedIdx);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeCmdPalette();
+        chatInput.value = '';
+        return;
+      }
+    } else if (e.key === 'Enter') {
+      handleSend();
+    }
   });
+
+  chatInput.addEventListener('input', () => {
+    const val = chatInput.value;
+    if (val.startsWith('/') && val.indexOf(' ') === -1) {
+      renderCmdPalette(val.slice(1));
+    } else {
+      closeCmdPalette();
+    }
+  });
+
   sendBtn.addEventListener('click', handleSend);
 
+  // inputRow needs relative positioning for the palette to anchor
+  inputRow.style.position = 'relative';
+  inputRow.appendChild(cmdPalette);
   inputRow.appendChild(chatInput);
   inputRow.appendChild(sendBtn);
   inputArea.appendChild(inputRow);
@@ -484,154 +747,17 @@ export function createCairnView(
   chatPanel.appendChild(chatMessages);
   chatPanel.appendChild(inputArea);
 
-  // ============ RIGHT: Consciousness Stream Panel ============
-  const consciousnessContainer = el('div');
-  consciousnessContainer.className = 'consciousness-container';
-  consciousnessContainer.style.cssText = `
-    width: 480px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    border-left: 1px solid rgba(255,255,255,0.1);
-    background: rgba(0,0,0,0.15);
+  // Add event type border styles used in both the old consciousness pane and the
+  // new per-message details panel consciousness section.
+  const consciousnessEventStyles = document.createElement('style');
+  consciousnessEventStyles.textContent = `
+    .event-phase   { border-left: 3px solid #3b82f6; }
+    .event-result  { border-left: 3px solid #22c55e; }
+    .event-llm     { border-left: 3px solid #a78bfa; }
+    .event-reasoning { border-left: 3px solid #f59e0b; }
+    .event-memory  { border-left: 3px solid #ec4899; }
   `;
-
-  // Create consciousness pane
-  const consciousnessPane = createConsciousnessPane(consciousnessContainer);
-
-  // Add consciousness pane styles
-  const consciousnessStyles = document.createElement('style');
-  consciousnessStyles.textContent = `
-    .consciousness-pane {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-    }
-    .consciousness-header {
-      padding: 16px 20px;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
-      background: rgba(0,0,0,0.2);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .consciousness-header-actions {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-    .consciousness-scroll-btn {
-      background: none;
-      border: none;
-      color: rgba(255,255,255,0.6);
-      font-size: 14px;
-      cursor: pointer;
-      padding: 2px 6px;
-      transition: opacity 0.2s;
-    }
-    .consciousness-scroll-btn:hover {
-      color: rgba(255,255,255,0.9);
-    }
-    .consciousness-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: #a78bfa;
-    }
-    .consciousness-clear-btn {
-      background: none;
-      border: none;
-      color: rgba(255,255,255,0.4);
-      font-size: 18px;
-      cursor: pointer;
-      padding: 0 4px;
-    }
-    .consciousness-clear-btn:hover {
-      color: rgba(255,255,255,0.7);
-    }
-    .consciousness-events {
-      flex: 1;
-      overflow-y: auto;
-      padding: 12px;
-    }
-    .consciousness-event {
-      margin-bottom: 2px;
-      border-radius: 4px;
-      overflow: hidden;
-    }
-    .consciousness-event-header {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 8px;
-      background: rgba(255,255,255,0.03);
-      cursor: pointer;
-    }
-    .consciousness-event-header:hover {
-      background: rgba(255,255,255,0.07);
-    }
-    .consciousness-icon {
-      font-size: 11px;
-      flex-shrink: 0;
-      opacity: 0.6;
-    }
-    .consciousness-headline {
-      flex: 1;
-      font-size: 12px;
-      font-weight: 500;
-      color: rgba(255,255,255,0.85);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .consciousness-expand-btn {
-      background: none;
-      border: none;
-      color: rgba(255,255,255,0.3);
-      font-size: 11px;
-      cursor: pointer;
-      padding: 1px 4px;
-      flex-shrink: 0;
-    }
-    .consciousness-content {
-      padding: 6px 8px 6px 22px;
-      background: rgba(0,0,0,0.15);
-      font-size: 11px;
-      font-family: monospace;
-      color: rgba(255,255,255,0.6);
-      line-height: 1.4;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    .consciousness-footer {
-      padding: 8px 16px;
-      border-top: 1px solid rgba(255,255,255,0.1);
-      background: rgba(0,0,0,0.2);
-    }
-    .consciousness-status {
-      font-size: 11px;
-      color: rgba(255,255,255,0.4);
-    }
-    .consciousness-status.active {
-      color: #22c55e;
-    }
-    /* Event type styling */
-    .event-phase {
-      border-left: 3px solid #3b82f6;
-    }
-    .event-result {
-      border-left: 3px solid #22c55e;
-    }
-    .event-llm {
-      border-left: 3px solid #a78bfa;
-    }
-    .event-reasoning {
-      border-left: 3px solid #f59e0b;
-    }
-    .event-memory {
-      border-left: 3px solid #ec4899;
-    }
-  `;
-  document.head.appendChild(consciousnessStyles);
+  document.head.appendChild(consciousnessEventStyles);
 
   // Consciousness polling state
   let consciousnessPolling = false;
@@ -642,12 +768,11 @@ export function createCairnView(
     consciousnessPolling = true;
     consciousnessEvents = [];
     consciousnessIndex = 0;
-    consciousnessPane.clear();
 
     // Note: consciousness/start is called by cairn/chat_async, no need to call it here
     // This avoids race conditions where we might clear events after they start being emitted
 
-    // Poll for events
+    // Poll for events — accumulated into consciousnessEvents[] for per-message snapshot
     const pollInterval = setInterval(async () => {
       if (!consciousnessPolling) {
         clearInterval(pollInterval);
@@ -662,7 +787,6 @@ export function createCairnView(
         if (result.events && result.events.length > 0) {
           consciousnessEvents.push(...result.events);
           consciousnessIndex = result.next_index;
-          consciousnessPane.update(consciousnessEvents, true);
         }
       } catch (e) {
         console.warn('Consciousness poll failed:', e);
@@ -671,20 +795,59 @@ export function createCairnView(
   }
 
   function stopConsciousnessPolling() {
+    // Events accumulated in consciousnessEvents[] will be snapshotted by addAssistantMessage
     consciousnessPolling = false;
-    consciousnessPane.update(consciousnessEvents, false);
   }
 
   // Assemble container
   container.appendChild(surfacedPanel);
   container.appendChild(chatPanel);
-  container.appendChild(consciousnessContainer);
 
   // ============ Functions ============
 
+  /**
+   * Render a single consciousness event as an HTML string for the details panel.
+   * Mirrors the rendering logic from consciousnessPane.ts but as a static string.
+   */
+  function renderConsciousnessEventHtml(
+    event: ConsciousnessEvent,
+    index: number,
+    expandedSet?: Set<number>,
+  ): string {
+    const typeClass = EVENT_TYPE_CLASSES[event.type] || 'event-phase';
+    const icon = EVENT_TYPE_ICONS[event.type] || '\u2022';
+    const isExpanded = expandedSet ? expandedSet.has(index) : false;
+    const hasContent = event.content && event.content.length > 0;
+
+    let contentHtml = '';
+    if (hasContent && isExpanded) {
+      const escapedContent = event.content
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '<br>');
+      contentHtml = `<div style="padding: 6px 8px 6px 22px; background: rgba(0,0,0,0.15); font-size: 11px; font-family: monospace; color: rgba(255,255,255,0.6); line-height: 1.4; white-space: pre-wrap; word-break: break-word;">${escapedContent}</div>`;
+    }
+
+    return `
+      <div class="consciousness-event ${typeClass}" data-index="${index}" style="margin-bottom: 2px; border-radius: 4px; overflow: hidden;">
+        <div style="display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: rgba(255,255,255,0.03); cursor: pointer;">
+          <span style="font-size: 11px; flex-shrink: 0; opacity: 0.6;">${icon}</span>
+          <span style="flex: 1; font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.85); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(event.title)}</span>
+          ${hasContent ? `<button class="consciousness-expand-btn" style="background: none; border: none; color: rgba(255,255,255,0.3); font-size: 11px; cursor: pointer; padding: 1px 4px; flex-shrink: 0;">${isExpanded ? '\u2212' : '+'}</button>` : ''}
+        </div>
+        ${contentHtml}
+      </div>
+    `;
+  }
+
   function renderChatMessage(data: MessageData): HTMLElement {
-    const { role, content, thinkingSteps, toolCalls, extendedThinkingTrace } = data;
-    const hasDetails = role === 'assistant' && ((thinkingSteps && thinkingSteps.length > 0) || (toolCalls && toolCalls.length > 0));
+    const { role, content, thinkingSteps, toolCalls, extendedThinkingTrace, consciousnessEvents: msgConsciousnessEvents } = data;
+    const hasDetails = role === 'assistant' && (
+      (thinkingSteps && thinkingSteps.length > 0) ||
+      (toolCalls && toolCalls.length > 0) ||
+      (msgConsciousnessEvents && msgConsciousnessEvents.length > 0)
+    );
     const hasExtendedThinking = role === 'assistant' && extendedThinkingTrace != null;
 
     const msgWrapper = el('div');
@@ -737,7 +900,7 @@ export function createCairnView(
         background: rgba(0,0,0,0.3);
         border-radius: 8px;
         font-size: 12px;
-        max-height: 300px;
+        max-height: 400px;
         overflow-y: auto;
       `;
 
@@ -775,7 +938,45 @@ export function createCairnView(
         `;
       }
 
+      // Consciousness Stream section — rendered last so thinking/tool sections are visible first
+      if (msgConsciousnessEvents && msgConsciousnessEvents.length > 0) {
+        detailsHTML += `
+          <div style="margin-top: 12px;">
+            <div style="color: #a78bfa; font-weight: 600; margin-bottom: 6px;">
+              Consciousness Stream (${msgConsciousnessEvents.length} events)
+            </div>
+            <div class="details-consciousness-events" style="max-height: 200px; overflow-y: auto;">
+              ${msgConsciousnessEvents.map((evt, i) => renderConsciousnessEventHtml(evt, i)).join('')}
+            </div>
+          </div>
+        `;
+      }
+
       detailsPanel.innerHTML = detailsHTML;
+
+      // Attach expand/collapse handlers for consciousness events inside the details panel
+      const consciousnessContainer = detailsPanel.querySelector('.details-consciousness-events');
+      if (consciousnessContainer) {
+        const expandedSet = new Set<number>();
+        consciousnessContainer.addEventListener('click', (e: Event) => {
+          const btn = (e.target as HTMLElement).closest('.consciousness-expand-btn');
+          if (!btn) return;
+          const eventEl = btn.closest('.consciousness-event');
+          if (!eventEl) return;
+          const idx = parseInt(eventEl.getAttribute('data-index') || '0', 10);
+          if (expandedSet.has(idx)) {
+            expandedSet.delete(idx);
+          } else {
+            expandedSet.add(idx);
+          }
+          // Re-render events with updated expanded state
+          if (msgConsciousnessEvents) {
+            (consciousnessContainer as HTMLElement).innerHTML = msgConsciousnessEvents
+              .map((evt, i) => renderConsciousnessEventHtml(evt, i, expandedSet))
+              .join('');
+          }
+        });
+      }
 
       let expanded = false;
       detailsToggle.addEventListener('click', () => {
@@ -1133,6 +1334,11 @@ export function createCairnView(
   }
 
   function addAssistantMessage(result: ChatRespondResult): void {
+    // Snapshot consciousness events accumulated during this response. The defensive copy
+    // is required because startConsciousnessPolling resets the array on the next message,
+    // which would clear events from all previously rendered messages without a copy.
+    // This relies on hideThinking() (which stops polling) being called before
+    // addAssistantMessage() — currently guaranteed by main.ts lines 565/570.
     const data: MessageData = {
       role: 'assistant',
       content: result.answer,
@@ -1142,6 +1348,9 @@ export function createCairnView(
       messageId: result.message_id,
       messageType: result.message_type,
       extendedThinkingTrace: result.extended_thinking_trace,
+      consciousnessEvents: consciousnessEvents.length > 0
+        ? [...consciousnessEvents]  // defensive copy — see comment above
+        : undefined,
     };
     state.chatMessages.push(data);
     const msgEl = renderChatMessage(data);
@@ -1360,6 +1569,17 @@ export function createCairnView(
     act_title?: string;
     act_color?: string;
     user_priority?: number;
+    // Email-specific fields
+    sender_name?: string | null;
+    sender_email?: string | null;
+    account_email?: string | null;
+    email_date?: string | null;
+    importance_score?: number | null;
+    importance_reason?: string | null;
+    email_message_id?: number | null;
+    is_read?: boolean | null;
+    learned_boost?: number | null;
+    boost_reasons?: string[] | null;
   }>): void {
     // Compute fingerprint to detect changes and avoid unnecessary re-renders
     const newFingerprint = JSON.stringify(items.map(i => ({
@@ -1377,9 +1597,16 @@ export function createCairnView(
 
     surfacedFingerprint = newFingerprint;
     state.surfacedItems = items;
-    surfacedList.innerHTML = '';
 
-    if (items.length === 0) {
+    // Split items by entity type into two columns
+    const calendarItems = items.filter(i => i.entity_type !== 'email');
+    const emailItems = items.filter(i => i.entity_type === 'email');
+
+    calendarList.innerHTML = '';
+    emailList.innerHTML = '';
+
+    // Helper: render an empty-state message into a list element
+    function renderEmptyState(listEl: HTMLElement, message: string) {
       const emptyMsg = el('div');
       emptyMsg.style.cssText = `
         text-align: center;
@@ -1387,15 +1614,12 @@ export function createCairnView(
         color: rgba(255,255,255,0.4);
         font-size: 13px;
       `;
-      emptyMsg.textContent = 'Nothing surfaced yet';
-      surfacedList.appendChild(emptyMsg);
-      return;
+      emptyMsg.textContent = message;
+      listEl.appendChild(emptyMsg);
     }
 
-    // Drag state
-    let dragSourceIndex: number | null = null;
-
-    items.forEach((item, index) => {
+    // Helper: build a card element for a surfaced item
+    function buildItemEl(item: typeof items[0], index: number): HTMLElement {
       const itemEl = el('div');
       itemEl.setAttribute('data-index', String(index));
       itemEl.setAttribute('data-entity-id', item.entity_id || '');
@@ -1415,116 +1639,111 @@ export function createCairnView(
         : item.urgency === 'medium' ? '#eab308'
         : '#22c55e';
 
+      const urgencyLabel = item.urgency === 'critical' ? 'Critical'
+        : item.urgency === 'high' ? 'High'
+        : item.urgency === 'medium' ? 'Medium'
+        : 'Low';
+
+      // Build a detailed tooltip explaining this specific item's urgency
+      let urgencyTooltip = `${urgencyLabel} urgency`;
+
+      if (item.entity_type === 'email') {
+        // Email: show score + reason breakdown
+        const parts: string[] = [];
+        if (item.importance_score != null) {
+          parts.push(`Score: ${(item.importance_score as number).toFixed(2)}`);
+        }
+        if (item.importance_reason) {
+          parts.push(`Why: ${item.importance_reason}`);
+        }
+        parts.push('');
+        parts.push('Score guide:');
+        parts.push('  Red = critical (rare)');
+        parts.push('  Orange = high (score ≥ 0.8)');
+        parts.push('  Yellow = medium (score ≥ 0.5)');
+        parts.push('  Green = low (score < 0.5)');
+        parts.push('');
+        parts.push('Scoring factors: known contact, relevance to active work, sender engagement history');
+        urgencyTooltip += '\n' + parts.join('\n');
+      } else {
+        // Calendar/scene: use the reason field which already has specifics
+        urgencyTooltip += ` — ${item.reason}`;
+        urgencyTooltip += '\n\nColor guide:';
+        urgencyTooltip += '\n  Red = critical (overdue or happening now)';
+        urgencyTooltip += '\n  Orange = high (due soon or starting shortly)';
+        urgencyTooltip += '\n  Yellow = medium (upcoming)';
+        urgencyTooltip += '\n  Green = low (no immediate deadline)';
+      }
+
+      if (item.learned_boost && item.boost_reasons?.length) {
+        urgencyTooltip += `\n\nLearned priority: ${item.boost_reasons.join(', ')}`;
+      }
+
       // Recurring icon (just the icon, no date)
       const recurringIcon = item.is_recurring
         ? `<span title="Recurring ${item.recurrence_frequency?.toLowerCase() || ''}" style="font-size: 11px; margin-left: 4px;">🔄</span>`
         : '';
 
       // Act label with dynamic color
-      const actColor = item.act_color || '#9333ea';  // Default to purple if no color set
+      const actColor = item.act_color || '#9333ea';
       const actLabel = item.act_title
         ? `<span style="font-size: 10px; margin-left: 6px; padding: 2px 6px; background: ${actColor}33; color: ${actColor}; border-radius: 4px;">Act: ${escapeHtml(item.act_title)}</span>`
         : '';
 
-      itemEl.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-          <span style="width: 8px; height: 8px; border-radius: 50%; background: ${urgencyColor};"></span>
-          <span style="font-weight: 500; color: #fff; font-size: 13px;">${escapeHtml(item.title)}</span>
-          ${recurringIcon}
-          ${actLabel}
-        </div>
-        <div style="font-size: 12px; color: rgba(255,255,255,0.5); padding-left: 16px;">
-          ${escapeHtml(item.reason)}
-        </div>
-      `;
+      if (item.entity_type === 'email') {
+        const senderDisplay = item.sender_name
+          ? escapeHtml(item.sender_name)
+          : item.sender_email
+            ? escapeHtml(item.sender_email)
+            : 'Unknown Sender';
 
-      // --- Drag-and-drop handlers ---
-      itemEl.addEventListener('dragstart', (e: DragEvent) => {
-        dragSourceIndex = index;
-        itemEl.style.opacity = '0.4';
-        e.dataTransfer!.effectAllowed = 'move';
-        e.dataTransfer!.setData('text/plain', String(index));
-      });
+        const emailDateDisplay = item.email_date
+          ? (() => {
+              try {
+                return new Date(item.email_date).toLocaleDateString(undefined, {
+                  month: 'short', day: 'numeric', year: 'numeric',
+                });
+              } catch {
+                return escapeHtml(item.email_date);
+              }
+            })()
+          : '';
 
-      itemEl.addEventListener('dragover', (e: DragEvent) => {
-        e.preventDefault();
-        e.dataTransfer!.dropEffect = 'move';
-        const rect = itemEl.getBoundingClientRect();
-        const midY = rect.top + rect.height / 2;
-        // Show insertion indicator
-        if (e.clientY < midY) {
-          itemEl.style.borderTop = '2px solid #3b82f6';
-          itemEl.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-        } else {
-          itemEl.style.borderBottom = '2px solid #3b82f6';
-          itemEl.style.borderTop = '1px solid rgba(255,255,255,0.1)';
-        }
-      });
+        const importanceDisplay = (item.importance_score !== null && item.importance_score !== undefined)
+          ? `<span class="email-score-display" title="${item.importance_reason ? escapeHtml(item.importance_reason) : 'Importance score'}" style="font-size: 10px; color: rgba(255,255,255,0.35); margin-left: 6px;">score: ${(item.importance_score as number).toFixed(2)}</span>`
+          : '';
 
-      itemEl.addEventListener('dragleave', () => {
-        itemEl.style.borderTop = '1px solid rgba(255,255,255,0.1)';
-        itemEl.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-      });
+        itemEl.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span title="${urgencyTooltip}" style="width: 8px; height: 8px; border-radius: 50%; background: ${urgencyColor}; cursor: help;"></span>
+            <span style="font-size: 13px;">📧</span>
+            <span style="font-weight: 500; color: #fff; font-size: 13px;">${escapeHtml(item.title)}</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; padding-left: 16px; margin-bottom: 4px; flex-wrap: wrap;">
+            <span style="font-size: 10px; padding: 2px 6px; background: rgba(59,130,246,0.2); color: #60a5fa; border-radius: 4px;">${senderDisplay}</span>
+            ${item.account_email ? `<span style="font-size: 10px; padding: 2px 6px; background: rgba(168,85,247,0.15); color: #c084fc; border-radius: 4px;">${escapeHtml(item.account_email)}</span>` : ''}
+            ${emailDateDisplay ? `<span style="font-size: 11px; color: rgba(255,255,255,0.4);">${emailDateDisplay}</span>` : ''}
+            ${importanceDisplay}
+          </div>
+          <div style="font-size: 12px; color: rgba(255,255,255,0.5); padding-left: 16px;">
+            ${escapeHtml(item.reason)}
+          </div>
+        `;
+      } else {
+        itemEl.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span title="${urgencyTooltip}" style="width: 8px; height: 8px; border-radius: 50%; background: ${urgencyColor}; cursor: help;"></span>
+            <span style="font-weight: 500; color: #fff; font-size: 13px;">${escapeHtml(item.title)}</span>
+            ${recurringIcon}
+            ${actLabel}
+          </div>
+          <div style="font-size: 12px; color: rgba(255,255,255,0.5); padding-left: 16px;">
+            ${escapeHtml(item.reason)}
+          </div>
+        `;
+      }
 
-      itemEl.addEventListener('drop', (e: DragEvent) => {
-        e.preventDefault();
-        itemEl.style.borderTop = '1px solid rgba(255,255,255,0.1)';
-        itemEl.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-
-        if (dragSourceIndex === null || dragSourceIndex === index) return;
-
-        // Compute insertion position
-        const rect = itemEl.getBoundingClientRect();
-        const midY = rect.top + rect.height / 2;
-        let targetIndex = e.clientY < midY ? index : index + 1;
-        if (dragSourceIndex < targetIndex) targetIndex--;
-
-        if (targetIndex === dragSourceIndex) return;
-
-        // Reorder items array
-        const reordered = [...items];
-        const [moved] = reordered.splice(dragSourceIndex, 1);
-        reordered.splice(targetIndex, 0, moved);
-
-        // Optimistic re-render
-        surfacedFingerprint = '';  // Force re-render
-        updateSurfaced(reordered);
-
-        // Fire RPC to persist + analyze
-        const orderedIds = reordered
-          .map(i => i.entity_id)
-          .filter((id): id is string => !!id);
-        const originalItems = items;
-        showThinking();
-        callbacks.kernelRequest('cairn/attention/reorder', {
-          ordered_scene_ids: orderedIds,
-        }).then((result: unknown) => {
-          hideThinking();
-          const r = result as { priorities_updated: number; analysis_text?: string };
-          if (r.analysis_text && r.analysis_text.trim()) {
-            addChatMessage('assistant', r.analysis_text);
-          }
-        }).catch((err: unknown) => {
-          hideThinking();
-          console.error('Failed to persist attention reorder:', err);
-          // Revert to original order on failure
-          surfacedFingerprint = '';
-          updateSurfaced(originalItems);
-        });
-      });
-
-      itemEl.addEventListener('dragend', () => {
-        itemEl.style.opacity = '1';
-        dragSourceIndex = null;
-        // Clean up any remaining indicators
-        const cards = surfacedList.querySelectorAll('[data-index]');
-        cards.forEach((card) => {
-          (card as HTMLElement).style.borderTop = '1px solid rgba(255,255,255,0.1)';
-          (card as HTMLElement).style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-        });
-      });
-
-      // --- Hover handlers ---
+      // Hover highlight
       itemEl.addEventListener('mouseenter', () => {
         itemEl.style.background = 'rgba(255,255,255,0.08)';
       });
@@ -1532,26 +1751,339 @@ export function createCairnView(
         itemEl.style.background = 'rgba(255,255,255,0.05)';
       });
 
+      // Right-click context menu: Dismiss (learns a rule)
+      itemEl.addEventListener('contextmenu', (e: MouseEvent) => {
+        e.preventDefault();
+
+        // Remove any existing context menu
+        document.querySelectorAll('.attention-context-menu').forEach(m => m.remove());
+
+        const menu = el('div');
+        menu.className = 'attention-context-menu';
+        menu.style.cssText = `
+          position: fixed;
+          left: ${e.clientX}px;
+          top: ${e.clientY}px;
+          background: #1e1e2e;
+          border: 1px solid rgba(255,255,255,0.15);
+          border-radius: 6px;
+          padding: 4px 0;
+          z-index: 9999;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+          min-width: 160px;
+        `;
+
+        const dismissOption = el('div');
+        dismissOption.textContent = 'Dismiss';
+        dismissOption.style.cssText = `
+          padding: 8px 16px;
+          font-size: 13px;
+          color: rgba(255,255,255,0.8);
+          cursor: pointer;
+          transition: background 0.1s;
+        `;
+        dismissOption.addEventListener('mouseenter', () => {
+          dismissOption.style.background = 'rgba(255,255,255,0.1)';
+        });
+        dismissOption.addEventListener('mouseleave', () => {
+          dismissOption.style.background = 'transparent';
+        });
+        dismissOption.addEventListener('click', () => {
+          menu.remove();
+
+          // Animate removal
+          itemEl.style.opacity = '0';
+          itemEl.style.transition = 'opacity 0.3s';
+          setTimeout(() => itemEl.remove(), 300);
+
+          // Dismiss via RPC (email or scene)
+          if (item.entity_type === 'email' && item.email_message_id != null) {
+            callbacks.kernelRequest('cairn/email/dismiss', {
+              email_message_id: item.email_message_id,
+            }).catch((err: unknown) => console.error('Dismiss email failed:', err));
+          }
+
+          // Trigger rule learning flow in chat
+          if (callbacks.onDismissCard && item.entity_id) {
+            callbacks.onDismissCard({
+              entity_type: item.entity_type || 'scene',
+              entity_id: item.entity_id,
+              title: item.title,
+              sender_name: item.sender_name,
+              sender_email: item.sender_email,
+            });
+          }
+        });
+
+        menu.appendChild(dismissOption);
+        document.body.appendChild(menu);
+
+        // Close menu on click outside
+        const closeMenu = () => {
+          menu.remove();
+          document.removeEventListener('click', closeMenu);
+        };
+        setTimeout(() => document.addEventListener('click', closeMenu), 0);
+      });
+
       // Click to navigate to Scene in The Play
       if (item.entity_type === 'scene' && item.act_id) {
         itemEl.addEventListener('click', () => {
-          // Dispatch custom event to open The Play at this Scene
           const event = new CustomEvent('openPlayScene', {
-            detail: {
-              actId: item.act_id,
-              sceneId: item.entity_id,
-            },
+            detail: { actId: item.act_id, sceneId: item.entity_id },
           });
           window.dispatchEvent(event);
         });
       }
 
-      surfacedList.appendChild(itemEl);
-    });
+      // Email actions: open, upvote, downvote
+      if (item.entity_type === 'email' && item.email_message_id != null) {
+        // Dim read emails
+        if (item.is_read) {
+          itemEl.style.opacity = '0.65';
+        }
+
+        itemEl.style.cursor = 'pointer';
+
+        // Click body to open
+        itemEl.addEventListener('click', (e) => {
+          // Don't open if clicking an action button
+          if ((e.target as HTMLElement).closest('.email-actions')) return;
+          callbacks.kernelRequest('cairn/email/open', {
+            email_message_id: item.email_message_id,
+          }).catch((err: unknown) => {
+            console.error('Failed to open email:', err);
+          });
+        });
+
+        // Action buttons row
+        const actionsRow = el('div');
+        actionsRow.className = 'email-actions';
+        actionsRow.style.cssText = `
+          display: flex;
+          gap: 6px;
+          padding: 4px 0 0 16px;
+        `;
+
+        const upvoteBtn = el('button');
+        upvoteBtn.textContent = '▲';
+        upvoteBtn.title = 'Increase score — surface emails like this higher';
+        upvoteBtn.style.cssText = `
+          font-size: 11px;
+          padding: 2px 8px;
+          background: rgba(16, 185, 129, 0.1);
+          border: 1px solid rgba(16, 185, 129, 0.3);
+          border-radius: 4px;
+          color: rgba(16, 185, 129, 0.8);
+          cursor: pointer;
+        `;
+        upvoteBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          callbacks.kernelRequest('cairn/email/upvote', {
+            email_message_id: item.email_message_id,
+          }).then((res: unknown) => {
+            const result = res as { new_score?: number };
+            if (result.new_score !== undefined) {
+              const scoreEl = itemEl.querySelector('.email-score-display');
+              if (scoreEl) scoreEl.textContent = `score: ${result.new_score.toFixed(2)}`;
+            }
+            itemEl.style.borderLeft = '3px solid rgba(16, 185, 129, 0.6)';
+            setTimeout(() => { itemEl.style.borderLeft = ''; }, 1500);
+          }).catch((err: unknown) => {
+            console.error('Failed to upvote email:', err);
+          });
+        });
+
+        const downvoteBtn = el('button');
+        downvoteBtn.textContent = '▼';
+        downvoteBtn.title = 'Lower score — surface emails like this lower';
+        downvoteBtn.style.cssText = `
+          font-size: 11px;
+          padding: 2px 8px;
+          background: rgba(239, 68, 68, 0.1);
+          border: 1px solid rgba(239, 68, 68, 0.3);
+          border-radius: 4px;
+          color: rgba(239, 68, 68, 0.8);
+          cursor: pointer;
+        `;
+        downvoteBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          callbacks.kernelRequest('cairn/email/downvote', {
+            email_message_id: item.email_message_id,
+          }).then((res: unknown) => {
+            const result = res as { new_score?: number };
+            if (result.new_score !== undefined) {
+              const scoreEl = itemEl.querySelector('.email-score-display');
+              if (scoreEl) scoreEl.textContent = `score: ${result.new_score.toFixed(2)}`;
+            }
+            itemEl.style.borderLeft = '3px solid rgba(239, 68, 68, 0.6)';
+            setTimeout(() => { itemEl.style.borderLeft = ''; }, 1500);
+          }).catch((err: unknown) => {
+            console.error('Failed to downvote email:', err);
+          });
+        });
+
+        actionsRow.appendChild(upvoteBtn);
+        actionsRow.appendChild(downvoteBtn);
+        itemEl.appendChild(actionsRow);
+      }
+
+      return itemEl;
+    }
+
+    /**
+     * Create drag-and-drop handlers scoped to a single column.
+     * On drop, merges both columns' current DOM order and fires the reorder RPC.
+     * columnItems: the items rendered in this column (calendar or email)
+     * listEl: the column's list DOM element
+     * getOtherColumnItems: function returning the other column's current ordered items from its DOM
+     */
+    function makeColumnDragHandlers(
+      columnItems: typeof items,
+      listEl: HTMLElement,
+      getOtherColumnItems: () => typeof items,
+    ) {
+      let dragSourceIndex: number | null = null;
+
+      columnItems.forEach((item, index) => {
+        const itemEl = listEl.querySelector(`[data-index="${index}"]`) as HTMLElement | null;
+        if (!itemEl) return;
+
+        itemEl.addEventListener('dragstart', (e: DragEvent) => {
+          dragSourceIndex = index;
+          itemEl.style.opacity = '0.4';
+          e.dataTransfer!.effectAllowed = 'move';
+          e.dataTransfer!.setData('text/plain', String(index));
+        });
+
+        itemEl.addEventListener('dragover', (e: DragEvent) => {
+          e.preventDefault();
+          e.dataTransfer!.dropEffect = 'move';
+          const rect = itemEl.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+          if (e.clientY < midY) {
+            itemEl.style.borderTop = '2px solid #3b82f6';
+            itemEl.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+          } else {
+            itemEl.style.borderBottom = '2px solid #3b82f6';
+            itemEl.style.borderTop = '1px solid rgba(255,255,255,0.1)';
+          }
+        });
+
+        itemEl.addEventListener('dragleave', () => {
+          itemEl.style.borderTop = '1px solid rgba(255,255,255,0.1)';
+          itemEl.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+        });
+
+        itemEl.addEventListener('drop', (e: DragEvent) => {
+          e.preventDefault();
+          itemEl.style.borderTop = '1px solid rgba(255,255,255,0.1)';
+          itemEl.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+
+          if (dragSourceIndex === null || dragSourceIndex === index) return;
+
+          const rect = itemEl.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+          let targetIndex = e.clientY < midY ? index : index + 1;
+          if (dragSourceIndex < targetIndex) targetIndex--;
+
+          if (targetIndex === dragSourceIndex) return;
+
+          // Reorder within this column
+          const reorderedColumn = [...columnItems];
+          const [moved] = reorderedColumn.splice(dragSourceIndex, 1);
+          reorderedColumn.splice(targetIndex, 0, moved);
+
+          // Merge: calendar column items first, email column items second.
+          // Cross-column ordering is not supported — the RPC accepts a mixed list.
+          const otherItems = getOtherColumnItems();
+          const mergedItems = listEl === calendarList
+            ? [...reorderedColumn, ...otherItems]
+            : [...otherItems, ...reorderedColumn];
+
+          // Optimistic re-render
+          surfacedFingerprint = '';
+          updateSurfaced(mergedItems);
+
+          // Fire RPC to persist + analyze
+          const orderedIds = mergedItems
+            .map(i => i.entity_id)
+            .filter((id): id is string => !!id);
+          const orderedEntities = mergedItems
+            .filter(i => i.entity_id)
+            .map(i => [i.entity_type || 'scene', i.entity_id]);
+          const originalItems = items;
+          showThinking();
+          callbacks.kernelRequest('cairn/attention/reorder', {
+            ordered_scene_ids: orderedIds,
+            ordered_entities: orderedEntities,
+          }).then((result: unknown) => {
+            hideThinking();
+            const r = result as { priorities_updated: number; analysis_text?: string };
+            if (r.analysis_text && r.analysis_text.trim()) {
+              addChatMessage('assistant', r.analysis_text);
+            }
+          }).catch((err: unknown) => {
+            hideThinking();
+            console.error('Failed to persist attention reorder:', err);
+            surfacedFingerprint = '';
+            updateSurfaced(originalItems);
+          });
+        });
+
+        itemEl.addEventListener('dragend', () => {
+          itemEl.style.opacity = '1';
+          dragSourceIndex = null;
+          // Clean up border indicators in this column
+          listEl.querySelectorAll('[data-index]').forEach((card) => {
+            (card as HTMLElement).style.borderTop = '1px solid rgba(255,255,255,0.1)';
+            (card as HTMLElement).style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+          });
+        });
+      });
+    }
+
+    // Render calendar/task items into left column
+    if (calendarItems.length === 0) {
+      renderEmptyState(calendarList, 'No calendar items or tasks');
+    } else {
+      calendarItems.forEach((item, index) => {
+        calendarList.appendChild(buildItemEl(item, index));
+      });
+    }
+
+    // Render email items into right column
+    if (emailItems.length === 0) {
+      renderEmptyState(emailList, 'No email');
+    } else {
+      emailItems.forEach((item, index) => {
+        emailList.appendChild(buildItemEl(item, index));
+      });
+    }
+
+    // Attach drag-and-drop handlers per column.
+    // Each column reads the other column's current DOM order when merging for the RPC.
+    function getCalendarItemsFromDom(): typeof items {
+      return Array.from(calendarList.querySelectorAll('[data-entity-id]')).map(el => {
+        const entityId = el.getAttribute('data-entity-id') || '';
+        return calendarItems.find(i => i.entity_id === entityId) || calendarItems[0];
+      }).filter(Boolean);
+    }
+
+    function getEmailItemsFromDom(): typeof items {
+      return Array.from(emailList.querySelectorAll('[data-entity-id]')).map(el => {
+        const entityId = el.getAttribute('data-entity-id') || '';
+        return emailItems.find(i => i.entity_id === entityId) || emailItems[0];
+      }).filter(Boolean);
+    }
+
+    makeColumnDragHandlers(calendarItems, calendarList, getEmailItemsFromDom);
+    makeColumnDragHandlers(emailItems, emailList, getCalendarItemsFromDom);
   }
 
   return {
     container,
+    chatHeader,
     addChatMessage,
     addAssistantMessage,
     showThinking,

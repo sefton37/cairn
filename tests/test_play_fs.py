@@ -29,7 +29,7 @@ def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[
     """Create isolated data directory for play_fs."""
     data_dir = tmp_path / "reos-data"
     data_dir.mkdir()
-    monkeypatch.setenv("REOS_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("TALKINGROCK_DATA_DIR", str(data_dir))
 
     # Close any existing connection before test
     import cairn.play_db as play_db
@@ -170,7 +170,7 @@ class TestPlayRoot:
     """Test play_root function."""
 
     def test_play_root_with_env_var(self, temp_data_dir: Path) -> None:
-        """Should use REOS_DATA_DIR if set."""
+        """Should use TALKINGROCK_DATA_DIR if set."""
         from cairn.play_fs import play_root
 
         root = play_root()

@@ -15,6 +15,7 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import { el } from './dom';
 import { kernelRequest } from './kernel';
+import { mountBlockEditor } from './react/index';
 import type {
   PlayActsListResult,
   PlayScenesListResult,
@@ -44,7 +45,7 @@ const ACT_COLOR_PALETTE = [
 
 // Placeholder text per level
 const PLACEHOLDER_TEXT: Record<PlayLevel, string> = {
-  play: `This is The Play - your high-level narrative and vision.
+  play: `This is Your Story - your high-level narrative and vision.
 
 Write your overarching story, goals, and long-term vision here.
 Attach strategic documents, vision statements, or reference materials.
@@ -77,10 +78,12 @@ interface PlayOverlayState {
   kbPath: string;
   attachments: PlayAttachment[];
   expandedActs: Set<string>;
+  editorCleanup: (() => void) | null;
 }
 
 export function createPlayOverlay(onClose: () => void): {
   element: HTMLElement;
+  viewElement: HTMLElement;
   open: (actId?: string, sceneId?: string) => void;
   close: () => void;
 } {
@@ -96,7 +99,71 @@ export function createPlayOverlay(onClose: () => void): {
     kbPath: 'kb.md',
     attachments: [],
     expandedActs: new Set(),
+    editorCleanup: null,
   };
+
+  /** Custom async confirm dialog (window.confirm doesn't block in Tauri/WebKitGTK). */
+  function showConfirmDialog(message: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const backdrop = el('div');
+      backdrop.style.cssText = `
+        position: fixed; inset: 0; z-index: 20000;
+        background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+        display: flex; align-items: center; justify-content: center;
+        font-family: system-ui, -apple-system, sans-serif;
+      `;
+
+      const dialog = el('div');
+      dialog.style.cssText = `
+        background: #1e293b; border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 12px; padding: 24px 28px; max-width: 380px; width: 90%;
+        box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); text-align: center;
+      `;
+
+      const msg = el('p');
+      msg.textContent = message;
+      msg.style.cssText = 'color: #e2e8f0; font-size: 14px; margin: 0 0 20px 0; line-height: 1.5;';
+
+      const btnRow = el('div');
+      btnRow.style.cssText = 'display: flex; gap: 10px; justify-content: center;';
+
+      const cancelBtn = el('button') as HTMLButtonElement;
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.style.cssText = `
+        padding: 8px 20px; border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 6px; background: transparent; color: #94a3b8;
+        font-size: 13px; cursor: pointer;
+      `;
+
+      const confirmBtn = el('button') as HTMLButtonElement;
+      confirmBtn.textContent = 'Delete';
+      confirmBtn.style.cssText = `
+        padding: 8px 20px; border: none; border-radius: 6px;
+        background: #ef4444; color: white; font-size: 13px;
+        font-weight: 600; cursor: pointer;
+      `;
+
+      const cleanup = (result: boolean) => {
+        backdrop.remove();
+        resolve(result);
+      };
+
+      cancelBtn.addEventListener('click', () => cleanup(false));
+      confirmBtn.addEventListener('click', () => cleanup(true));
+      backdrop.addEventListener('click', (e) => {
+        if (e.target === backdrop) cleanup(false);
+      });
+
+      btnRow.appendChild(cancelBtn);
+      btnRow.appendChild(confirmBtn);
+      dialog.appendChild(msg);
+      dialog.appendChild(btnRow);
+      backdrop.appendChild(dialog);
+      document.body.appendChild(backdrop);
+
+      cancelBtn.focus();
+    });
+  }
 
   // Create overlay container
   const overlay = el('div');
@@ -112,13 +179,7 @@ export function createPlayOverlay(onClose: () => void): {
   const headerTitle = el('h1');
   headerTitle.textContent = 'The Play';
 
-  const closeBtn = el('button');
-  closeBtn.className = 'play-close-btn';
-  closeBtn.innerHTML = '&times;';
-  closeBtn.addEventListener('click', close);
-
   header.appendChild(headerTitle);
-  header.appendChild(closeBtn);
 
   // Body (sidebar + content)
   const body = el('div');
@@ -136,20 +197,6 @@ export function createPlayOverlay(onClose: () => void): {
   container.appendChild(header);
   container.appendChild(body);
   overlay.appendChild(container);
-
-  // Close on backdrop click
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) {
-      close();
-    }
-  });
-
-  // Close on Escape
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && state.isOpen) {
-      close();
-    }
-  });
 
   // --- Helper functions ---
 
@@ -521,12 +568,12 @@ export function createPlayOverlay(onClose: () => void): {
   function renderSidebar() {
     sidebar.innerHTML = '';
 
-    // "The Play" root
-    const playItem = el('div');
-    playItem.className = `tree-item play ${state.selectedLevel === 'play' ? 'selected' : ''}`;
-    playItem.innerHTML = '<span class="tree-icon">📘</span> The Play';
-    playItem.addEventListener('click', () => selectLevel('play'));
-    sidebar.appendChild(playItem);
+    // "Your Story" — always first, loads the play/me content
+    const yourStoryItem = el('div');
+    yourStoryItem.className = `tree-item act ${state.selectedLevel === 'play' ? 'selected' : ''}`;
+    yourStoryItem.innerHTML = '<span class="tree-icon">📖</span> Your Story';
+    yourStoryItem.addEventListener('click', () => selectLevel('play'));
+    sidebar.appendChild(yourStoryItem);
 
     // Create new act button
     const newActBtn = el('button');
@@ -542,7 +589,7 @@ export function createPlayOverlay(onClose: () => void): {
     });
     sidebar.appendChild(newActBtn);
 
-    // Acts (filter out "your-story" - it's represented by The Play root)
+    // Acts (skip your-story since it's shown above as a dedicated item)
     for (const act of state.actsCache) {
       if (act.act_id === 'your-story') continue;
 
@@ -619,17 +666,17 @@ export function createPlayOverlay(onClose: () => void): {
       `;
       deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (window.confirm(`Delete act "${act.title}" and all its scenes?`)) {
-          void (async () => {
-            try {
-              await kernelRequest('play/acts/delete', { act_id: act.act_id });
-              await refreshData();
-              render();
-            } catch (err) {
-              console.error('Failed to delete act:', err);
-            }
-          })();
-        }
+        void (async () => {
+          const confirmed = await showConfirmDialog(`Delete act "${act.title}" and all its scenes?`);
+          if (!confirmed) return;
+          try {
+            await kernelRequest('play/acts/delete', { act_id: act.act_id });
+            await refreshData();
+            render();
+          } catch (err) {
+            console.error('Failed to delete act:', err);
+          }
+        })();
       });
 
       const actRightGroup = el('div');
@@ -721,20 +768,20 @@ export function createPlayOverlay(onClose: () => void): {
           `;
           sceneDeleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (window.confirm(`Delete scene "${scene.title}"?`)) {
-              void (async () => {
-                try {
-                  await kernelRequest('play/scenes/delete', {
-                    act_id: act.act_id,
-                    scene_id: scene.scene_id,
-                  });
-                  await refreshData();
-                  render();
-                } catch (err) {
-                  console.error('Failed to delete scene:', err);
-                }
-              })();
-            }
+            void (async () => {
+              const confirmed = await showConfirmDialog(`Delete scene "${scene.title}"?`);
+              if (!confirmed) return;
+              try {
+                await kernelRequest('play/scenes/delete', {
+                  act_id: act.act_id,
+                  scene_id: scene.scene_id,
+                });
+                await refreshData();
+                render();
+              } catch (err) {
+                console.error('Failed to delete scene:', err);
+              }
+            })();
           });
 
           sceneItem.appendChild(sceneLeft);
@@ -905,40 +952,29 @@ export function createPlayOverlay(onClose: () => void): {
       content.appendChild(repoSection);
     }
 
-    // Editor area
+    // Editor area — TipTap block editor with slash commands
     const editorWrap = el('div');
     editorWrap.className = 'play-editor-wrap';
-    editorWrap.style.position = 'relative';
+    editorWrap.style.cssText = 'position: relative; flex: 1; display: flex; flex-direction: column;';
 
-    const editor = el('textarea') as HTMLTextAreaElement;
-    editor.className = 'play-editor';
-    editor.placeholder = PLACEHOLDER_TEXT[state.selectedLevel];
-    editor.value = state.kbText;
+    // Clean up previous editor instance
+    state.editorCleanup?.();
 
-    // Save status indicator
-    const saveStatus = el('span');
-    saveStatus.style.cssText = `
-      position: absolute;
-      bottom: 8px;
-      right: 12px;
-      font-size: 11px;
-      opacity: 0;
-      transition: opacity 0.3s;
-      pointer-events: none;
-    `;
-    saveStatusEl = saveStatus;
+    // Map play levels to block editor props
+    const editorActId = state.selectedLevel === 'play'
+      ? 'your-story'
+      : (state.activeActId ?? 'your-story');
+    const editorSceneId = state.selectedLevel === 'scene'
+      ? state.selectedSceneId
+      : null;
 
-    // Debounced auto-save
-    let saveTimeout: ReturnType<typeof setTimeout> | null = null;
-    editor.addEventListener('input', () => {
-      if (saveTimeout) clearTimeout(saveTimeout);
-      saveTimeout = setTimeout(() => {
-        void saveKbContent(editor.value);
-      }, 1500);
+    state.editorCleanup = mountBlockEditor(editorWrap, {
+      actId: editorActId,
+      pageId: null,
+      sceneId: editorSceneId,
+      kernelRequest,
     });
 
-    editorWrap.appendChild(editor);
-    editorWrap.appendChild(saveStatus);
     content.appendChild(editorWrap);
 
     // Attachments section (all levels including Play)
@@ -1004,7 +1040,7 @@ export function createPlayOverlay(onClose: () => void): {
   function getLevelTitle(): string {
     switch (state.selectedLevel) {
       case 'play':
-        return 'The Play';
+        return 'Your Story';
       case 'act':
         return 'Act Title';
       case 'scene':
@@ -1015,7 +1051,7 @@ export function createPlayOverlay(onClose: () => void): {
   function getCurrentTitle(): string {
     switch (state.selectedLevel) {
       case 'play':
-        return 'The Play';
+        return 'Your Story';
       case 'act': {
         const act = state.actsCache.find((a) => a.act_id === state.activeActId);
         return act?.title ?? '';
@@ -1086,6 +1122,8 @@ export function createPlayOverlay(onClose: () => void): {
   }
 
   function close() {
+    state.editorCleanup?.();
+    state.editorCleanup = null;
     state.isOpen = false;
     overlay.classList.remove('open');
     onClose();
@@ -1093,6 +1131,7 @@ export function createPlayOverlay(onClose: () => void): {
 
   return {
     element: overlay,
+    viewElement: container,
     open: openOverlay,
     close,
   };

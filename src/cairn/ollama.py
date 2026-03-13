@@ -280,7 +280,7 @@ def _default_model(timeout_seconds: float = TIMEOUTS.OLLAMA_MODELS) -> str:
         logging.getLogger(__name__).warning("Failed to auto-detect Ollama model: %s", e)
 
     raise OllamaModelError(
-        "No Ollama model configured. Set REOS_OLLAMA_MODEL or pull a model with 'ollama pull llama3.2:3b'"
+        "No Ollama model configured. Set TALKINGROCK_OLLAMA_MODEL or pull a model with 'ollama pull llama3.2:3b'"
     )
 
 

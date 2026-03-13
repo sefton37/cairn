@@ -1,4 +1,4 @@
-"""ReOS MCP server (stdio bridge).
+"""CAIRN MCP server (stdio bridge).
 
 This is a lightweight MCP-compatible JSON-RPC server over stdio.
 

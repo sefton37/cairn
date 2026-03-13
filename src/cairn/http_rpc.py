@@ -70,6 +70,18 @@ from cairn.rpc_handlers.blocks import (
     handle_blocks_update,
     handle_blocks_validate_scene,
 )
+from cairn.rpc_handlers.cc import (
+    handle_cc_agents_create,
+    handle_cc_agents_delete,
+    handle_cc_agents_list,
+    handle_cc_insights_accept,
+    handle_cc_insights_dismiss,
+    handle_cc_insights_list,
+    handle_cc_session_history,
+    handle_cc_session_poll,
+    handle_cc_session_send,
+    handle_cc_session_stop,
+)
 from cairn.rpc_handlers.chat import (
     handle_chat_clear,
     handle_chat_respond,
@@ -91,6 +103,11 @@ from cairn.rpc_handlers.documents import (
     handle_documents_get_chunks,
     handle_documents_insert,
     handle_documents_list,
+)
+from cairn.rpc_handlers.files import (
+    handle_files_list,
+    handle_files_read,
+    handle_files_write,
 )
 from cairn.rpc_handlers.health import (
     handle_health_acknowledge,
@@ -389,6 +406,21 @@ _METHODS: dict[str, tuple[Callable[..., Any], bool]] = {
     "reasoning/feedback": (handle_reasoning_feedback, True),
     "reasoning/chain": (handle_reasoning_chain_get, True),
     "reasoning/list": (handle_reasoning_chains_list, True),
+    # claude code agents (Helm Phase 2)
+    "cc/agents/list": (handle_cc_agents_list, True),
+    "cc/agents/create": (handle_cc_agents_create, True),
+    "cc/agents/delete": (handle_cc_agents_delete, True),
+    "cc/session/send": (handle_cc_session_send, True),
+    "cc/session/poll": (handle_cc_session_poll, True),
+    "cc/session/stop": (handle_cc_session_stop, True),
+    "cc/session/history": (handle_cc_session_history, True),
+    "cc/insights/list": (handle_cc_insights_list, True),
+    "cc/insights/accept": (handle_cc_insights_accept, True),
+    "cc/insights/dismiss": (handle_cc_insights_dismiss, True),
+    # files (Helm Android — browse and edit markdown files)
+    "files/list": (handle_files_list, True),
+    "files/read": (handle_files_read, True),
+    "files/write": (handle_files_write, True),
 }
 
 # ---------------------------------------------------------------------------
@@ -506,7 +538,13 @@ async def _dispatch(db: Database, body: dict[str, Any]) -> dict[str, Any]:
     handler_params = {k: v for k, v in params.items() if not k.startswith("__")}
 
     try:
-        if needs_db:
+        if asyncio.iscoroutinefunction(handler):
+            # Async handlers (e.g. cc/session/send, cc/session/stop) run directly
+            if needs_db:
+                result = await handler(db, **handler_params)
+            else:
+                result = await handler(**handler_params)
+        elif needs_db:
             result = await asyncio.to_thread(handler, db, **handler_params)
         else:
             result = await asyncio.to_thread(handler, **handler_params)
@@ -670,6 +708,44 @@ async def rpc_events(
         media_type="text/event-stream",
         headers={
             # Prevent proxies and browsers from buffering SSE frames
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# SSE: Claude Code event stream (Helm Phase 2)
+# ---------------------------------------------------------------------------
+
+
+async def _cc_event_stream(
+    agent_id: str,
+    since: int,
+) -> AsyncGenerator[str, None]:
+    """Stream Claude Code events for an agent via SSE."""
+    from cairn.rpc_handlers.cc import _get_manager
+
+    mgr = _get_manager()
+    async for event in mgr.stream_events(agent_id, since):
+        yield f"data: {json.dumps(event)}\n\n"
+
+
+@router.get("/sse/cc/{agent_id}")
+async def cc_stream(
+    agent_id: str,
+    since: int = 0,
+    bearer_val: str = Depends(require_auth),  # noqa: ARG001
+) -> StreamingResponse:
+    """SSE stream for Claude Code agent events.
+
+    Helm opens one SSE connection per active agent and forwards events
+    over WebSocket to the browser.
+    """
+    return StreamingResponse(
+        _cc_event_stream(agent_id, since),
+        media_type="text/event-stream",
+        headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
         },

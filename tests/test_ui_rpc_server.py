@@ -270,7 +270,7 @@ class TestPlayHandlers:
         play_db.close_connection()
 
         # Set the isolated data directory
-        monkeypatch.setenv("REOS_DATA_DIR", str(tmp_path / "data"))
+        monkeypatch.setenv("TALKINGROCK_DATA_DIR", str(tmp_path / "data"))
 
         yield
 
