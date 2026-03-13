@@ -4,7 +4,6 @@
  * Main entry point for the Tauri-based desktop UI.
  * Communicates with the Python kernel via JSON-RPC over stdio.
  */
-import { WebviewWindow, getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 
 import './style.css';
@@ -25,11 +24,14 @@ import { createPlayOverlay } from './playOverlay';
 import { createSettingsOverlay } from './settingsOverlay';
 import { createContextOverlay } from './contextOverlay';
 import { createCairnView } from './cairnView';
+import { createAgentBar } from './agentBar';
+import type { AgentId } from './agentBar';
+import { createReosView } from './reosView';
+import { createRivaView } from './rivaView';
 
 import { buildPlayWindow } from './playWindow';
 import type {
   ChatRespondResult,
-  SystemInfoResult,
   SystemLiveStateResult,
   PlayMeReadResult,
   PlayActsListResult,
@@ -71,93 +73,30 @@ function buildUi() {
   shell.style.height = '100vh';
   shell.style.fontFamily = 'system-ui, sans-serif';
 
-  const nav = el('div');
-  nav.className = 'nav';
-  nav.style.width = '280px';
-  nav.style.borderRight = '1px solid #ddd';
-  nav.style.padding = '12px';
-  nav.style.overflow = 'auto';
+  // ============ View Router ============
+  // Tracks which agent view is currently displayed
+  let currentAgentView: AgentId = 'cairn';
 
-  const navTitle = el('div');
-  navTitle.textContent = 'Talking Rock for Linux';
-  navTitle.style.fontWeight = '600';
-  navTitle.style.fontSize = '16px';
-  navTitle.style.marginBottom = '12px';
-
-  // System Status Section
-  const systemSection = el('div');
-  systemSection.className = 'system-section';
-
-  const systemHeader = el('div');
-  systemHeader.textContent = 'System Status';
-  systemHeader.style.fontWeight = '600';
-  systemHeader.style.marginBottom = '8px';
-  systemHeader.style.fontSize = '13px';
-  systemHeader.style.color = '#666';
-
-  const systemStatus = el('div');
-  systemStatus.className = 'system-status';
-  systemStatus.style.fontSize = '12px';
-  systemStatus.style.marginBottom = '12px';
-  systemStatus.innerHTML = '<span style="opacity: 0.6">Loading...</span>';
-
-  systemSection.appendChild(systemHeader);
-  systemSection.appendChild(systemStatus);
-
-  // Shared nav button style
-  const navBtnStyle = (btn: HTMLElement) => {
-    btn.style.padding = '10px';
-    btn.style.fontSize = '12px';
-    btn.style.fontWeight = '500';
-    btn.style.border = '1px solid rgba(255, 255, 255, 0.15)';
-    btn.style.borderRadius = '8px';
-    btn.style.background = 'rgba(255, 255, 255, 0.08)';
-    btn.style.color = '#e5e7eb';
-    btn.style.cursor = 'pointer';
-    btn.style.width = '100%';
-    btn.style.textAlign = 'left';
-  };
-
-  // System Dashboard Button
-  const dashboardBtn = el('button');
-  dashboardBtn.textContent = 'Open System Dashboard';
-  dashboardBtn.style.marginTop = '12px';
-  navBtnStyle(dashboardBtn);
-
-  // The Play Button - opens the Play window
-  const playBtn = el('button');
-  playBtn.textContent = 'The Play';
-  playBtn.title = 'Open The Play - your story, acts, and scenes';
-  navBtnStyle(playBtn);
-  playBtn.style.marginTop = '12px';
-
-  // Nav content container (top section)
-  const navContent = el('div');
-  navContent.className = 'nav-content';
-  navContent.style.cssText = 'flex: 1;';
-
-  navContent.appendChild(navTitle);
-
-  // ============ Context Usage Indicator (opens Context Overlay) ============
+  // ============ Context Meter + Health (inserted into CAIRN chat header) ============
   const navContextMeter = el('div');
   navContextMeter.className = 'nav-context-meter';
   navContextMeter.title = 'Click to view context details';
   navContextMeter.style.cssText = `
-    margin-bottom: 12px;
-    padding: 10px 12px;
+    flex: 1;
+    padding: 6px 10px;
     background: rgba(0, 0, 0, 0.2);
-    border-radius: 8px;
+    border-radius: 6px;
     cursor: pointer;
     transition: background 0.2s;
   `;
 
   const contextUsageBar = el('div');
   contextUsageBar.style.cssText = `
-    height: 6px;
+    height: 4px;
     background: rgba(255, 255, 255, 0.1);
-    border-radius: 3px;
+    border-radius: 2px;
     overflow: hidden;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
   `;
 
   const contextUsageFill = el('div');
@@ -165,7 +104,7 @@ function buildUi() {
     height: 100%;
     width: 0%;
     background: #22c55e;
-    border-radius: 3px;
+    border-radius: 2px;
     transition: width 0.3s, background 0.3s;
   `;
   contextUsageBar.appendChild(contextUsageFill);
@@ -175,11 +114,11 @@ function buildUi() {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 11px;
+    font-size: 10px;
     color: rgba(255, 255, 255, 0.6);
   `;
   contextUsageLabel.innerHTML = `
-    <span>🧠 Context</span>
+    <span>\u{1F9E0} Context</span>
     <span class="context-usage-value">Loading...</span>
   `;
 
@@ -232,9 +171,7 @@ function buildUi() {
 
   // Note: Click handler to open contextOverlay is added after contextOverlay is created
 
-  navContent.appendChild(navContextMeter);
-  navContent.appendChild(systemSection);
-
+  // navContextMeter and healthIndicator will be inserted into cairnView after creation
   // Health Pulse indicator (hidden by default, appears when findings exist)
   const healthIndicator = el('div');
   healthIndicator.className = 'health-indicator';
@@ -301,7 +238,7 @@ function buildUi() {
 
   healthIndicator.appendChild(healthDot);
   healthIndicator.appendChild(healthText);
-  navContent.appendChild(healthIndicator);
+  // healthIndicator will be placed alongside navContextMeter in cairnView
 
   // Health status polling
   async function refreshHealthStatus(): Promise<void> {
@@ -351,39 +288,7 @@ function buildUi() {
     void refreshHealthStatus().then(scheduleHealthPoll);
   }, 5000);
 
-  navContent.appendChild(dashboardBtn);
-  navContent.appendChild(playBtn);
-
-  // Settings button (bottom of nav)
-  const settingsBtn = el('button');
-  settingsBtn.className = 'settings-btn';
-  settingsBtn.innerHTML = '⚙️ Settings';
-  settingsBtn.style.cssText = `
-    width: 100%;
-    padding: 10px 12px;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 6px;
-    color: rgba(255,255,255,0.8);
-    cursor: pointer;
-    font-size: 13px;
-    text-align: left;
-    transition: background 0.2s;
-    margin-top: 8px;
-  `;
-  settingsBtn.addEventListener('mouseenter', () => {
-    settingsBtn.style.background = 'rgba(255,255,255,0.1)';
-  });
-  settingsBtn.addEventListener('mouseleave', () => {
-    settingsBtn.style.background = 'rgba(255,255,255,0.05)';
-  });
-
-  // Make nav flex column
-  nav.style.display = 'flex';
-  nav.style.flexDirection = 'column';
-
-  nav.appendChild(navContent);
-  nav.appendChild(settingsBtn);
+  // (The Play button is now in the agent bar)
 
   // ============ CAIRN View (Conversational) ============
   const cairnView = createCairnView({
@@ -391,6 +296,19 @@ function buildUi() {
       return handleCairnMessage(message);
     },
     kernelRequest,
+    onDismissCard: (item) => {
+      // Propose a rule to Cairn in chat
+      let description: string;
+      if (item.entity_type === 'email') {
+        const who = item.sender_name || item.sender_email || 'this sender';
+        description = `I dismissed the email "${item.title}" from ${who}. Should I create a rule to always dismiss emails like this?`;
+      } else {
+        description = `I dismissed "${item.title}" from my attention. Should I create a rule to deprioritize items like this?`;
+      }
+      // Send as a user message so Cairn can respond with a rule proposal
+      void handleCairnMessage(description);
+      cairnView.addChatMessage('user', description);
+    },
   });
 
   // Load attention items at startup for "What Needs My Attention" section (next 7 days)
@@ -414,6 +332,16 @@ function buildUi() {
           act_title?: string;
           act_color?: string;
           user_priority?: number;
+          sender_name?: string | null;
+          sender_email?: string | null;
+          account_email?: string | null;
+          email_date?: string | null;
+          importance_score?: number | null;
+          importance_reason?: string | null;
+          email_message_id?: number | null;
+          is_read?: boolean | null;
+          learned_boost?: number | null;
+          boost_reasons?: string[] | null;
         }>;
       };
       if (result.items && result.items.length > 0) {
@@ -431,6 +359,16 @@ function buildUi() {
           act_title: item.act_title,
           act_color: item.act_color,
           user_priority: item.user_priority,
+          sender_name: item.sender_name,
+          sender_email: item.sender_email,
+          account_email: item.account_email,
+          email_date: item.email_date,
+          importance_score: item.importance_score,
+          importance_reason: item.importance_reason,
+          email_message_id: item.email_message_id,
+          is_read: item.is_read,
+          learned_boost: item.learned_boost,
+          boost_reasons: item.boost_reasons,
         })));
       }
     } catch (e) {
@@ -442,7 +380,7 @@ function buildUi() {
   // Refresh attention items - called after Play mutations and on polling interval
   async function refreshAttentionItems(): Promise<void> {
     try {
-      const result = await kernelRequest('cairn/attention', { hours: 168, limit: 50 }) as {
+      const result = await kernelRequest('cairn/attention', { hours: 168, limit: 200 }) as {
         count: number;
         items: Array<{
           entity_type: string;
@@ -460,6 +398,16 @@ function buildUi() {
           act_title?: string;
           act_color?: string;
           user_priority?: number;
+          sender_name?: string | null;
+          sender_email?: string | null;
+          account_email?: string | null;
+          email_date?: string | null;
+          importance_score?: number | null;
+          importance_reason?: string | null;
+          email_message_id?: number | null;
+          is_read?: boolean | null;
+          learned_boost?: number | null;
+          boost_reasons?: string[] | null;
         }>;
       };
       cairnView.updateSurfaced(result.items.map(item => ({
@@ -476,6 +424,16 @@ function buildUi() {
         act_title: item.act_title,
         act_color: item.act_color,
         user_priority: item.user_priority,
+        sender_name: item.sender_name,
+        sender_email: item.sender_email,
+        account_email: item.account_email,
+        email_date: item.email_date,
+        importance_score: item.importance_score,
+        importance_reason: item.importance_reason,
+        email_message_id: item.email_message_id,
+        is_read: item.is_read,
+        learned_boost: item.learned_boost,
+        boost_reasons: item.boost_reasons,
       })));
     } catch (e) {
       console.log('Could not refresh attention items:', e);
@@ -600,45 +558,80 @@ function buildUi() {
     flex: 1;
     display: flex;
     overflow: hidden;
+    height: 100%;
+    min-height: 0;
   `;
-  mainViewContainer.appendChild(cairnView.container);
-
   // CAIRN view fills the main container
   cairnView.container.style.display = 'flex';
 
   // Context state for the context meter
   let currentConversationId: string | null = null;
 
-  // Inspector stub elements (used by renderPlayInspector, rendered into overlay context)
-  const inspectionTitle = el('div') as HTMLDivElement;
-  const inspectionBody = el('div') as HTMLDivElement;
-
   // Context meter stubs (updated by updateContextMeter, displayed in nav)
   const meterFill = el('div') as HTMLDivElement;
   const meterText = el('span') as HTMLSpanElement;
 
+  // ============ Create Agent Views ============
+  const reosView = createReosView({ kernelRequest });
+  const rivaView = createRivaView();
+
+  // Insert context meter + health indicator into CAIRN's chat header
+  cairnView.chatHeader.appendChild(navContextMeter);
+  cairnView.chatHeader.appendChild(healthIndicator);
+
+  // ============ The Play (created early, used as a view) ============
+  const settingsOverlay = createSettingsOverlay();
+  const playOverlay = createPlayOverlay(() => {});
+  const playViewContainer = playOverlay.viewElement ?? playOverlay.element;
+  playViewContainer.style.display = 'none';
+  playViewContainer.style.flex = '1';
+
+  // Add all views to container
+  mainViewContainer.appendChild(playViewContainer);
+  mainViewContainer.appendChild(cairnView.container);
+  mainViewContainer.appendChild(reosView.container);
+  mainViewContainer.appendChild(rivaView.container);
+  reosView.container.style.display = 'none';
+  rivaView.container.style.display = 'none';
+
+  // View router: swap which view is displayed in mainViewContainer
+  const viewMap: Record<AgentId, HTMLElement> = {
+    play: playViewContainer,
+    cairn: cairnView.container,
+    reos: reosView.container,
+    riva: rivaView.container,
+  };
+
+  function switchView(id: AgentId) {
+    for (const [viewId, viewEl] of Object.entries(viewMap)) {
+      viewEl.style.display = viewId === id ? 'flex' : 'none';
+    }
+    currentAgentView = id;
+    // Trigger Play data load when switching to it
+    if (id === 'play') {
+      playOverlay.open();
+    }
+    // ReOS dashboard polling lifecycle
+    if (id === 'reos') {
+      reosView.startPolling();
+    } else {
+      reosView.stopPolling();
+    }
+  }
+
+  // ============ Agent Bar ============
+  const agentBar = createAgentBar({
+    onSwitchAgent: (id) => switchView(id),
+    onOpenSettings: () => settingsOverlay.show(),
+  });
+
   // ============ Shell Assembly ============
-  // Layout: nav (280px) | mainViewContainer (CAIRN view)
-  shell.appendChild(nav);
+  // Layout: agentBar (180px) | mainViewContainer (swappable views)
+  shell.appendChild(agentBar.element);
   shell.appendChild(mainViewContainer);
 
   root.appendChild(shell);
-
-  // Create Play overlay
-  const playOverlay = createPlayOverlay(() => {
-    // Callback when overlay closes
-    playInspectorActive = false;
-  });
-  root.appendChild(playOverlay.element);
-
-  // Create Settings overlay
-  const settingsOverlay = createSettingsOverlay();
   root.appendChild(settingsOverlay.element);
-
-  // Wire up settings button
-  settingsBtn.addEventListener('click', () => {
-    settingsOverlay.show();
-  });
 
   // Create Context overlay
   const contextOverlay = createContextOverlay();
@@ -662,87 +655,10 @@ function buildUi() {
   let kbTextDraft = '';
   let kbPreview: PlayKbWritePreviewResult | null = null;
 
-  // Flag to track if "The Play" view is active in the inspection panel
-  let playInspectorActive = false;
-
   // Log JSON to console for debugging
   function showJsonInInspector(title: string, obj: unknown) {
     console.log(`[${title}]`, obj);
   }
-
-  async function openDashboardWindow() {
-    console.log('openDashboardWindow called');
-    try {
-      const existing = await WebviewWindow.getByLabel('dashboard');
-      console.log('existing dashboard window:', existing);
-      if (existing) {
-        await existing.setFocus();
-        return;
-      }
-    } catch (e) {
-      console.log('getByLabel error (expected if window does not exist):', e);
-      // Best effort: if getByLabel fails, fall through and create a new window.
-    }
-
-    try {
-      console.log('Creating new dashboard window...');
-      const w = new WebviewWindow('dashboard', {
-        title: 'System Dashboard — Talking Rock',
-        url: '/?view=dashboard',
-        width: 1000,
-        height: 800
-      });
-      console.log('WebviewWindow created:', w);
-
-      w.once('tauri://created', () => {
-        console.log('Dashboard window created successfully');
-      });
-      w.once('tauri://error', (e) => {
-        console.error('Dashboard window creation error:', e);
-      });
-    } catch (e) {
-      console.error('Failed to create dashboard window:', e);
-    }
-  }
-
-  async function openPlayWindow() {
-    console.log('openPlayWindow called');
-    try {
-      const existing = await WebviewWindow.getByLabel('play');
-      console.log('existing play window:', existing);
-      if (existing) {
-        await existing.setFocus();
-        return;
-      }
-    } catch (e) {
-      console.log('getByLabel error (expected if window does not exist):', e);
-      // Best effort: if getByLabel fails, fall through and create a new window.
-    }
-
-    try {
-      console.log('Creating new play window...');
-      const w = new WebviewWindow('play', {
-        title: 'The Play — Talking Rock',
-        url: '/?view=play',
-        width: 1920,
-        height: 1080,
-      });
-      console.log('WebviewWindow created:', w);
-
-      w.once('tauri://created', () => {
-        console.log('Play window created successfully');
-      });
-      w.once('tauri://error', (e) => {
-        console.error('Play window creation error:', e);
-      });
-    } catch (e) {
-      console.error('Failed to create play window:', e);
-    }
-  }
-
-  // Play button opens The Play window (standalone 1080p window)
-  playBtn.addEventListener('click', () => void openPlayWindow());
-  dashboardBtn.addEventListener('click', () => void openDashboardWindow());
 
   // Helper functions (rowHeader, label, textInput, textArea, smallButton)
   // are now imported from ./dom.ts
@@ -774,470 +690,11 @@ function buildUi() {
     kbPreview = null;
   }
 
-  function renderPlayInspector() {
-    inspectionTitle.textContent = 'The Play';
-    inspectionBody.innerHTML = '';
-
-    if (!activeActId) {
-      const empty = el('div');
-      empty.textContent = 'Create an Act to begin.';
-      empty.style.opacity = '0.8';
-      inspectionBody.appendChild(empty);
-
-      inspectionBody.appendChild(rowHeader('Act'));
-      const actCreateRow = el('div');
-      actCreateRow.style.display = 'flex';
-      actCreateRow.style.gap = '8px';
-      const actNewTitle = textInput('');
-      actNewTitle.placeholder = 'New act title';
-      const actCreate = smallButton('Create');
-      actCreateRow.appendChild(actNewTitle);
-      actCreateRow.appendChild(actCreate);
-      inspectionBody.appendChild(actCreateRow);
-
-      actCreate.addEventListener('click', () => {
-        void (async () => {
-          const title = actNewTitle.value.trim();
-          if (!title) return;
-          const res = (await kernelRequest('play/acts/create', { title })) as PlayActsCreateResult;
-          activeActId = res.created_act_id;
-          selectedSceneId = null;
-          await refreshActs();
-          if (activeActId) await refreshScenes(activeActId);
-        })();
-      });
-      return;
-    }
-
-    const activeAct = actsCache.find((a) => a.act_id === activeActId) ?? null;
-
-    const status = el('div');
-    status.style.fontSize = '12px';
-    status.style.opacity = '0.85';
-    status.style.marginBottom = '8px';
-    status.textContent = selectedSceneId
-      ? `Act → Scene`
-      : `Act`;
-    inspectionBody.appendChild(status);
-
-    // Act editor + create
-    inspectionBody.appendChild(rowHeader('Act'));
-
-    const actTitle = textInput('');
-    const actNotes = textArea('', 70);
-    const actRepoPath = textInput('');
-    actRepoPath.placeholder = '/path/to/project';
-    actRepoPath.style.flex = '1';
-    const actRepoRow = el('div');
-    actRepoRow.style.display = 'flex';
-    actRepoRow.style.gap = '8px';
-    actRepoRow.style.alignItems = 'center';
-    actRepoRow.style.flexWrap = 'wrap';
-
-    // Browse button for folder picker
-    const actRepoBrowse = smallButton('Browse...');
-    actRepoBrowse.style.background = 'rgba(59, 130, 246, 0.3)';
-    actRepoBrowse.style.borderColor = '#3b82f6';
-    actRepoBrowse.style.color = '#60a5fa';
-
-    const actRepoOrLabel = el('span');
-    actRepoOrLabel.textContent = 'or';
-    actRepoOrLabel.style.color = 'rgba(255, 255, 255, 0.4)';
-    actRepoOrLabel.style.fontSize = '11px';
-
-    const actRepoAssign = smallButton('Set');
-    actRepoRow.appendChild(actRepoBrowse);
-    actRepoRow.appendChild(actRepoOrLabel);
-    actRepoRow.appendChild(actRepoPath);
-    actRepoRow.appendChild(actRepoAssign);
-    const actRepoStatus = el('div');
-    actRepoStatus.style.fontSize = '11px';
-    actRepoStatus.style.marginTop = '4px';
-    actRepoStatus.style.color = '#666';
-    const actSave = smallButton('Save Act');
-    const actCreateRow = el('div');
-    actCreateRow.style.display = 'flex';
-    actCreateRow.style.gap = '8px';
-    const actNewTitle = textInput('');
-    actNewTitle.placeholder = 'New act title';
-    const actCreate = smallButton('Create');
-    actCreateRow.appendChild(actNewTitle);
-    actCreateRow.appendChild(actCreate);
-
-    inspectionBody.appendChild(label('Title'));
-    inspectionBody.appendChild(actTitle);
-    inspectionBody.appendChild(label('Notes'));
-    inspectionBody.appendChild(actNotes);
-    inspectionBody.appendChild(label('Repository Path'));
-    inspectionBody.appendChild(actRepoRow);
-    inspectionBody.appendChild(actRepoStatus);
-    inspectionBody.appendChild(actSave);
-    inspectionBody.appendChild(label('Create new act'));
-    inspectionBody.appendChild(actCreateRow);
-
-    void (async () => {
-      if (!activeAct) return;
-      actTitle.value = activeAct.title ?? '';
-      actNotes.value = activeAct.notes ?? '';
-      actRepoPath.value = activeAct.repo_path ?? '';
-      if (activeAct.repo_path) {
-        actRepoStatus.textContent = `Current: ${activeAct.repo_path}`;
-        actRepoStatus.style.color = '#22c55e';
-      } else {
-        actRepoStatus.textContent = 'No repository assigned. Code mode requires a repo.';
-        actRepoStatus.style.color = '#f59e0b';
-      }
-    })();
-
-    actSave.addEventListener('click', () => {
-      void (async () => {
-        if (!activeActId) return;
-        await kernelRequest('play/acts/update', {
-          act_id: activeActId,
-          title: actTitle.value,
-          notes: actNotes.value
-        });
-        await refreshActs();
-      })();
-    });
-
-    // Helper to assign repo path
-    const assignActRepo = async (repoPath: string) => {
-      if (!activeActId) return;
-      if (!repoPath) {
-        actRepoStatus.textContent = 'Please select or enter a path';
-        actRepoStatus.style.color = '#ef4444';
-        return;
-      }
-      try {
-        actRepoStatus.textContent = 'Setting...';
-        actRepoStatus.style.color = '#60a5fa';
-        const res = await kernelRequest('play/acts/assign_repo', {
-          act_id: activeActId,
-          repo_path: repoPath,
-        }) as { success: boolean; repo_path: string };
-        actRepoStatus.textContent = `Set: ${res.repo_path}`;
-        actRepoStatus.style.color = '#22c55e';
-        actRepoPath.value = res.repo_path;
-        await refreshActs();
-      } catch (err) {
-        actRepoStatus.textContent = `Error: ${String(err)}`;
-        actRepoStatus.style.color = '#ef4444';
-      }
-    };
-
-    // Browse button - opens folder picker
-    actRepoBrowse.addEventListener('click', () => {
-      void (async () => {
-        try {
-          const selected = await openDialog({
-            directory: true,
-            multiple: false,
-            title: 'Select Repository Folder',
-          });
-          if (selected && typeof selected === 'string') {
-            actRepoPath.value = selected;  // Update text field immediately
-            await assignActRepo(selected);
-          }
-        } catch (err) {
-          actRepoStatus.textContent = `Error: ${String(err)}`;
-          actRepoStatus.style.color = '#ef4444';
-        }
-      })();
-    });
-
-    // Manual text entry
-    actRepoAssign.addEventListener('click', () => {
-      void (async () => {
-        await assignActRepo(actRepoPath.value.trim());
-      })();
-    });
-
-    actCreate.addEventListener('click', () => {
-      void (async () => {
-        const title = actNewTitle.value.trim();
-        if (!title) return;
-        const res = (await kernelRequest('play/acts/create', { title })) as PlayActsCreateResult;
-        activeActId = res.created_act_id;
-        selectedSceneId = null;
-        await refreshActs();
-        if (activeActId) await refreshScenes(activeActId);
-      })();
-    });
-
-    // Scenes section
-    inspectionBody.appendChild(rowHeader('Scenes'));
-
-    const sceneCreateTitle = textInput('');
-    sceneCreateTitle.placeholder = 'New scene title';
-    const sceneCreateBtn = smallButton('Create');
-    const sceneCreateRow = el('div');
-    sceneCreateRow.style.display = 'flex';
-    sceneCreateRow.style.gap = '8px';
-    sceneCreateRow.appendChild(sceneCreateTitle);
-    sceneCreateRow.appendChild(sceneCreateBtn);
-    inspectionBody.appendChild(sceneCreateRow);
-
-    const scenesList = el('div');
-    scenesList.style.display = 'flex';
-    scenesList.style.flexDirection = 'column';
-    scenesList.style.gap = '6px';
-    scenesList.style.marginTop = '8px';
-    inspectionBody.appendChild(scenesList);
-
-    const sceneDetails = el('div');
-    inspectionBody.appendChild(sceneDetails);
-
-    const kbSection = el('div');
-    inspectionBody.appendChild(kbSection);
-
-    const renderScenesList = () => {
-      scenesList.innerHTML = '';
-      if (scenesCache.length === 0) {
-        const empty = el('div');
-        empty.textContent = '(no scenes yet)';
-        empty.style.opacity = '0.7';
-        scenesList.appendChild(empty);
-        return;
-      }
-      for (const s of scenesCache) {
-        const btn = smallButton(selectedSceneId === s.scene_id ? `• ${s.title}` : s.title);
-        btn.style.textAlign = 'left';
-        btn.addEventListener('click', () => {
-          selectedSceneId = s.scene_id;
-          void (async () => {
-            if (activeActId) {
-              await refreshKbForSelection();
-            }
-            renderPlayInspector();
-          })();
-        });
-        scenesList.appendChild(btn);
-      }
-    };
-
-    const renderSceneDetails = () => {
-      sceneDetails.innerHTML = '';
-      if (!selectedSceneId) return;
-      const s = scenesCache.find((x) => x.scene_id === selectedSceneId);
-      if (!s) return;
-
-      sceneDetails.appendChild(rowHeader('Scene Details'));
-      const tTitle = textInput(s.title ?? '');
-      const tIntent = textInput(s.intent ?? '');
-      const tStatus = textInput(s.status ?? '');
-      const tH = textInput(s.time_horizon ?? '');
-      const tNotes = textArea(s.notes ?? '', 80);
-      const save = smallButton('Save Scene');
-
-      sceneDetails.appendChild(label('Title'));
-      sceneDetails.appendChild(tTitle);
-      sceneDetails.appendChild(label('Intent'));
-      sceneDetails.appendChild(tIntent);
-      sceneDetails.appendChild(label('Status'));
-      sceneDetails.appendChild(tStatus);
-      sceneDetails.appendChild(label('Time horizon'));
-      sceneDetails.appendChild(tH);
-      sceneDetails.appendChild(label('Notes'));
-      sceneDetails.appendChild(tNotes);
-      sceneDetails.appendChild(save);
-
-      save.addEventListener('click', () => {
-        void (async () => {
-          if (!activeActId || !selectedSceneId) return;
-          await kernelRequest('play/scenes/update', {
-            act_id: activeActId,
-            scene_id: selectedSceneId,
-            title: tTitle.value,
-            intent: tIntent.value,
-            status: tStatus.value,
-            time_horizon: tH.value,
-            notes: tNotes.value
-          });
-          await refreshScenes(activeActId);
-          renderPlayInspector();
-        })();
-      });
-    };
-
-    const renderKb = () => {
-      kbSection.innerHTML = '';
-      kbSection.appendChild(rowHeader('Mini Knowledgebase'));
-
-      const who = el('div');
-      who.style.fontSize = '12px';
-      who.style.opacity = '0.8';
-      who.style.marginBottom = '6px';
-      who.textContent = selectedSceneId
-        ? `Scene KB`
-        : `Act KB`;
-      kbSection.appendChild(who);
-
-      const fileRow = el('div');
-      fileRow.style.display = 'flex';
-      fileRow.style.gap = '8px';
-      const pathInput = textInput(kbSelectedPath);
-      const loadBtn = smallButton('Load');
-      fileRow.appendChild(pathInput);
-      fileRow.appendChild(loadBtn);
-      kbSection.appendChild(fileRow);
-
-      const listWrap = el('div');
-      listWrap.style.display = 'flex';
-      listWrap.style.flexWrap = 'wrap';
-      listWrap.style.gap = '6px';
-      listWrap.style.margin = '8px 0';
-      kbSection.appendChild(listWrap);
-
-      const editor = textArea(kbTextDraft, 180);
-      kbSection.appendChild(editor);
-
-      const btnRow = el('div');
-      btnRow.style.display = 'flex';
-      btnRow.style.gap = '8px';
-      btnRow.style.marginTop = '8px';
-      const previewBtn = smallButton('Preview');
-      const applyBtn = smallButton('Apply');
-      btnRow.appendChild(previewBtn);
-      btnRow.appendChild(applyBtn);
-      kbSection.appendChild(btnRow);
-
-      const diffPre = el('pre');
-      diffPre.style.whiteSpace = 'pre-wrap';
-      diffPre.style.fontSize = '12px';
-      diffPre.style.marginTop = '8px';
-      diffPre.style.padding = '8px 10px';
-      diffPre.style.borderRadius = '10px';
-      diffPre.style.border = '1px solid rgba(209, 213, 219, 0.65)';
-      diffPre.style.background = 'rgba(255, 255, 255, 0.35)';
-      diffPre.textContent = kbPreview ? kbPreview.diff : '';
-      kbSection.appendChild(diffPre);
-
-      const errorLine = el('div');
-      errorLine.style.fontSize = '12px';
-      errorLine.style.marginTop = '6px';
-      errorLine.style.opacity = '0.85';
-      kbSection.appendChild(errorLine);
-
-      editor.addEventListener('input', () => {
-        kbTextDraft = editor.value;
-      });
-
-      pathInput.addEventListener('input', () => {
-        kbSelectedPath = pathInput.value;
-      });
-
-      loadBtn.addEventListener('click', () => {
-        void (async () => {
-          errorLine.textContent = '';
-          kbSelectedPath = pathInput.value || 'kb.md';
-          await refreshKbForSelection();
-          renderPlayInspector();
-        })();
-      });
-
-      previewBtn.addEventListener('click', () => {
-        void (async () => {
-          errorLine.textContent = '';
-          if (!activeActId) return;
-          try {
-            const res = (await kernelRequest('play/kb/write_preview', {
-              act_id: activeActId,
-              scene_id: selectedSceneId,
-              path: kbSelectedPath,
-              text: editor.value
-            })) as PlayKbWritePreviewResult;
-            kbPreview = res;
-            diffPre.textContent = res.diff ?? '';
-          } catch (e) {
-            errorLine.textContent = `Preview error: ${String(e)}`;
-          }
-        })();
-      });
-
-      applyBtn.addEventListener('click', () => {
-        void (async () => {
-          errorLine.textContent = '';
-          if (!activeActId) return;
-          if (!kbPreview) {
-            errorLine.textContent = 'Preview first.';
-            return;
-          }
-          try {
-            const res = (await kernelRequest('play/kb/write_apply', {
-              act_id: activeActId,
-              scene_id: selectedSceneId,
-              path: kbSelectedPath,
-              text: editor.value,
-              expected_sha256_current: kbPreview.expected_sha256_current
-            })) as PlayKbWriteApplyResult;
-            void res;
-            await refreshKbForSelection();
-            renderPlayInspector();
-          } catch (e) {
-            if (e instanceof KernelError && e.code === -32009) {
-              errorLine.textContent = 'Conflict: file changed since preview. Re-preview to continue.';
-            } else {
-              errorLine.textContent = `Apply error: ${String(e)}`;
-            }
-          }
-        })();
-      });
-
-      // Render file pills if we already have them cached.
-      void (async () => {
-        try {
-          if (!activeActId) return;
-          const filesRes = (await kernelRequest('play/kb/list', {
-            act_id: activeActId,
-            scene_id: selectedSceneId
-          })) as PlayKbListResult;
-          const files = filesRes.files ?? [];
-          listWrap.innerHTML = '';
-          for (const f of files) {
-            const pill = smallButton(f);
-            pill.addEventListener('click', () => {
-              kbSelectedPath = f;
-              void (async () => {
-                await refreshKbForSelection();
-                renderPlayInspector();
-              })();
-            });
-            listWrap.appendChild(pill);
-          }
-        } catch {
-          // ignore
-        }
-      })();
-    };
-
-    sceneCreateBtn.addEventListener('click', () => {
-      void (async () => {
-        const title = sceneCreateTitle.value.trim();
-        if (!title || !activeActId) return;
-        await kernelRequest('play/scenes/create', { act_id: activeActId, title });
-        await refreshScenes(activeActId);
-        renderPlayInspector();
-      })();
-    });
-
-    renderScenesList();
-    renderSceneDetails();
-    void (async () => {
-      await refreshKbForSelection();
-      renderKb();
-    })();
-  }
 
   async function refreshActs() {
     const res = (await kernelRequest('play/acts/list', {})) as PlayActsListResult;
     activeActId = res.active_act_id ?? null;
     actsCache = res.acts ?? [];
-
-    // Only render The Play inspector if the user has activated it
-    if (playInspectorActive) {
-      renderPlayInspector();
-    }
   }
 
   async function refreshScenes(actId: string) {
@@ -1245,10 +702,6 @@ function buildUi() {
     scenesCache = res.scenes ?? [];
     if (selectedSceneId && !scenesCache.some((s) => s.scene_id === selectedSceneId)) {
       selectedSceneId = null;
-    }
-    // Only render The Play inspector if the user has activated it
-    if (playInspectorActive) {
-      renderPlayInspector();
     }
   }
 
@@ -1292,50 +745,6 @@ function buildUi() {
   // Update context meter periodically and after messages
   setInterval(() => void updateContextMeter(), 30000);
 
-  // Load system status
-  async function refreshSystemStatus() {
-    try {
-      const result = await kernelRequest('tools/call', {
-        name: 'linux_system_info',
-        arguments: {}
-      }) as { result: SystemInfoResult };
-
-      const info = result.result ?? result as unknown as SystemInfoResult;
-
-      const memPercent = info.memory_percent ?? 0;
-      const diskPercent = info.disk_percent ?? 0;
-      const loadAvg = info.load_avg ?? [0, 0, 0];
-
-      systemStatus.innerHTML = `
-        <div style="margin-bottom: 6px"><strong>${escapeHtml(info.hostname ?? 'Unknown')}</strong></div>
-        <div style="opacity: 0.8; margin-bottom: 4px">${escapeHtml(info.distro ?? 'Linux')}</div>
-        <div style="margin-bottom: 4px">Kernel: ${escapeHtml(info.kernel ?? 'N/A')}</div>
-        <div style="margin-bottom: 4px">Uptime: ${escapeHtml(info.uptime ?? 'N/A')}</div>
-        <div style="margin-bottom: 6px">
-          <div style="display: flex; justify-content: space-between;">
-            <span>Memory</span>
-            <span>${memPercent.toFixed(0)}%</span>
-          </div>
-          <div style="height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden;">
-            <div style="height: 100%; width: ${memPercent}%; background: ${memPercent > 80 ? '#ef4444' : memPercent > 60 ? '#f59e0b' : '#22c55e'}"></div>
-          </div>
-        </div>
-        <div style="margin-bottom: 6px">
-          <div style="display: flex; justify-content: space-between;">
-            <span>Disk (/)</span>
-            <span>${diskPercent.toFixed(0)}%</span>
-          </div>
-          <div style="height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden;">
-            <div style="height: 100%; width: ${diskPercent}%; background: ${diskPercent > 90 ? '#ef4444' : diskPercent > 75 ? '#f59e0b' : '#22c55e'}"></div>
-          </div>
-        </div>
-        <div style="opacity: 0.8">Load: ${loadAvg[0].toFixed(2)} ${loadAvg[1].toFixed(2)} ${loadAvg[2].toFixed(2)}</div>
-      `;
-    } catch (e) {
-      systemStatus.innerHTML = `<span style="opacity: 0.6">Could not load system info</span>`;
-    }
-  }
-
   // Keyboard shortcuts
   document.addEventListener('keydown', (e) => {
     const chatInput = cairnView.getChatInput();
@@ -1354,12 +763,6 @@ function buildUi() {
       cairnView.addChatMessage('assistant', 'Chat cleared. How can I help?');
     }
 
-    // Ctrl+R to refresh system status
-    if ((e.ctrlKey || e.metaKey) && e.key === 'r' && !e.shiftKey) {
-      e.preventDefault();
-      void refreshSystemStatus();
-    }
-
     // Escape to clear input
     if (e.key === 'Escape' && document.activeElement === chatInput) {
       chatInput.value = '';
@@ -1370,18 +773,11 @@ function buildUi() {
   // Initial load
   void (async () => {
     try {
-      // Load system status
-      await refreshSystemStatus();
-      // Refresh every 30 seconds
-      setInterval(() => {
-        void refreshSystemStatus();
-      }, 30000);
-
       await refreshActs();
       if (activeActId) await refreshScenes(activeActId);
 
       // Welcome message
-      cairnView.addChatMessage('assistant', 'Welcome to Talking Rock! Ask me anything about your system or schedule. Keyboard shortcuts: Ctrl+K to focus, Ctrl+L to clear, Ctrl+R to refresh status.');
+      cairnView.addChatMessage('assistant', 'Welcome to Talking Rock! Ask me anything about your schedule. Keyboard shortcuts: Ctrl+K to focus, Ctrl+L to clear.');
     } catch (e) {
       showJsonInInspector('Startup error', { error: String(e) });
     }

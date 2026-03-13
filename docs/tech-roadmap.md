@@ -456,6 +456,80 @@ class DocumentationLookup:
 
 ---
 
+### Phase 6: Specialized Agents
+**Goal: Extend the Talking Rock ecosystem with domain-specific agents that follow the established pattern: rely on an open-source tool for data ingestion, add local AI intelligence on top.**
+
+Each agent is a Talking Rock ecosystem child — local-first, Ollama-only, SQLite-backed, privacy-first. Each inherits all shared constraints. Each follows the Cairn pattern of partnering with existing tools rather than reinventing data pipelines.
+
+#### 6.1 Assay — Dialectic-Scored RSS Feed Reader
+
+**What it does:** Reads your RSS feeds, scores articles against dialectics you care about, and surfaces the most relevant 1-2x daily.
+
+**Key concept — Dialectics:** Rather than pre-defined scoring dimensions (like Sieve's 7-dimension rubric), Assay discovers what tensions matter to you through conversation. A dialectic is a pair of opposing lenses — e.g., "centralization vs. decentralization", "efficiency vs. resilience", "individual liberty vs. collective safety". You define these through natural dialogue; Assay learns your intellectual landscape.
+
+**How it works:**
+1. **Feed ingestion** — Subscribe to RSS/Atom feeds. Assay fetches and stores articles locally.
+2. **Dialectic discovery** — Through conversation, Assay surfaces candidate dialectics from your reading patterns and interests. You confirm, refine, or reject them.
+3. **LLM scoring** — Each article is scored against your dialectics using local Ollama inference. The score isn't "good/bad" — it's "how strongly does this article engage with tensions you care about?"
+4. **Surfacing** — 1-2x daily, Assay presents the highest-scoring articles with brief explanations of which dialectics they engage and why.
+
+**Design principles:**
+- **Your lens, not ours** — Sieve has Abend's voice and fixed dimensions. Assay has YOUR voice and YOUR dimensions.
+- **Discovery through dialogue** — Dialectics emerge from conversation, not configuration files.
+- **Never optimize for volume** — surfacing fewer, higher-quality articles is always better.
+- **Transparent scoring** — you see exactly which dialectics drove each article's score and can adjust.
+
+**Data backbone:** RSS/Atom feed parsing (likely `feedparser` or similar). No external service dependency.
+
+**Relationship to Sieve:** Sieve is editorial intelligence in a specific analytical voice. Assay is personal intelligence in YOUR voice. They could share feeds but serve fundamentally different purposes. Sieve publishes; Assay whispers.
+
+---
+
+#### 6.2 Aurum — Financial Awareness via Actual Budget
+
+**What it does:** Partners with [Actual Budget](https://actualbudget.org/) (open-source, self-hosted budgeting tool) to add AI-powered financial awareness. Actual connects to your bank, aggregates and stores your financial data. Aurum adds intelligence on top.
+
+**Key capabilities:**
+1. **Expense classification** — LLM-driven categorization of transactions that learns your patterns over time. "Was this grocery or restaurant?" becomes automatic.
+2. **Receipt decomposition** — The killer feature. Cross-references email receipts against credit card charges to break aggregate charges into component parts. An Amazon order with a book, a cable, and a kitchen tool becomes three categorized line items, not one opaque "AMAZON.COM" charge.
+3. **Pattern surfacing** — "You spent 40% more on dining out this month than your 3-month average." Not judgmental — observational. Mirror, not manager (inheriting Cairn's philosophy).
+4. **Anomaly detection** — Flag unusual charges, duplicate charges, or charges that don't match any known receipt.
+
+**Data backbone:** [Actual Budget](https://actualbudget.org/) handles bank sync (via SimpleFIN or GoCardless), transaction storage, and the core budgeting interface. Aurum reads from Actual's SQLite database and adds an AI conversational layer. Aurum does NOT replace Actual — it augments it.
+
+**Receipt decomposition flow:**
+```
+Email receipt (via Thunderbird bridge, shared with Cairn)
+  → Parse line items, quantities, prices
+  → Match against credit card charge (amount, merchant, date)
+  → Split the single transaction into N categorized sub-items
+  → Store decomposition in Aurum's DB, reference original Actual transaction
+```
+
+**Design principles:**
+- **Actual is the source of truth** — Aurum never modifies Actual's data. It reads and annotates.
+- **Mirror, not manager** — surfaces patterns without guilt. "You spent X" not "You shouldn't spend X."
+- **Receipt matching is best-effort** — when uncertain, ask rather than guess. Transparent confidence.
+- **Privacy is non-negotiable** — financial data never leaves your machine. Local inference only.
+
+**Relationship to Cairn:** Aurum could surface financial insights through Cairn's attention system — "heads up, your electricity bill was 2x normal" in the What Needs Attention pane. The Play could have a Finance Act with Scenes for budget reviews. Aurum's data enriches Cairn's understanding of your life without Cairn needing to understand finance directly.
+
+---
+
+#### Agent Pattern Summary
+
+| Agent | Data Backbone | AI Layer | Cadence |
+|-------|--------------|----------|---------|
+| **Cairn** | Thunderbird (email/calendar/contacts) | Attention minding, memory, life organization | Always-on |
+| **ReOS** | Linux system (procfs, systemd, packages) | Natural language system control | On-demand |
+| **RIVA** | Git repos, project docs | Agent orchestration, plan enforcement | On-demand |
+| **Assay** | RSS/Atom feeds | Dialectic scoring, article surfacing | 1-2x daily |
+| **Aurum** | Actual Budget (bank sync) | Expense classification, receipt decomposition | Daily |
+
+The pattern: **open-source tool handles data ingestion → local LLM adds intelligence → user stays in control.**
+
+---
+
 ## What Makes Talking Rock Different
 
 ### vs Typical Cloud AI Assistants
@@ -619,6 +693,10 @@ See [Conversation Lifecycle Spec](./CONVERSATION_LIFECYCLE_SPEC.md) for full imp
 - [ ] Documentation lookup (prevent API hallucination)
 - [ ] Plugin system
 - [ ] Community patterns library
+
+**Future: Specialized Agents**
+- [ ] Assay — Dialectic-scored RSS feed reader
+- [ ] Aurum — Financial awareness via Actual Budget
 
 ---
 
