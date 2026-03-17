@@ -189,6 +189,9 @@ class CairnIntentEngine:
             count = tool_result.get("count", 0)
             events = tool_result.get("events", [])
 
+            if tool_result.get("note") == "Calendar temporarily unavailable":
+                return "I couldn't access your calendar right now. Try again in a moment."
+
             if count == 0 or len(events) == 0:
                 return "Your calendar is empty - no upcoming events found."
 

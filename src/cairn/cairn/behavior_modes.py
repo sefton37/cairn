@@ -283,7 +283,7 @@ class BehaviorModeRegistry:
     def _fallback_mode(self, classification: Classification) -> BehaviorMode:
         """Create a fallback mode based on semantics."""
         if classification.semantics == ExecutionSemantics.INTERPRET:
-            return CONVERSATION_MODE
+            return GENERAL_QUERY_MODE
         elif classification.semantics == ExecutionSemantics.READ:
             return BehaviorMode(
                 name="generic_query",
@@ -331,15 +331,45 @@ CONVERSATION_MODE = BehaviorMode(
     verification_mode="FAST",
 )
 
+GENERAL_QUERY_MODE = BehaviorMode(
+    name="general_query",
+    needs_tool=True,
+    tool_selector=_static_tool("cairn_list_items"),
+    arg_extractor=_no_args,
+    system_prompt_template=(
+        "You are CAIRN, the Attention Minder — a friendly local AI assistant. "
+        "You are an AI — the user is a separate human being. "
+        "Never confuse your identity with the user's. "
+        "Answer the user's question using the data provided. "
+        "If the data doesn't help answer the question, respond conversationally."
+    ),
+    needs_hallucination_check=False,
+    verification_mode="FAST",
+)
+
+EMAIL_QUERY_MODE = BehaviorMode(
+    name="email_query",
+    needs_tool=False,
+    system_prompt_template=(
+        "You are CAIRN, the Attention Minder. "
+        "Email integration is not yet available. "
+        "Let the user know politely that email features are coming soon."
+    ),
+    needs_hallucination_check=False,
+    verification_mode="FAST",
+)
+
 PERSONAL_QUERY_MODE = BehaviorMode(
     name="personal_query",
-    needs_tool=False,
+    needs_tool=True,
+    tool_selector=_static_tool("cairn_list_items"),
+    arg_extractor=_no_args,
     system_prompt_template=(
         "You are CAIRN, the Attention Minder — an AI assistant. "
         "You are NOT the user. The user is a separate human being. "
         "Never refer to the user as 'CAIRN'. Address the user as 'you' or by their name. "
-        "Answer the user's personal question using ONLY the knowledge provided about them. "
-        "If no knowledge is available, explain they can fill out 'Your Story' in The Play."
+        "Answer the user's personal question using the knowledge base data provided. "
+        "If the data is empty, explain they can fill out 'Your Story' in The Play."
     ),
     needs_hallucination_check=False,
     verification_mode="FAST",
@@ -528,6 +558,14 @@ def create_default_registry() -> BehaviorModeRegistry:
     reg.register("stream", "human", "read", "health", HEALTH_QUERY_MODE)
     reg.register("stream", "human", "interpret", "health", HEALTH_QUERY_MODE)
 
+    # General (catch-all for unrecognized domains)
+    reg.register("stream", "human", "interpret", "general", GENERAL_QUERY_MODE)
+    reg.register("stream", "human", "read", "general", GENERAL_QUERY_MODE)
+
+    # Email
+    reg.register("stream", "human", "read", "email", EMAIL_QUERY_MODE)
+    reg.register("stream", "human", "interpret", "email", EMAIL_QUERY_MODE)
+
     # Domain-level defaults (catch-all for unregistered combos within a domain)
     reg.register_domain("health", HEALTH_QUERY_MODE)
     reg.register_domain("conversation", CONVERSATION_MODE)
@@ -539,5 +577,7 @@ def create_default_registry() -> BehaviorModeRegistry:
     reg.register_domain("knowledge", KNOWLEDGE_QUERY_MODE)
     reg.register_domain("play", PLAY_QUERY_MODE)
     reg.register_domain("undo", UNDO_MODE)
+    reg.register_domain("general", GENERAL_QUERY_MODE)
+    reg.register_domain("email", EMAIL_QUERY_MODE)
 
     return reg

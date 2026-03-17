@@ -297,6 +297,85 @@ def list_tools() -> list[Tool]:
                     },
                 },
             ),
+            # --- Knowledge, Undo, Health tools ---
+            Tool(
+                name="cairn_list_items",
+                description=(
+                    "List items in the knowledge base with optional filters. "
+                    "Returns items with their CAIRN metadata (kanban state, priority, etc.). "
+                    "Useful for personal queries about goals, projects, and stored knowledge."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "entity_type": {
+                            "type": "string",
+                            "enum": ["act", "scene"],
+                            "description": "Filter by entity type",
+                        },
+                        "kanban_state": {
+                            "type": "string",
+                            "enum": ["active", "backlog", "waiting", "someday", "done"],
+                            "description": "Filter by kanban state",
+                        },
+                        "has_priority": {
+                            "type": "boolean",
+                            "description": "true = only with priority, false = only without",
+                        },
+                        "is_overdue": {
+                            "type": "boolean",
+                            "description": "Only return overdue items",
+                        },
+                        "limit": {
+                            "type": "number",
+                            "description": "Max items to return (default: 50)",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="cairn_undo_last",
+                description=(
+                    "Undo the last reversible action. Use when the user says "
+                    "'undo that', 'put it back', 'nevermind', or 'revert'."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "conversation_id": {
+                            "type": "string",
+                            "description": "Optional: Scope undo to a specific conversation",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="cairn_health_report",
+                description=(
+                    "Get a health report for the system. Checks data freshness, "
+                    "act vitality, database integrity, and more. "
+                    "Use when the user asks 'how am I doing?', 'health check', "
+                    "or 'system health'."
+                ),
+                input_schema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="cairn_health_history",
+                description=(
+                    "Show health trends over time from daily snapshots. "
+                    "Use when user asks about health history, trends, "
+                    "or how things have changed."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "days": {
+                            "type": "integer",
+                            "description": "Number of days of history (default 30)",
+                        },
+                    },
+                },
+            ),
         ]
     )
 

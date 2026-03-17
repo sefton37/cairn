@@ -7,6 +7,7 @@ Optionally runs pip-audit if available (graceful fallback).
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from cairn.cairn.health.runner import HealthCheckResult, Severity
 
@@ -17,6 +18,9 @@ class SoftwareCurrencyCheck:
     """Check software infrastructure health."""
 
     name = "software_currency"
+
+    def __init__(self, db: Any) -> None:
+        self._db = db
 
     def run(self) -> list[HealthCheckResult]:
         """Run the software currency check."""
@@ -32,8 +36,8 @@ class SoftwareCurrencyCheck:
         try:
             from cairn.providers.factory import check_provider_health
 
-            health = check_provider_health()
-            if health.get("available", False):
+            health = check_provider_health(self._db)
+            if health.reachable:
                 return [HealthCheckResult(
                     check_name=self.name,
                     severity=Severity.HEALTHY,
@@ -41,7 +45,7 @@ class SoftwareCurrencyCheck:
                     finding_key=f"{self.name}:ollama:ok",
                 )]
             else:
-                error = health.get("error", "Unknown error")
+                error = health.error or "Unknown error"
                 return [HealthCheckResult(
                     check_name=self.name,
                     severity=Severity.WARNING,

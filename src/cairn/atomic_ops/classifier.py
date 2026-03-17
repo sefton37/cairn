@@ -31,6 +31,90 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
+# Maps hallucinated enum values back to valid ones.
+# Small models frequently invent semantics like "search", "ask", "query".
+_SEMANTICS_ALIASES: dict[str, str] = {
+    "search": "read",
+    "query": "read",
+    "fetch": "read",
+    "retrieve": "read",
+    "lookup": "read",
+    "get": "read",
+    "find": "read",
+    "check": "read",
+    "ask": "interpret",
+    "question": "interpret",
+    "answer": "interpret",
+    "explain": "interpret",
+    "summarize": "interpret",
+    "analyze": "interpret",
+    "research": "interpret",
+    "respond": "interpret",
+    "converse": "interpret",
+    "chat": "interpret",
+    "update": "execute",
+    "modify": "execute",
+    "create": "execute",
+    "delete": "execute",
+    "write": "execute",
+    "save": "execute",
+    "run": "execute",
+    "start": "execute",
+    "stop": "execute",
+    "install": "execute",
+}
+
+_DESTINATION_ALIASES: dict[str, str] = {
+    "display": "stream",
+    "output": "stream",
+    "screen": "stream",
+    "console": "stream",
+    "terminal": "stream",
+    "disk": "file",
+    "storage": "file",
+    "save": "file",
+    "persist": "file",
+    "system": "process",
+    "shell": "process",
+    "command": "process",
+}
+
+_CONSUMER_ALIASES: dict[str, str] = {
+    "user": "human",
+    "person": "human",
+    "people": "human",
+    "program": "machine",
+    "computer": "machine",
+    "system": "machine",
+    "api": "machine",
+    "automation": "machine",
+}
+
+
+def _normalize_semantics(value: str | None) -> str:
+    """Map hallucinated semantics values to valid enum values."""
+    if value is None:
+        return "interpret"
+    v = str(value).lower().strip()
+    return _SEMANTICS_ALIASES.get(v, v)
+
+
+def _normalize_destination(value: str | None) -> str:
+    """Map hallucinated destination values to valid enum values."""
+    if value is None:
+        return "stream"
+    v = str(value).lower().strip()
+    return _DESTINATION_ALIASES.get(v, v)
+
+
+def _normalize_consumer(value: str | None) -> str:
+    """Map hallucinated consumer values to valid enum values."""
+    if value is None:
+        return "human"
+    v = str(value).lower().strip()
+    return _CONSUMER_ALIASES.get(v, v)
+
+
 CLASSIFICATION_SYSTEM_PROMPT = """You are a REQUEST CLASSIFIER for a local AI assistant.
 
 Classify the user's request into five dimensions:
@@ -44,23 +128,27 @@ Classify the user's request into five dimensions:
    - "human": a person reads or interacts with it
    - "machine": another program processes it (JSON output, test runners, CI)
 
-3. **semantics** — What action does it take?
-   - "read": retrieve or display existing data without side effects
-   - "interpret": analyze, explain, summarize, or converse (including greetings and small talk)
-   - "execute": perform a side-effecting action (create, delete, run, install)
+3. **semantics** — What action does it take? ONLY these three values are valid:
+   - "read": retrieve or display existing data without side effects (includes searching, querying, checking, fetching)
+   - "interpret": analyze, explain, summarize, or converse (includes greetings, small talk, asking questions, answering)
+   - "execute": perform a side-effecting action (create, delete, run, install, update, modify, save)
+   IMPORTANT: Do NOT use any other value. "search", "ask", "query", "update" etc. are NOT valid — map them to read/interpret/execute.
 
-4. **domain** — What subject area does this relate to?
-   - "calendar": schedule, events, appointments, meetings
+4. **domain** — What subject area does this relate to? You MUST pick one:
+   - "calendar": schedule, events, appointments, meetings, time-related queries
    - "contacts": people, email addresses, phone numbers
+   - "email": emails, messages, inbox, correspondence
    - "system": CPU, memory, disk, processes, packages, services
    - "play": acts, scenes, beats (life organization hierarchy)
-   - "tasks": todos, reminders, deadlines
-   - "knowledge": stored notes, knowledge base
-   - "personal": questions about the user (identity, goals, values, preferences)
+   - "tasks": todos, reminders, deadlines, work items, "what should I work on"
+   - "knowledge": stored notes, knowledge base, information retrieval
+   - "personal": questions about the user (identity, goals, values, preferences, "tell me about myself")
    - "conversation": greetings, small talk, acknowledgments, social niceties
    - "feedback": meta-commentary about the assistant's responses or behavior
    - "undo": reverting or undoing a previous action
-   - null: cannot determine
+   - "health": system health, data freshness, "how am I doing?", wellness checks
+   - "general": anything that doesn't fit the above categories
+   IMPORTANT: domain must NEVER be null. Always pick the best match, or use "general" if truly uncertain.
 
 5. **action_hint** — What specific action does the user want?
    - "view": view, list, show, display
@@ -83,7 +171,7 @@ CRITICAL RULES:
   file/human/execute, domain="play", action_hint="create"
 - "how am I doing?" / "health check" / "system health":
   stream/human/read, domain="health", action_hint="view"
-- When uncertain, bias toward stream/human/interpret
+- When uncertain, bias toward stream/human/interpret with domain="general"
 
 EXAMPLES (showing input → output JSON):
 "good morning":
@@ -114,12 +202,12 @@ EXAMPLES (showing input → output JSON):
     "semantics":"interpret","confident":true,
     "domain":"personal","action_hint":"view"}
 {corrections_block}
-Return ONLY a JSON object:
-{"destination":"...","consumer":"...","semantics":"...",
-  "confident":true/false,"reasoning":"...",
-  "domain":"...or null","action_hint":"...or null"}
+Return ONLY a JSON object with NO extra text:
+{"destination":"stream|file|process","consumer":"human|machine","semantics":"read|interpret|execute",
+  "confident":true/false,"reasoning":"...","domain":"...","action_hint":"...or null"}
 
-Set confident=false if you are genuinely unsure which category fits best."""
+IMPORTANT: semantics MUST be exactly "read", "interpret", or "execute". No other values.
+Set confident=true when the request clearly fits a category. Set confident=false ONLY if genuinely ambiguous."""
 
 
 @dataclass
@@ -213,13 +301,18 @@ class AtomicClassifier:
         raw = self.llm.chat_json(system=system, user=user, temperature=0.1, top_p=0.9)
         data = json.loads(raw)
 
+        # Normalize common LLM hallucinations before enum validation
+        data["destination"] = _normalize_destination(data.get("destination"))
+        data["consumer"] = _normalize_consumer(data.get("consumer"))
+        data["semantics"] = _normalize_semantics(data.get("semantics"))
+
         # Validate and extract
         destination = DestinationType(data["destination"])
         consumer = ConsumerType(data["consumer"])
         semantics = ExecutionSemantics(data["semantics"])
         confident = bool(data.get("confident", False))
         reasoning = str(data.get("reasoning", ""))
-        domain = data.get("domain") or None
+        domain = data.get("domain") or "general"
         action_hint = data.get("action_hint") or None
 
         model_name = ""
@@ -278,11 +371,13 @@ class AtomicClassifier:
             semantics = ExecutionSemantics.EXECUTE
 
         # Domain
-        domain: str | None = None
+        domain: str = "general"
         if words & {"calendar", "schedule", "event", "meeting", "appointment"}:
             domain = "calendar"
-        elif words & {"contact", "person", "people", "email", "phone"}:
+        elif words & {"contact", "person", "people", "phone"}:
             domain = "contacts"
+        elif words & {"email", "emails", "inbox", "mail", "message", "messages"}:
+            domain = "email"
         elif words & {"cpu", "memory", "ram", "disk", "process", "system", "uptime", "docker"}:
             domain = "system"
         elif words & {"act", "scene", "play"}:

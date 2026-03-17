@@ -44,7 +44,7 @@ export async function showLockScreen(root: HTMLElement, options: LockScreenOptio
     align-items: center;
     justify-content: center;
     height: 100vh;
-    background: #0f172a;
+    background: var(--bg-base, #0f1114);
     font-family: system-ui, -apple-system, sans-serif;
     position: relative;
     overflow: hidden;
@@ -69,10 +69,11 @@ export async function showLockScreen(root: HTMLElement, options: LockScreenOptio
     inset: 0;
     background: linear-gradient(
       180deg,
-      rgba(15, 23, 42, 0.3) 0%,
-      rgba(15, 23, 42, 0.6) 50%,
-      rgba(15, 23, 42, 0.85) 100%
+      var(--gradient-start) 0%,
+      var(--gradient-mid) 50%,
+      var(--gradient-end) 100%
     );
+    opacity: 0.8;
   `;
   container.appendChild(overlay);
 
@@ -96,7 +97,7 @@ export async function showLockScreen(root: HTMLElement, options: LockScreenOptio
   logoText.style.cssText = `
     font-size: 42px;
     font-weight: 700;
-    color: #f1f5f9;
+    color: var(--text-primary, #e8e4de);
     letter-spacing: -0.5px;
     margin-bottom: 16px;
     text-shadow: 0 2px 20px rgba(0,0,0,0.5);
@@ -107,7 +108,7 @@ export async function showLockScreen(root: HTMLElement, options: LockScreenOptio
   mission.textContent = 'Local, open source, zero trust AI. Small models and footprint, outsized impact and trust.';
   mission.style.cssText = `
     font-size: 16px;
-    color: rgba(226, 232, 240, 0.9);
+    color: var(--text-secondary, rgba(232, 228, 222, 0.7));
     max-width: 460px;
     text-align: center;
     line-height: 1.6;
@@ -120,8 +121,8 @@ export async function showLockScreen(root: HTMLElement, options: LockScreenOptio
   const card = el('div');
   card.className = 'lock-card';
   card.style.cssText = `
-    background: rgba(15, 23, 42, 0.7);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--bg-surface, rgba(15, 17, 20, 0.95));
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
     border-radius: 16px;
     padding: 32px 40px;
     width: 340px;
@@ -141,7 +142,7 @@ export async function showLockScreen(root: HTMLElement, options: LockScreenOptio
   userLabel.style.cssText = `
     font-size: 18px;
     font-weight: 500;
-    color: #e2e8f0;
+    color: var(--text-primary, #e8e4de);
     margin-bottom: 8px;
   `;
 
@@ -151,7 +152,7 @@ export async function showLockScreen(root: HTMLElement, options: LockScreenOptio
     : 'Click below to authenticate with your system credentials';
   infoText.style.cssText = `
     font-size: 13px;
-    color: rgba(148, 163, 184, 0.7);
+    color: var(--text-tertiary, rgba(232, 228, 222, 0.5));
     margin-bottom: 20px;
     line-height: 1.5;
   `;
@@ -178,7 +179,7 @@ export async function showLockScreen(root: HTMLElement, options: LockScreenOptio
     padding: 14px 32px;
     border: none;
     border-radius: 8px;
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    background: var(--theme-primary, #d4a856);
     color: white;
     font-size: 15px;
     font-weight: 600;
@@ -237,12 +238,14 @@ export async function showLockScreen(root: HTMLElement, options: LockScreenOptio
   const vision = el('div');
   vision.textContent = 'Center your data around you, not a data center.';
   vision.style.cssText = `
-    font-size: 14px;
-    color: rgba(148, 163, 184, 0.7);
-    max-width: 400px;
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--text-secondary, rgba(232, 228, 222, 0.7));
+    max-width: 460px;
     text-align: center;
-    line-height: 1.5;
-    text-shadow: 0 1px 8px rgba(0,0,0,0.4);
+    line-height: 1.6;
+    letter-spacing: 0.3px;
+    text-shadow: 0 1px 10px rgba(0,0,0,0.5);
   `;
 
   // Security note
@@ -250,7 +253,7 @@ export async function showLockScreen(root: HTMLElement, options: LockScreenOptio
   secNote.style.cssText = `
     margin-top: 20px;
     font-size: 11px;
-    color: rgba(148, 163, 184, 0.4);
+    color: var(--text-muted, rgba(232, 228, 222, 0.3));
     text-align: center;
     max-width: 280px;
   `;
@@ -289,7 +292,7 @@ export async function showLockOverlay(onUnlock: () => void): Promise<void> {
     right: 0;
     bottom: 0;
     z-index: 10000;
-    background: rgba(15, 23, 42, 0.95);
+    background: var(--bg-surface, rgba(15, 17, 20, 0.95));
     backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
@@ -299,8 +302,8 @@ export async function showLockOverlay(onUnlock: () => void): Promise<void> {
 
   const card = el('div');
   card.style.cssText = `
-    background: rgba(30, 41, 59, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--modal-bg, #161920);
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
     border-radius: 16px;
     padding: 32px;
     width: 300px;
@@ -316,7 +319,7 @@ export async function showLockOverlay(onUnlock: () => void): Promise<void> {
   title.style.cssText = `
     font-size: 18px;
     font-weight: 600;
-    color: #f1f5f9;
+    color: var(--text-primary, #e8e4de);
     margin-bottom: 8px;
   `;
 
@@ -324,7 +327,7 @@ export async function showLockOverlay(onUnlock: () => void): Promise<void> {
   userDisplay.textContent = username;
   userDisplay.style.cssText = `
     font-size: 14px;
-    color: #94a3b8;
+    color: var(--text-tertiary, rgba(232, 228, 222, 0.5));
     margin-bottom: 20px;
   `;
 
@@ -343,7 +346,7 @@ export async function showLockOverlay(onUnlock: () => void): Promise<void> {
     padding: 12px;
     border: none;
     border-radius: 8px;
-    background: #3b82f6;
+    background: var(--theme-primary, #d4a856);
     color: white;
     font-size: 14px;
     font-weight: 600;

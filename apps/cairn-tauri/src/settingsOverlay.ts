@@ -8,8 +8,10 @@
 
 import { kernelRequest } from './kernel';
 import { el } from './dom';
+import { THEMES, getSavedThemeId, applyTheme, getThemeById } from './themes';
+import type { ThemeId } from './themes';
 
-type SettingsTab = 'llm' | 'persona' | 'safety' | 'learning' | 'integrations';
+type SettingsTab = 'llm' | 'persona' | 'safety' | 'learning' | 'integrations' | 'appearance';
 
 // Thunderbird integration types
 interface ThunderbirdAccount {
@@ -371,12 +373,14 @@ export function createSettingsOverlay(onClose?: () => void): SettingsOverlay {
   const safetyTab = createTab('safety', 'Safety', '🛡️');
   const learningTab = createTab('learning', 'Learning', '🧠');
   const integrationsTab = createTab('integrations', 'Integrations', '🔗');
+  const appearanceTab = createTab('appearance', 'Appearance', '🎨');
 
   tabsContainer.appendChild(llmTab);
   tabsContainer.appendChild(personaTab);
   tabsContainer.appendChild(safetyTab);
   tabsContainer.appendChild(learningTab);
   tabsContainer.appendChild(integrationsTab);
+  tabsContainer.appendChild(appearanceTab);
 
   // Content area
   const content = el('div');
@@ -538,6 +542,8 @@ export function createSettingsOverlay(onClose?: () => void): SettingsOverlay {
     learningTab.style.borderBottomColor = activeTab === 'learning' ? '#3b82f6' : 'transparent';
     integrationsTab.style.color = activeTab === 'integrations' ? '#fff' : 'rgba(255,255,255,0.6)';
     integrationsTab.style.borderBottomColor = activeTab === 'integrations' ? '#3b82f6' : 'transparent';
+    appearanceTab.style.color = activeTab === 'appearance' ? '#fff' : 'rgba(255,255,255,0.6)';
+    appearanceTab.style.borderBottomColor = activeTab === 'appearance' ? '#3b82f6' : 'transparent';
 
     content.innerHTML = '';
 
@@ -551,6 +557,8 @@ export function createSettingsOverlay(onClose?: () => void): SettingsOverlay {
       renderLearningTab();
     } else if (activeTab === 'integrations') {
       renderIntegrationsTab();
+    } else if (activeTab === 'appearance') {
+      renderAppearanceTab();
     }
   }
 
@@ -2287,6 +2295,161 @@ When surfacing items:
 
     validationSection.appendChild(validationGrid);
     content.appendChild(validationSection);
+  }
+
+  function renderAppearanceTab() {
+    const section = createSection('Theme');
+
+    const desc = el('div');
+    desc.textContent = 'Choose a color theme for the Cairn interface. Themes are derived from the Sonora Sunrise brand palette.';
+    desc.style.cssText = `
+      font-size: 13px;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 16px;
+      line-height: 1.5;
+    `;
+    section.appendChild(desc);
+
+    const currentThemeId = getSavedThemeId();
+
+    // Theme grid
+    const grid = el('div');
+    grid.style.cssText = `
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+    `;
+
+    // Group: Dark themes first, then light
+    const darkThemes = THEMES.filter(t => t.group === 'dark');
+    const lightThemes = THEMES.filter(t => t.group === 'light');
+
+    const groupLabel = (text: string) => {
+      const lbl = el('div');
+      lbl.textContent = text;
+      lbl.style.cssText = `
+        grid-column: 1 / -1;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.35);
+        margin-top: 4px;
+      `;
+      return lbl;
+    };
+
+    grid.appendChild(groupLabel('Dark'));
+
+    for (const theme of darkThemes) {
+      grid.appendChild(buildThemeCard(theme, currentThemeId));
+    }
+
+    grid.appendChild(groupLabel('Light'));
+
+    for (const theme of lightThemes) {
+      grid.appendChild(buildThemeCard(theme, currentThemeId));
+    }
+
+    section.appendChild(grid);
+    content.appendChild(section);
+  }
+
+  function buildThemeCard(theme: typeof THEMES[number], currentId: ThemeId): HTMLElement {
+    const isActive = theme.id === currentId;
+    const c = theme.colors;
+
+    const card = el('div');
+    card.style.cssText = `
+      border-radius: 10px;
+      padding: 14px;
+      cursor: pointer;
+      border: 2px solid ${isActive ? c.primary : 'rgba(255,255,255,0.08)'};
+      background: ${c.bgPrimary};
+      transition: border-color 0.2s, transform 0.15s;
+      position: relative;
+    `;
+
+    card.addEventListener('mouseenter', () => {
+      if (!isActive) card.style.borderColor = `rgba(${c.primaryRgb}, 0.4)`;
+      card.style.transform = 'translateY(-1px)';
+    });
+    card.addEventListener('mouseleave', () => {
+      if (!isActive) card.style.borderColor = 'rgba(255,255,255,0.08)';
+      card.style.transform = 'none';
+    });
+
+    // Active badge
+    if (isActive) {
+      const badge = el('div');
+      badge.textContent = 'Active';
+      badge.style.cssText = `
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: ${c.primary};
+        color: ${c.bgPrimary};
+      `;
+      card.appendChild(badge);
+    }
+
+    // Theme name
+    const name = el('div');
+    name.textContent = theme.name;
+    name.style.cssText = `
+      font-size: 13px;
+      font-weight: 600;
+      color: ${c.textPrimary};
+      margin-bottom: 4px;
+    `;
+    card.appendChild(name);
+
+    // Description
+    const descLine = el('div');
+    descLine.textContent = theme.description;
+    descLine.style.cssText = `
+      font-size: 10px;
+      color: ${c.textTertiary};
+      margin-bottom: 10px;
+      line-height: 1.4;
+    `;
+    card.appendChild(descLine);
+
+    // Color swatches
+    const swatches = el('div');
+    swatches.style.cssText = 'display: flex; gap: 6px;';
+
+    const makeSwatch = (color: string, label: string) => {
+      const sw = el('div');
+      sw.title = label;
+      sw.style.cssText = `
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: ${color};
+        border: 1px solid ${theme.group === 'light' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'};
+      `;
+      return sw;
+    };
+
+    swatches.appendChild(makeSwatch(c.primary, 'Primary'));
+    swatches.appendChild(makeSwatch(c.secondary, 'Secondary'));
+    swatches.appendChild(makeSwatch(c.bgPrimary, 'Background'));
+    card.appendChild(swatches);
+
+    // Click to apply
+    card.addEventListener('click', () => {
+      applyTheme(theme.id);
+      render();
+    });
+
+    return card;
   }
 
   function createSection(title: string): HTMLElement {

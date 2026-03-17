@@ -9,7 +9,6 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from .session import get_current_crypto_storage
 from .settings import settings
 
 logger = logging.getLogger(__name__)
@@ -23,9 +22,14 @@ def _get_crypto():
 
 
 def _write_text(path: Path, text: str) -> None:
-    """Write text data, encrypting if CryptoStorage is active."""
+    """Write text data, encrypting if CryptoStorage is active.
+
+    When encryption is active and text is empty, writes an empty plaintext file
+    instead of encrypting — avoids producing opaque binary that becomes mojibake
+    if read without a crypto session.
+    """
     crypto = _get_crypto()
-    if crypto:
+    if crypto and text:
         path.write_bytes(crypto.encrypt(text.encode("utf-8")))
         os.chmod(path, 0o600)
     else:
@@ -33,14 +37,37 @@ def _write_text(path: Path, text: str) -> None:
 
 
 def _read_text(path: Path) -> str:
-    """Read text data, decrypting if CryptoStorage is active."""
+    """Read text data, decrypting if CryptoStorage is active.
+
+    If decryption fails (e.g. crypto inactive but file was encrypted),
+    returns empty string rather than raw binary as mojibake.
+    """
+    raw = path.read_bytes()
+
+    # If crypto is active, try decryption first
     crypto = _get_crypto()
     if crypto:
         try:
-            return crypto.decrypt(path.read_bytes()).decode("utf-8")
+            return crypto.decrypt(raw).decode("utf-8")
         except Exception:
-            pass  # Pre-encryption data fallback
-    return path.read_text(encoding="utf-8", errors="replace")
+            pass  # Fall through to plaintext attempt
+
+    # Validate that the file looks like valid UTF-8 text, not encrypted binary.
+    # AES-GCM output (nonce + ciphertext + tag) is not valid UTF-8 in most cases,
+    # but errors="replace" would silently produce mojibake. Detect and reject.
+    try:
+        text = raw.decode("utf-8")  # strict — raises on invalid bytes
+        return text
+    except UnicodeDecodeError:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "File %s contains non-UTF-8 data (%d bytes) — likely encrypted "
+            "without an active crypto session. Returning empty string.",
+            path,
+            len(raw),
+        )
+        return ""
 
 
 # =============================================================================
@@ -149,27 +176,17 @@ class FileAttachment:
     file_name: str  # Display name
     file_type: str  # Extension (pdf, docx, etc.)
     added_at: str  # ISO timestamp
+    page_id: str | None = None  # Set when attached to a knowledgebase page
 
 
 def play_root() -> Path:
     """Return the on-disk root for the theatrical model.
 
-    If running with an authenticated session, uses per-user isolated storage
-    at ~/.talkingrock/{username}/play. Otherwise falls back to the default
-    ~/.talkingrock/ directory.
-
-    Security:
-        - Per-user data isolation when session context is active
-        - Data can optionally be encrypted via CryptoStorage
+    Always uses the canonical data directory (~/.talkingrock/play). This is a
+    single-user system — the data directory does not vary per session. The
+    CryptoStorage context (if active) provides encryption/decryption for file
+    contents but does NOT change the storage location.
     """
-    # Check for per-user session context
-    crypto = get_current_crypto_storage()
-    if crypto is not None:
-        # Use per-user isolated storage
-        return crypto.user_data_root / "play"
-
-    # Fallback to default location (development/unauthenticated mode).
-    # Check env vars at call time (not import time) to support test overrides.
     env_dir = os.environ.get("TALKINGROCK_DATA_DIR") or os.environ.get("REOS_DATA_DIR")
     base = Path(env_dir) if env_dir else settings.data_dir
     return base / "play"
@@ -191,6 +208,45 @@ def _scenes_path(act_id: str) -> Path:
     return _act_dir(act_id) / "scenes.json"
 
 
+_YOUR_STORY_DEFAULT = """\
+# Your Story
+
+Welcome to **The Play** — Cairn's knowledge base and life organizer.
+
+## How It Works
+
+The Play is structured as a two-tier system:
+
+**Acts** are the ongoing narratives of your life — broad themes that span months \
+or years. Examples: Career, Health, Family, Learning, a specific project. \
+Create them from the sidebar with *+ New Act*.
+
+**Scenes** are concrete events or tasks within an Act. Each Scene can link to a \
+calendar event from Thunderbird, giving it a date and time. Scenes progress \
+through stages: *planning* > *in progress* > *awaiting data* > *complete*.
+
+## Your Story
+
+This page — **Your Story** — is the root of your knowledge base. It's the \
+autobiographical layer: who you are, what you value, what Cairn should know \
+about you to be a good partner. This is read by Cairn when generating \
+briefings and contextualizing your requests.
+
+Use it to capture:
+- Your background, role, and experience
+- Core values and priorities
+- Context that cuts across all your Acts
+
+## Writing & Commands
+
+This editor supports **Markdown** formatting. Type `/` to see available \
+slash commands for quick actions.
+
+Each Act and Scene also has its own knowledge base page — select one from the \
+sidebar to write notes, plans, or reference material specific to that narrative.
+"""
+
+
 def ensure_play_skeleton() -> None:
     root = play_root()
     root.mkdir(parents=True, exist_ok=True)
@@ -198,13 +254,7 @@ def ensure_play_skeleton() -> None:
 
     me = _me_path()
     if not me.exists():
-        _write_text(
-            me,
-            "# Me (The Play)\n\n"
-            "Personal facts, principles, constraints, and identity-level context.\n"
-            "\n"
-            "This is read-mostly and slow-changing. It is not a task list.\n",
-        )
+        _write_text(me, _YOUR_STORY_DEFAULT)
 
     acts = _acts_path()
     if not acts.exists():
@@ -716,23 +766,7 @@ def kb_read(*, act_id: str, scene_id: str | None = None, path: str = "kb.md") ->
         if Path(path).as_posix() == "kb.md":
             # Use special welcome content for Your Story
             if act_id == YOUR_STORY_ACT_ID and scene_id is None:
-                default_content = """\
-# Your Story
-
-Welcome to The Play.
-
-The Play organizes your life into **Acts**—ongoing narratives like Career, Health, or Learning. Each Act is a knowledge base for that area of your life.
-
-This is **Your Story**—the autobiographical entry point. Use it to capture:
-
-- Your background and experience
-- Core values and principles
-- Writing samples and resume content
-- Anything that defines who you are
-
-Select an Act from the sidebar to focus on a specific narrative, or start writing here to build your story.
-"""
-                _write_text(target, default_content)
+                _write_text(target, _YOUR_STORY_DEFAULT)
             else:
                 _write_text(target, "# KB\n\n")
         else:
@@ -866,11 +900,12 @@ def list_attachments(
     *,
     act_id: str | None = None,
     scene_id: str | None = None,
+    page_id: str | None = None,
 ) -> list[FileAttachment]:
-    """List file attachments at the specified level (Play, Act, or Scene)."""
+    """List file attachments at the specified level (Play, Act, Scene, or Page)."""
     from . import play_db
 
-    attachments_data = play_db.list_attachments(act_id=act_id, scene_id=scene_id)
+    attachments_data = play_db.list_attachments(act_id=act_id, scene_id=scene_id, page_id=page_id)
     return [
         FileAttachment(
             attachment_id=d["attachment_id"],
@@ -878,6 +913,7 @@ def list_attachments(
             file_name=d["file_name"],
             file_type=d["file_type"],
             added_at=d["added_at"],
+            page_id=d.get("page_id"),
         )
         for d in attachments_data
     ]
@@ -887,6 +923,7 @@ def add_attachment(
     *,
     act_id: str | None = None,
     scene_id: str | None = None,
+    page_id: str | None = None,
     file_path: str,
     file_name: str | None = None,
 ) -> list[FileAttachment]:
@@ -898,6 +935,8 @@ def add_attachment(
         _validate_id(name="act_id", value=act_id)
     if scene_id is not None:
         _validate_id(name="scene_id", value=scene_id)
+    if page_id is not None:
+        _validate_id(name="page_id", value=page_id)
 
     if not isinstance(file_path, str) or not file_path.strip():
         raise ValueError("file_path is required")
@@ -916,15 +955,16 @@ def add_attachment(
     from . import play_db
 
     play_db.add_attachment(
-        act_id=act_id, scene_id=scene_id, file_path=file_path, file_name=file_name
+        act_id=act_id, scene_id=scene_id, page_id=page_id, file_path=file_path, file_name=file_name
     )
-    return list_attachments(act_id=act_id, scene_id=scene_id)
+    return list_attachments(act_id=act_id, scene_id=scene_id, page_id=page_id)
 
 
 def remove_attachment(
     *,
     act_id: str | None = None,
     scene_id: str | None = None,
+    page_id: str | None = None,
     attachment_id: str,
 ) -> list[FileAttachment]:
     """Remove a file attachment reference by ID.
@@ -935,6 +975,8 @@ def remove_attachment(
         _validate_id(name="act_id", value=act_id)
     if scene_id is not None:
         _validate_id(name="scene_id", value=scene_id)
+    if page_id is not None:
+        _validate_id(name="page_id", value=page_id)
     _validate_id(name="attachment_id", value=attachment_id)
 
     from . import play_db
@@ -942,4 +984,4 @@ def remove_attachment(
     removed = play_db.remove_attachment(attachment_id)
     if not removed:
         raise ValueError("unknown attachment_id")
-    return list_attachments(act_id=act_id, scene_id=scene_id)
+    return list_attachments(act_id=act_id, scene_id=scene_id, page_id=page_id)

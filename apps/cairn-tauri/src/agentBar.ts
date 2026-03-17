@@ -8,7 +8,7 @@
 
 import { el } from './dom';
 
-export type AgentId = 'play' | 'cairn' | 'reos' | 'riva';
+export type AgentId = 'play' | 'cairn' | 'reos' | 'riva' | 'copper';
 
 interface AgentBarCallbacks {
   onSwitchAgent: (id: AgentId) => void;
@@ -27,6 +27,7 @@ const CORE_AGENTS: AgentEntry[] = [
   { id: 'cairn', label: 'CAIRN', icon: '\u{1F9ED}', description: 'Attention minder' },
   { id: 'reos', label: 'ReOS', icon: '\u{1F5A5}\uFE0F', description: 'System control' },
   { id: 'riva', label: 'RIVA', icon: '\u{1F4CB}', description: 'Agent orchestrator' },
+  { id: 'copper', label: 'Copper', icon: '\u{1F310}', description: 'LAN Ollama coordinator' },
 ];
 
 export function createAgentBar(callbacks: AgentBarCallbacks) {

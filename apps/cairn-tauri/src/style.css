@@ -1,57 +1,44 @@
 :root {
-	/* Core colors */
-	--color-primary: #3b82f6;
+	/* Semantic colors (constant across themes) */
 	--color-success: #22c55e;
 	--color-warning: #f59e0b;
 	--color-error: #ef4444;
 	--color-info: #60a5fa;
 
-	/* Dark theme (default) */
-	--bg-primary: #1a1a2e;
-	--bg-secondary: #16213e;
-	--bg-tertiary: #0f3460;
-	--bg-surface: rgba(26, 26, 46, 0.95);
-	--bg-elevated: rgba(255, 255, 255, 0.05);
+	/* Theme colors — Dusk & Stone defaults (overridden by themes.ts) */
+	--theme-primary: #d4a856;
+	--theme-primary-rgb: 212, 168, 86;
+	--theme-secondary: #5e7a94;
+	--theme-secondary-rgb: 94, 122, 148;
+
+	--bg-base: #0f1114;
+	--bg-primary: #0f1114;
+	--bg-secondary: #141619;
+	--bg-tertiary: #1a1d22;
+	--bg-surface: rgba(15, 17, 20, 0.95);
+	--bg-elevated: rgba(255, 255, 255, 0.04);
 	--bg-input: rgba(0, 0, 0, 0.4);
 
-	--text-primary: rgba(255, 255, 255, 0.97);
-	--text-secondary: rgba(255, 255, 255, 0.7);
-	--text-tertiary: rgba(255, 255, 255, 0.5);
-	--text-muted: rgba(255, 255, 255, 0.3);
+	--gradient-start: #0f1114;
+	--gradient-mid: #141619;
+	--gradient-end: #1a1d22;
 
-	--border-color: rgba(255, 255, 255, 0.1);
-	--border-focus: rgba(34, 197, 94, 0.6);
+	--text-primary: #e8e4de;
+	--text-secondary: rgba(232, 228, 222, 0.7);
+	--text-tertiary: rgba(232, 228, 222, 0.5);
+	--text-muted: rgba(232, 228, 222, 0.3);
 
-	/* Legacy variables for compatibility */
-	--chat-user-bg: rgba(43, 108, 176, 0.74);
-	--chat-cairn-bg: rgba(34, 197, 94, 0.72);
+	--border-color: rgba(255, 255, 255, 0.08);
+	--border-focus: rgba(212, 168, 86, 0.6);
+
+	--chat-user-bg: rgba(212, 168, 86, 0.85);
+	--chat-cairn-bg: rgba(94, 122, 148, 0.15);
 	--chat-bubble-text: rgba(255, 255, 255, 0.97);
-	--chat-shadow: 0 2px 10px rgba(17, 24, 39, 0.12);
-	--linux-green: #22c55e;
-	--linux-dark: #1a1a2e;
-	--terminal-bg: rgba(26, 26, 46, 0.95);
-}
+	--chat-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
 
-/* Light theme override (for future use) */
-[data-theme="light"] {
-	--bg-primary: #f8fafc;
-	--bg-secondary: #e2e8f0;
-	--bg-tertiary: #cbd5e1;
-	--bg-surface: #ffffff;
-	--bg-elevated: rgba(0, 0, 0, 0.03);
-	--bg-input: #f1f5f9;
-
-	--text-primary: #1e293b;
-	--text-secondary: #475569;
-	--text-tertiary: #64748b;
-	--text-muted: #94a3b8;
-
-	--border-color: #e2e8f0;
-	--border-focus: #22c55e;
-
-	--chat-user-bg: rgba(59, 130, 246, 0.9);
-	--chat-cairn-bg: rgba(34, 197, 94, 0.9);
-	--chat-bubble-text: #ffffff;
+	--nav-bg: rgba(15, 17, 20, 0.95);
+	--modal-bg: #161920;
+	--input-bar-bg: rgba(15, 17, 20, 0.9);
 }
 
 /* Thinking indicator animation */
@@ -65,8 +52,8 @@ body,
 #app {
 	height: 100%;
 	margin: 0;
-	background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-	color-scheme: dark;
+	background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-mid) 50%, var(--gradient-end) 100%);
+	color: var(--text-primary);
 }
 
 /* Global form element styling for dark theme */
@@ -90,8 +77,8 @@ textarea:focus {
 }
 
 select option {
-	background: #1a1a2e;
-	color: #e5e7eb;
+	background: var(--bg-primary);
+	color: var(--text-primary);
 	padding: 8px;
 }
 
@@ -99,27 +86,27 @@ select option {
 	background: transparent;
 }
 
-/* Nav with dark theme */
+/* Nav with theme */
 .nav {
-	background: rgba(26, 26, 46, 0.95);
-	color: #e5e7eb;
-	border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+	background: var(--nav-bg);
+	color: var(--text-primary);
+	border-right: 1px solid var(--border-color) !important;
 }
 
 .nav button {
-	color: #e5e7eb;
-	background: rgba(255, 255, 255, 0.05) !important;
-	border: 1px solid rgba(255, 255, 255, 0.1) !important;
+	color: var(--text-primary);
+	background: var(--bg-elevated) !important;
+	border: 1px solid var(--border-color) !important;
 	transition: all 0.2s ease;
 }
 
 .nav button:hover {
-	background: rgba(34, 197, 94, 0.2) !important;
-	border-color: rgba(34, 197, 94, 0.4) !important;
+	background: rgba(var(--theme-primary-rgb), 0.2) !important;
+	border-color: rgba(var(--theme-primary-rgb), 0.4) !important;
 }
 
 .quick-action-btn:hover {
-	background: rgba(34, 197, 94, 0.3) !important;
+	background: rgba(var(--theme-primary-rgb), 0.3) !important;
 	transform: translateX(4px);
 }
 
@@ -127,7 +114,7 @@ select option {
 	background: rgba(0, 0, 0, 0.3);
 	padding: 10px;
 	border-radius: 8px;
-	border: 1px solid rgba(255, 255, 255, 0.1);
+	border: 1px solid var(--border-color);
 }
 
 /* Health Pulse indicator */
@@ -138,22 +125,22 @@ select option {
 
 /* Chat pane should be a glass surface */
 .center {
-	background: rgba(255, 255, 255, 0.05);
+	background: var(--bg-elevated);
 	backdrop-filter: blur(14px);
 }
 
-/* Inspection pane dark theme */
+/* Inspection pane */
 .inspection {
-	background: rgba(26, 26, 46, 0.9);
-	color: #e5e7eb;
-	border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
+	background: var(--bg-surface);
+	color: var(--text-primary);
+	border-left: 1px solid var(--border-color) !important;
 }
 
 .inspection pre {
 	background: rgba(0, 0, 0, 0.3);
 	padding: 12px;
 	border-radius: 8px;
-	color: #22c55e;
+	color: var(--theme-primary);
 	font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 	font-size: 12px;
 	overflow-x: auto;
@@ -203,7 +190,7 @@ select option {
 .chat-bubble.cairn.selected {
 	outline: 2px solid rgba(255, 255, 255, 0.6);
 	outline-offset: 2px;
-	background: rgba(34, 197, 94, 0.85);
+	background: rgba(var(--theme-primary-rgb), 0.85);
 }
 
 /* Thinking animation inside an otherwise empty bubble */
@@ -267,48 +254,48 @@ select option {
 .input-row {
 	border-top: none !important;
 	padding: 12px;
-	background: rgba(26, 26, 46, 0.9);
-	border: 1px solid rgba(34, 197, 94, 0.3);
+	background: var(--input-bar-bg);
+	border: 1px solid rgba(var(--theme-primary-rgb), 0.3);
 	border-radius: 16px;
 	margin: 12px;
 	margin-top: 0;
-	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3), 0 0 20px rgba(34, 197, 94, 0.1);
+	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3), 0 0 20px rgba(var(--theme-primary-rgb), 0.1);
 	backdrop-filter: blur(10px);
 }
 
 .chat-input {
-	border: 1px solid rgba(34, 197, 94, 0.3);
+	border: 1px solid rgba(var(--theme-primary-rgb), 0.3);
 	border-radius: 12px;
 	padding: 10px 12px;
-	background: rgba(0, 0, 0, 0.4);
-	color: #e5e7eb;
+	background: var(--bg-input);
+	color: var(--text-primary);
 	outline: none;
 	font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 }
 
 .chat-input::placeholder {
-	color: rgba(229, 231, 235, 0.5);
+	color: var(--text-tertiary);
 }
 
 .chat-input:focus {
-	border-color: rgba(34, 197, 94, 0.6);
-	box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.15);
+	border-color: var(--border-focus);
+	box-shadow: 0 0 0 2px rgba(var(--theme-primary-rgb), 0.15);
 }
 
 .send-btn {
-	border: 1px solid rgba(34, 197, 94, 0.4);
+	border: 1px solid rgba(var(--theme-primary-rgb), 0.4);
 	border-radius: 12px;
 	padding: 10px 14px;
-	background: rgba(34, 197, 94, 0.2);
-	color: #22c55e;
+	background: rgba(var(--theme-primary-rgb), 0.2);
+	color: var(--theme-primary);
 	font-weight: 500;
 	cursor: pointer;
 	transition: all 0.2s ease;
 }
 
 .send-btn:hover {
-	background: rgba(34, 197, 94, 0.3);
-	border-color: rgba(34, 197, 94, 0.6);
+	background: rgba(var(--theme-primary-rgb), 0.3);
+	border-color: rgba(var(--theme-primary-rgb), 0.6);
 	transform: translateY(-1px);
 }
 
@@ -341,7 +328,7 @@ select option {
 	flex: 1;
 	display: flex;
 	flex-direction: column;
-	background: rgba(26, 26, 46, 0.95);
+	background: var(--bg-surface);
 	border-radius: 0;
 	border: none;
 	overflow: hidden;
@@ -352,7 +339,7 @@ select option {
 	align-items: center;
 	justify-content: space-between;
 	padding: 16px 24px;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	border-bottom: 1px solid var(--border-color);
 	background: rgba(0, 0, 0, 0.2);
 }
 
@@ -360,7 +347,7 @@ select option {
 	margin: 0;
 	font-size: 18px;
 	font-weight: 600;
-	color: #e5e7eb;
+	color: var(--text-primary);
 }
 
 .play-close-btn {
@@ -416,8 +403,8 @@ select option {
 }
 
 .tree-item.selected {
-	background: rgba(34, 197, 94, 0.2);
-	color: #22c55e;
+	background: rgba(var(--theme-primary-rgb), 0.2);
+	color: var(--theme-primary);
 }
 
 .tree-item.play {
@@ -463,9 +450,9 @@ select option {
 }
 
 .tree-new-btn:hover {
-	border-color: rgba(34, 197, 94, 0.4);
-	color: #22c55e;
-	background: rgba(34, 197, 94, 0.1);
+	border-color: rgba(var(--theme-primary-rgb), 0.4);
+	color: var(--theme-primary);
+	background: rgba(var(--theme-primary-rgb), 0.1);
 }
 
 .tree-new-btn.scene-level {
@@ -475,8 +462,8 @@ select option {
 
 /* Active Act indicator */
 .tree-item.act.active {
-	background: rgba(34, 197, 94, 0.15);
-	border-left: 3px solid #22c55e;
+	background: rgba(var(--theme-primary-rgb), 0.15);
+	border-left: 3px solid var(--theme-primary);
 	padding-left: 9px;
 }
 
@@ -519,7 +506,7 @@ select option {
 	font-weight: 700;
 	border: none;
 	background: transparent;
-	color: #e5e7eb;
+	color: var(--text-primary);
 	width: 100%;
 	padding: 0;
 	margin-bottom: 16px;
@@ -543,11 +530,11 @@ select option {
 
 .play-editor {
 	flex: 1;
-	background: rgba(255, 255, 255, 0.03);
-	border: 1px solid rgba(255, 255, 255, 0.1);
+	background: var(--bg-elevated);
+	border: 1px solid var(--border-color);
 	border-radius: 12px;
 	padding: 16px;
-	color: #e5e7eb;
+	color: var(--text-primary);
 	font-family: 'Inter', system-ui, sans-serif;
 	font-size: 14px;
 	line-height: 1.7;
@@ -562,7 +549,7 @@ select option {
 }
 
 .play-editor:focus {
-	border-color: rgba(34, 197, 94, 0.4);
+	border-color: rgba(var(--theme-primary-rgb), 0.4);
 }
 
 /* Attachments section */
@@ -602,9 +589,9 @@ select option {
 }
 
 .add-attachment-btn:hover {
-	border-color: rgba(34, 197, 94, 0.4);
-	color: #22c55e;
-	background: rgba(34, 197, 94, 0.1);
+	border-color: rgba(var(--theme-primary-rgb), 0.4);
+	color: var(--theme-primary);
+	background: rgba(var(--theme-primary-rgb), 0.1);
 }
 
 .attachment-list {

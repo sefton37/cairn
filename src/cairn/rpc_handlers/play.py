@@ -648,10 +648,11 @@ def handle_play_attachments_list(
     *,
     act_id: str | None = None,
     scene_id: str | None = None,
+    page_id: str | None = None,
 ) -> dict[str, Any]:
     """List attachments."""
     try:
-        attachments = play_list_attachments(act_id=act_id, scene_id=scene_id)
+        attachments = play_list_attachments(act_id=act_id, scene_id=scene_id, page_id=page_id)
     except ValueError as exc:
         raise RpcError(code=-32602, message=str(exc)) from exc
     return {
@@ -662,6 +663,7 @@ def handle_play_attachments_list(
                 "file_name": a.file_name,
                 "file_type": a.file_type,
                 "added_at": a.added_at,
+                "page_id": a.page_id,
             }
             for a in attachments
         ]
@@ -673,6 +675,7 @@ def handle_play_attachments_add(
     *,
     act_id: str | None = None,
     scene_id: str | None = None,
+    page_id: str | None = None,
     file_path: str,
     file_name: str | None = None,
 ) -> dict[str, Any]:
@@ -681,6 +684,7 @@ def handle_play_attachments_add(
         attachments = play_add_attachment(
             act_id=act_id,
             scene_id=scene_id,
+            page_id=page_id,
             file_path=file_path,
             file_name=file_name,
         )
@@ -694,6 +698,7 @@ def handle_play_attachments_add(
                 "file_name": a.file_name,
                 "file_type": a.file_type,
                 "added_at": a.added_at,
+                "page_id": a.page_id,
             }
             for a in attachments
         ]
@@ -705,6 +710,7 @@ def handle_play_attachments_remove(
     *,
     act_id: str | None = None,
     scene_id: str | None = None,
+    page_id: str | None = None,
     attachment_id: str,
 ) -> dict[str, Any]:
     """Remove an attachment."""
@@ -712,6 +718,7 @@ def handle_play_attachments_remove(
         attachments = play_remove_attachment(
             act_id=act_id,
             scene_id=scene_id,
+            page_id=page_id,
             attachment_id=attachment_id,
         )
     except ValueError as exc:
@@ -724,6 +731,7 @@ def handle_play_attachments_remove(
                 "file_name": a.file_name,
                 "file_type": a.file_type,
                 "added_at": a.added_at,
+                "page_id": a.page_id,
             }
             for a in attachments
         ]

@@ -185,6 +185,7 @@ class CairnAtomicBridge:
         safety_level: str = "standard",
         conversation_context: str = "",
         memory_context: str = "",
+        force_approve: bool = False,
     ) -> CairnOperationResult:
         """Process a user request through the full atomic ops pipeline.
 
@@ -198,6 +199,8 @@ class CairnAtomicBridge:
             safety_level: Safety level (permissive, standard, strict).
             conversation_context: Recent conversation for context.
             memory_context: Relevant memories from prior conversations.
+            force_approve: Internal bypass for post-approval re-execution. When True,
+                          skips the approval gate. Must not be exposed in RPC interfaces.
 
         Returns:
             CairnOperationResult with operation, verification, and response.
@@ -357,7 +360,7 @@ class CairnAtomicBridge:
             needs_approval,
         )
 
-        if verification.passed and (auto_approved or not needs_approval):
+        if verification.passed and (auto_approved or not needs_approval or force_approve):
             if execute_tool or not mode.needs_tool:
                 # Build behavior mode context
                 mode_ctx = BehaviorModeContext(
@@ -1014,7 +1017,6 @@ What is the user referring to and what do they want to do?"""
             for w in verification.warnings[:3]:
                 parts.append(f"  - {w}")
 
-        parts.append("\nShall I proceed? (yes/no)")
         return "\n".join(parts)
 
 

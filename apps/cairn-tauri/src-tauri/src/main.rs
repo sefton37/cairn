@@ -2,6 +2,7 @@
 
 mod auth;
 mod kernel;
+mod pty;
 
 use auth::{AuthResult, AuthState, SessionInfo};
 use kernel::{KernelError, KernelProcess};
@@ -11,6 +12,9 @@ use std::sync::{Arc, Mutex};
 use tauri::{Manager, State};
 
 struct KernelState(Arc<Mutex<Option<KernelProcess>>>);
+
+/// Managed state for the active PTY session (ReOS terminal).
+struct PtyStateWrapper(pty::PtyState);
 
 // =============================================================================
 // Authentication Commands
@@ -263,6 +267,99 @@ fn dev_create_session(
 }
 
 // =============================================================================
+// PTY Commands (ReOS Terminal — Phase 2)
+// =============================================================================
+
+/// Spawn a shell in a PTY for the ReOS terminal view.
+///
+/// If a PTY session is already running it is replaced. The caller must provide
+/// the initial viewport dimensions so the shell renders correctly from the start.
+#[tauri::command]
+async fn pty_start(
+    app: tauri::AppHandle,
+    pty_wrapper: State<'_, PtyStateWrapper>,
+    auth_state: State<'_, AuthState>,
+    session_token: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    // Zero-trust: validate session before touching PTY.
+    {
+        let store = auth_state.0.lock().map_err(|_| "lock poisoned")?;
+        auth::validate_session(&store, &session_token)
+            .ok_or_else(|| "Invalid or expired session".to_string())?;
+    }
+
+    let process = tauri::async_runtime::spawn_blocking(move || {
+        pty::PtyProcess::start(app, cols, rows)
+    })
+    .await
+    .map_err(|e| format!("pty_start join error: {e}"))??;
+
+    let mut guard = pty_wrapper.0 .0.lock().map_err(|_| "lock poisoned")?;
+    *guard = Some(process);
+    Ok(())
+}
+
+/// Write data (keystrokes) into the running PTY.
+#[tauri::command]
+fn pty_write(
+    pty_wrapper: State<'_, PtyStateWrapper>,
+    auth_state: State<'_, AuthState>,
+    session_token: String,
+    data: String,
+) -> Result<(), String> {
+    {
+        let store = auth_state.0.lock().map_err(|_| "lock poisoned")?;
+        auth::validate_session(&store, &session_token)
+            .ok_or_else(|| "Invalid or expired session".to_string())?;
+    }
+    let mut guard = pty_wrapper.0 .0.lock().map_err(|_| "lock poisoned")?;
+    match guard.as_mut() {
+        Some(proc) => proc.write_data(&data),
+        None => Err("No PTY session running".to_string()),
+    }
+}
+
+/// Resize the running PTY to match the new terminal viewport dimensions.
+#[tauri::command]
+fn pty_resize(
+    pty_wrapper: State<'_, PtyStateWrapper>,
+    auth_state: State<'_, AuthState>,
+    session_token: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    {
+        let store = auth_state.0.lock().map_err(|_| "lock poisoned")?;
+        auth::validate_session(&store, &session_token)
+            .ok_or_else(|| "Invalid or expired session".to_string())?;
+    }
+    let guard = pty_wrapper.0 .0.lock().map_err(|_| "lock poisoned")?;
+    match guard.as_ref() {
+        Some(proc) => proc.resize(cols, rows),
+        None => Err("No PTY session running".to_string()),
+    }
+}
+
+/// Stop the running PTY session. The Drop impl kills the child and joins the reader.
+#[tauri::command]
+fn pty_stop(
+    pty_wrapper: State<'_, PtyStateWrapper>,
+    auth_state: State<'_, AuthState>,
+    session_token: String,
+) -> Result<(), String> {
+    {
+        let store = auth_state.0.lock().map_err(|_| "lock poisoned")?;
+        auth::validate_session(&store, &session_token)
+            .ok_or_else(|| "Invalid or expired session".to_string())?;
+    }
+    let mut guard = pty_wrapper.0 .0.lock().map_err(|_| "lock poisoned")?;
+    *guard = None; // Drop impl cleans up child process and reader thread.
+    Ok(())
+}
+
+// =============================================================================
 // Application Entry Point
 // =============================================================================
 
@@ -271,6 +368,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .manage(KernelState(Arc::new(Mutex::new(None))))
         .manage(AuthState::new())
+        .manage(PtyStateWrapper(pty::PtyState::new()))
         .invoke_handler(tauri::generate_handler![
             // Auth commands
             auth_login,
@@ -283,6 +381,11 @@ fn main() {
             // Kernel commands
             kernel_start,
             kernel_request,
+            // PTY commands (ReOS terminal)
+            pty_start,
+            pty_write,
+            pty_resize,
+            pty_stop,
         ])
         .setup(|app| {
             // Set the window icon from the bundled PNG

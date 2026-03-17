@@ -101,8 +101,8 @@ class Classification:
     confident: bool = True
     reasoning: str = ""
     # calendar, play, system, conversation, personal, tasks,
-    # contacts, knowledge, undo, feedback
-    domain: str | None = None
+    # contacts, knowledge, undo, feedback, email, health, general
+    domain: str = "general"
     action_hint: str | None = None  # view, create, update, delete, search, status
 
 

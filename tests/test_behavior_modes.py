@@ -84,11 +84,12 @@ class TestRegistryLookup:
         assert mode.needs_tool is True
 
     def test_personal_interpret(self, registry: BehaviorModeRegistry) -> None:
-        """Personal interpret returns PERSONAL_QUERY_MODE."""
+        """Personal interpret returns PERSONAL_QUERY_MODE with cairn_list_items tool."""
         c = _make_classification(domain="personal")
         mode = registry.get_mode(c)
         assert mode.name == "personal_query"
-        assert mode.needs_tool is False
+        assert mode.needs_tool is True
+        assert mode.tool_selector is not None
 
     def test_feedback_mode(self, registry: BehaviorModeRegistry) -> None:
         """Feedback domain returns FEEDBACK_MODE."""
@@ -152,10 +153,10 @@ class TestFallbackModes:
     """Test semantics-based fallback when no domain match."""
 
     def test_interpret_fallback(self, registry: BehaviorModeRegistry) -> None:
-        """No domain + interpret → conversation mode."""
-        c = _make_classification()  # interpret, no domain
+        """No domain + interpret → general query mode (has tools for context)."""
+        c = _make_classification()  # interpret, no domain (None → falls to _fallback_mode)
         mode = registry.get_mode(c)
-        assert mode.name == "conversation"
+        assert mode.name == "general_query"
 
     def test_read_fallback(self, registry: BehaviorModeRegistry) -> None:
         """No domain + read → generic query mode."""

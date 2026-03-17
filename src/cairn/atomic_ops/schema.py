@@ -287,9 +287,8 @@ class AtomicOpsStore:
     This class handles all database interactions for the atomic operations
     system, including CRUD operations and feedback collection.
 
-    Important: This class does NOT manage transactions. The caller must
-    wrap operations in a transaction context (e.g., db.transaction()) and
-    commit/rollback as appropriate.
+    Each write operation commits immediately to avoid holding write locks
+    that block other connections (e.g., CairnStore) during tool execution.
     """
 
     def __init__(self, conn: sqlite3.Connection):
@@ -330,6 +329,7 @@ class AtomicOpsStore:
             op.source_agent,
             now,
         ))
+        self.conn.commit()
         return op.id
 
     def get_operation(self, operation_id: str) -> Optional[AtomicOperation]:
@@ -353,6 +353,7 @@ class AtomicOpsStore:
             SET status = ?, completed_at = ?
             WHERE id = ?
         """, (status.value, completed_at, operation_id))
+        self.conn.commit()
 
     def update_operation_classification(
         self,
@@ -376,6 +377,7 @@ class AtomicOpsStore:
             model,
             operation_id,
         ))
+        self.conn.commit()
 
     def list_operations(
         self,
@@ -463,6 +465,7 @@ class AtomicOpsStore:
             model,
             now,
         ))
+        self.conn.commit()
         return log_id
 
     # =========================================================================
@@ -495,6 +498,7 @@ class AtomicOpsStore:
             result.execution_time_ms,
             now,
         ))
+        self.conn.commit()
         return ver_id
 
     def get_verification_results(self, operation_id: str) -> dict[str, VerificationResult]:
@@ -559,6 +563,7 @@ class AtomicOpsStore:
             reversibility.reason if reversibility else None,
             now,
         ))
+        self.conn.commit()
         return exec_id
 
     def _snapshot_to_dict(self, snapshot: StateSnapshot) -> dict:
@@ -601,6 +606,7 @@ class AtomicOpsStore:
             feedback.time_to_decision_ms,
             now,
         ))
+        self.conn.commit()
         return feedback.id
 
     def get_feedback_for_operation(self, operation_id: str) -> list[UserFeedback]:
@@ -647,6 +653,7 @@ class AtomicOpsStore:
                 id, operation_id, question, resolved, created_at
             ) VALUES (?, ?, ?, 0, ?)
         """, (clar_id, operation_id, question, now))
+        self.conn.commit()
         return clar_id
 
     def get_pending_clarification(self, user_id: str) -> dict | None:
@@ -676,6 +683,7 @@ class AtomicOpsStore:
             SET user_response = ?, resolved = 1
             WHERE id = ?
         """, (user_response, clarification_id))
+        self.conn.commit()
 
     # =========================================================================
     # CORRECTIONS FOR FEW-SHOT LEARNING

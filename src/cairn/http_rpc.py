@@ -25,12 +25,15 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from cairn import auth
+from cairn.crypto_storage import CryptoStorage, set_active_crypto
 from cairn.db import Database, get_db
+from cairn.device_tokens import get_token_store
 from cairn.mcp_tools import ToolError, call_tool
 from cairn.rpc_handlers import RpcError
+from cairn.session import SessionInfo, reset_session, set_session
 from cairn.rpc_handlers.approvals import (
     handle_approval_explain,
     handle_approval_pending,
@@ -190,6 +193,7 @@ from cairn.rpc_handlers.safety import (
 )
 from cairn.rpc_handlers.system import (
     handle_cairn_attention,
+    handle_cairn_attention_reorder,
     handle_cairn_thunderbird_status,
     handle_thunderbird_check,
     handle_thunderbird_configure,
@@ -210,25 +214,59 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 async def require_auth(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),  # noqa: B008
-) -> str:
-    """FastAPI dependency: validate Bearer session and refresh its idle timer.
+) -> AsyncGenerator[str, None]:
+    """FastAPI dependency: validate Bearer session, refresh idle timer, and wire
+    the per-request session ContextVar so play_root() resolves to the correct
+    per-user data directory.
 
     Refreshing on every authenticated request keeps the 15-minute idle window
     rolling as long as the user is actively using the PWA, matching the
     behaviour of the Tauri path where the Rust frontend calls auth/refresh
     periodically.
 
-    Returns the raw session string so endpoints that need it (logout) can use it.
+    Yields the raw session string so endpoints that need it (logout) can use it.
+    The session ContextVar is reset after the request completes so it cannot
+    leak between requests.
     """
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
 
     session_val = credentials.credentials
-    if not auth.refresh_session(session_val):
-        # refresh_session returns False when absent or expired
+
+    # Look up the full Session object (not just a boolean) so we can build
+    # CryptoStorage and populate the per-request ContextVar.  get_session()
+    # returns None when absent or expired, same semantics as refresh_session().
+    session = auth.get_session(session_val)
+    if session is None:
         raise HTTPException(status_code=401, detail="Session expired or invalid")
 
-    return session_val
+    # Bump the idle timer now that we have confirmed the session is live.
+    session.refresh()
+
+    # Build a CryptoStorage for this session and wire it into the ContextVar so
+    # play_root() (and any other code that calls get_current_crypto_storage())
+    # resolves to ~/.talkingrock/{username}/play instead of the unauthenticated
+    # fallback.  asyncio.to_thread() copies the current context at call time, so
+    # the ContextVar value set here is visible inside all thread-pool workers
+    # spawned during this request.
+    crypto = CryptoStorage(session)
+
+    # Set the module-level global so _get_crypto() in play_fs works for
+    # file encryption/decryption. Also set db_crypto for database access.
+    set_active_crypto(crypto)
+    from cairn import db_crypto
+    db_crypto.set_active_key(session.key_material)
+
+    session_info = SessionInfo(
+        username=session.username,
+        session_id=session_val[:16],
+    )
+    ctx_session_tok, ctx_crypto_tok = set_session(session_info, crypto)
+
+    try:
+        yield session_val
+    finally:
+        reset_session(ctx_session_tok, ctx_crypto_tok)
 
 
 # ---------------------------------------------------------------------------
@@ -332,6 +370,7 @@ _METHODS: dict[str, tuple[Callable[..., Any], bool]] = {
     "thunderbird/configure": (handle_thunderbird_configure, True),
     "thunderbird/decline": (handle_thunderbird_decline, True),
     "cairn/attention": (handle_cairn_attention, True),
+    "cairn/attention/reorder": (handle_cairn_attention_reorder, True),
     # personas
     "personas/list": (handle_personas_list, True),
     "personas/upsert": (handle_persona_upsert, True),
@@ -423,6 +462,14 @@ _METHODS: dict[str, tuple[Callable[..., Any], bool]] = {
     "files/write": (handle_files_write, True),
 }
 
+# ReOS vitals — available only if the ReOS package is installed.
+try:
+    from reos.rpc_handlers.system import handle_reos_vitals as _handle_reos_vitals
+
+    _METHODS["reos/vitals"] = (_handle_reos_vitals, False)  # no db needed
+except ImportError:
+    pass
+
 # ---------------------------------------------------------------------------
 # Auth endpoints
 # ---------------------------------------------------------------------------
@@ -431,6 +478,11 @@ _METHODS: dict[str, tuple[Callable[..., Any], bool]] = {
 class LoginRequest(BaseModel):
     username: str
     credential: str
+    device_id: str | None = None
+
+
+class TokenRefreshRequest(BaseModel):
+    refresh_token: str = Field(max_length=128)  # tokens are 64 hex chars
 
 
 @router.post("/auth/login")
@@ -439,10 +491,31 @@ async def login(body: LoginRequest) -> dict[str, Any]:
 
     Unlike the Tauri path (which shows a native Polkit dialog), the PWA
     supplies the credential directly so PAM can verify it without a GUI.
+
+    If device_id is provided, a device refresh token is also issued and
+    returned as "refresh_token" in the response.
     """
     from cairn.rpc_handlers.http_auth import http_login
 
-    return await asyncio.to_thread(http_login, username=body.username, credential=body.credential)
+    return await asyncio.to_thread(
+        http_login,
+        username=body.username,
+        credential=body.credential,
+        device_id=body.device_id,
+        token_db=get_token_store(),
+    )
+
+
+@router.post("/auth/token-refresh")
+async def token_refresh(body: TokenRefreshRequest) -> dict:
+    """Exchange a device refresh token for a new session."""
+    from cairn.rpc_handlers.http_auth import http_token_refresh
+
+    return await asyncio.to_thread(
+        http_token_refresh,
+        refresh_token=body.refresh_token,
+        token_db=get_token_store(),
+    )
 
 
 @router.post("/auth/logout")

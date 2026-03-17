@@ -553,6 +553,8 @@ from .rpc_handlers.cc import (
 from .rpc_handlers.cc import (
     handle_cc_session_stop as _handle_cc_session_stop,
 )
+from .rpc_handlers.copper import handle_copper_proxy as _handle_copper_proxy
+from .rpc_handlers.riva import handle_riva_proxy as _handle_riva_proxy
 from .security import (
     AuditEventType,
     RateLimitExceeded,
@@ -622,6 +624,11 @@ def _handle_tools_call(db: Database, *, name: str, arguments: dict[str, Any] | N
 # -------------------------------------------------------------------------
 try:
     from reos.rpc_handlers.system import handle_reos_vitals as _handle_reos_vitals
+    from reos.rpc_handlers.propose import handle_reos_propose as _handle_reos_propose
+    from reos.rpc_handlers.telemetry import (
+        handle_reos_telemetry_event as _handle_reos_telemetry_event,
+        handle_reos_telemetry_query as _handle_reos_telemetry_query,
+    )
 
     _REOS_AVAILABLE = True
 except ImportError:
@@ -661,6 +668,7 @@ _STRING_PARAM_HANDLERS: dict[str, tuple[Callable, str]] = {
     "ollama/pull_start": (_handle_ollama_pull_start, "model"),
     "thunderbird/configure": (_handle_thunderbird_configure, "db_path"),
     "health/acknowledge": (_handle_health_acknowledge, "log_id"),
+    **({"reos/propose": (_handle_reos_propose, "natural_language")} if _REOS_AVAILABLE else {}),
 }
 
 # Handlers with NO db param, single string param: (handler, param_name)
@@ -819,6 +827,17 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                 raise RpcError(code=-32602, message="arguments must be an object")
             result = _handle_tools_call(db, name=name, arguments=arguments)
             return _jsonrpc_result(req_id=req_id, result=result)
+
+        # ReOS telemetry — full dict payload handlers.
+        if _REOS_AVAILABLE and method == "reos/telemetry/event":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            return _jsonrpc_result(req_id=req_id, result=_handle_reos_telemetry_event(db, **params))
+
+        if _REOS_AVAILABLE and method == "reos/telemetry/query":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            return _jsonrpc_result(req_id=req_id, result=_handle_reos_telemetry_query(db, **params))
 
         if method == "chat/respond":
             if not isinstance(params, dict):
@@ -2968,6 +2987,22 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                     limit=params.get("limit", 50),
                     offset=params.get("offset", 0),
                 ),
+            )
+
+        # --- RIVA agent orchestrator (proxy to Unix socket) ---
+
+        if method is not None and method.startswith("riva/"):
+            # Strip __session before forwarding — RIVA doesn't need it
+            riva_params = {k: v for k, v in (params or {}).items() if k != "__session"}
+            return _handle_riva_proxy(method=method, params=riva_params, req_id=req_id)
+
+        # --- Copper LAN Ollama coordinator ---
+
+        if method is not None and method.startswith("copper/"):
+            copper_params = {k: v for k, v in (params or {}).items() if k != "__session"}
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_copper_proxy(method=method, params=copper_params),
             )
 
         # --- Claude Code agents (Helm Phase 2) ---

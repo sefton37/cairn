@@ -71,7 +71,7 @@ def _get_health_components(db: Database) -> tuple:
 
     try:
         from cairn.cairn.health.checks.software_currency import SoftwareCurrencyCheck
-        runner.register(SoftwareCurrencyCheck())
+        runner.register(SoftwareCurrencyCheck(db))
     except ImportError:
         pass
 

@@ -826,3 +826,19 @@ export type ConsciousnessPollResponse = {
 export type ConsciousnessSnapshotResponse = {
   events: ConsciousnessEvent[];
 };
+
+// ReOS — NL proposal response (reos/propose)
+export type ReosProposeResult = {
+  command: string;
+  explanation: string;
+  success: boolean;
+  model_name: string | null;
+  latency_ms: number | null;
+};
+
+// ReOS — Telemetry query response (reos/telemetry/query)
+export type ReosTelemetryQueryResult = {
+  rows: Record<string, unknown>[];
+  columns: string[];
+  error?: string;
+};

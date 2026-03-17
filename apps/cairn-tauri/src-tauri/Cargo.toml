@@ -19,5 +19,8 @@ hex = "0.4"                    # Token encoding
 # Note: PAM authentication happens in Python kernel (python-pam)
 # Key derivation and encryption also in Python (cryptography library)
 
+# PTY (pseudo-terminal) support
+portable-pty = "0.8"
+
 [features]
 custom-protocol = ["tauri/custom-protocol"]

@@ -522,6 +522,7 @@ class ChatAgent:
         agent_type: str | None = None,
         extended_thinking: bool | None = None,
         is_system_initiated: bool = False,
+        force_approve: bool = False,
     ) -> ChatResponse:
         """Respond to user message with conversation context.
 
@@ -538,6 +539,9 @@ class ChatAgent:
             is_system_initiated: If True, the message is system-generated (not user input).
                                Skips prompt injection check and user message storage.
                                The assistant response is still stored normally.
+            force_approve: Internal bypass for re-executing an approved operation.
+                          Skips the approval gate in the atomic ops bridge.
+                          Must not be exposed in RPC interfaces.
 
         Returns:
             ChatResponse with answer and metadata
@@ -658,20 +662,49 @@ class ChatAgent:
             conversation_context = ctx.conversation_history or ""
 
             # Process through atomic ops bridge (decomposition + verification + execution)
-            # CairnAtomicBridge expects a raw sqlite3.Connection, so use transaction() context
-            with self._db.transaction() as conn:
-                bridge = CairnAtomicBridge(
-                    conn=conn,
-                    intent_engine=intent_engine,
+            # Use a plain connection instead of transaction() to avoid holding
+            # a write lock for the entire pipeline.  AtomicOpsStore writes
+            # (classification, status updates) are individually committed below,
+            # which prevents locking out CairnStore and Thunderbird connections
+            # that open during tool execution.
+            conn = self._db.connect()
+            bridge = CairnAtomicBridge(
+                conn=conn,
+                intent_engine=intent_engine,
+            )
+            bridge_result = bridge.process_request(
+                user_input=user_text,
+                user_id="default",
+                execute_tool=execute_tool,
+                persona_context=ctx.play_context,
+                conversation_context=conversation_context,
+                memory_context=ctx.memory_context,
+                force_approve=force_approve,
+            )
+            try:
+                conn.commit()
+            except Exception:
+                pass  # Best-effort commit for operation tracking
+
+            # Handle approval gate: store pending approval for UI interaction
+            pending_approval_id = None
+            if bridge_result.needs_approval and not force_approve:
+                # Expire any stale approvals for this conversation
+                self._db.expire_pending_approvals(conversation_id=conversation_id)
+
+                # Store the approval request so the UI can present buttons
+                approval_id = _generate_id()
+                self._db.create_approval(
+                    approval_id=approval_id,
+                    conversation_id=conversation_id,
+                    command=json.dumps({
+                        "user_request": user_text,
+                        "agent_type": agent_type,
+                    }),
+                    explanation=bridge_result.response,
+                    risk_level="medium",
                 )
-                bridge_result = bridge.process_request(
-                    user_input=user_text,
-                    user_id="default",
-                    execute_tool=execute_tool,
-                    persona_context=ctx.play_context,
-                    conversation_context=conversation_context,
-                    memory_context=ctx.memory_context,
-                )
+                pending_approval_id = approval_id
 
             # Apply verification directive to shape response behavior
             if bridge_result.directive and bridge_result.response:
@@ -736,12 +769,13 @@ class ChatAgent:
 
             # Generate message ID and store response
             assistant_message_id = _generate_id()
+            msg_type = "approval" if pending_approval_id else "text"
             self._db.add_message(
                 message_id=assistant_message_id,
                 conversation_id=conversation_id,
                 role="assistant",
                 content=result.response,
-                message_type="text",
+                message_type=msg_type,
             )
 
             return ChatResponse(
@@ -767,6 +801,7 @@ class ChatAgent:
                 evidence_summary=evidence_summary,
                 extended_thinking_trace=extended_thinking_trace,
                 user_message_id=user_message_id,
+                pending_approval_id=pending_approval_id,
             )
 
         wants_diff = self._user_opted_into_diff(user_text)

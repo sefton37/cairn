@@ -126,7 +126,7 @@ def test_runner_registers_all_checks_without_error(store: CairnStore):
     runner.register(PatternCurrencyCheck(mock_db))
 
     # Phase 4
-    runner.register(SoftwareCurrencyCheck())
+    runner.register(SoftwareCurrencyCheck(mock_db))
     runner.register(SecurityPostureCheck())
 
     # Should run without crashing (some checks may warn on mock db)

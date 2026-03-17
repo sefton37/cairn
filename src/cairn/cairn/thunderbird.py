@@ -805,8 +805,11 @@ class ThunderbirdBridge:
             logger.debug("Could not copy calendar db, using original: %s", e)
             db_path = self.config.calendar_path
 
-        conn = sqlite3.connect(str(db_path))
-        conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+        conn = sqlite3.connect(str(db_path), timeout=5)
+        try:
+            conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+        except sqlite3.OperationalError:
+            pass  # Checkpoint may fail if DB is locked; read-only access still works
         conn.row_factory = sqlite3.Row
         return conn
 

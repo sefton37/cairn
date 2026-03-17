@@ -176,16 +176,12 @@ class TestPlayRoot:
         root = play_root()
         assert root == temp_data_dir / "play"
 
-    def test_play_root_with_crypto_storage(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Should use crypto storage path when available."""
+    def test_play_root_always_uses_canonical_path(self, temp_data_dir: Path) -> None:
+        """play_root() always uses settings-based data dir (single-user system)."""
         from cairn.play_fs import play_root
 
-        mock_crypto = MagicMock()
-        mock_crypto.user_data_root = Path("/secure/user")
-
-        with patch("cairn.play_fs.get_current_crypto_storage", return_value=mock_crypto):
-            root = play_root()
-            assert root == Path("/secure/user/play")
+        root = play_root()
+        assert root == temp_data_dir / "play"
 
 
 class TestActPathHelpers:
@@ -242,7 +238,7 @@ class TestEnsurePlaySkeleton:
         me_path = _me_path()
         assert me_path.exists()
         content = me_path.read_text()
-        assert "# Me (The Play)" in content
+        assert "# Your Story" in content
 
     def test_creates_acts_json(self, temp_data_dir: Path) -> None:
         """Should create acts.json file."""
@@ -274,7 +270,7 @@ class TestMeMarkdown:
         from cairn.play_fs import read_me_markdown
 
         content = read_me_markdown()
-        assert "# Me (The Play)" in content
+        assert "# Your Story" in content
 
     def test_write_me_markdown(self, initialized_fs: Path) -> None:
         """Should write me.md content."""

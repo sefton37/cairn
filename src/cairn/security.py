@@ -430,6 +430,8 @@ class RateLimiter:
         self._limits: dict[str, RateLimitConfig] = {
             # Authentication (strict to prevent brute force)
             "auth": RateLimitConfig(max_requests=5, window_seconds=60, name="login attempts"),
+            # Device refresh token exchange
+            "token_refresh": RateLimitConfig(max_requests=5, window_seconds=60, name="token refresh"),
             # Privileged operations
             "sudo": RateLimitConfig(max_requests=10, window_seconds=60, name="sudo commands"),
             "service": RateLimitConfig(max_requests=20, window_seconds=60, name="service operations"),
@@ -541,6 +543,9 @@ class AuditEventType(Enum):
     AUTH_LOGIN_FAILED = "auth_login_failed"
     AUTH_LOGOUT = "auth_logout"
     AUTH_SESSION_EXPIRED = "auth_session_expired"
+    AUTH_TOKEN_REFRESH = "auth_token_refresh"
+    AUTH_TOKEN_REFRESH_FAILED = "auth_token_refresh_failed"
+    AUTH_TOKEN_REVOKED = "auth_token_revoked"
 
     # Command execution events
     COMMAND_EXECUTED = "command_executed"

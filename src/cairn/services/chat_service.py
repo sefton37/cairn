@@ -383,9 +383,9 @@ class ChatService:
         return [
             {
                 "id": str(c.get("id")),
-                "title": c.get("title"),
+                "title": c.get("title", ""),
                 "started_at": c.get("started_at"),
-                "last_active_at": c.get("last_active_at"),
+                "last_active_at": c.get("last_message_at") or c.get("started_at"),
             }
             for c in conversations
         ]

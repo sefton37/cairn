@@ -1759,7 +1759,10 @@ class CairnToolHandler:
         if args.get("end"):
             end = datetime.fromisoformat(args["end"])
 
-        events = self.thunderbird.list_events(start=start, end=end)
+        try:
+            events = self.thunderbird.list_events(start=start, end=end)
+        except Exception:
+            return {"count": 0, "events": [], "note": "Calendar temporarily unavailable"}
 
         return {
             "count": len(events),
@@ -1784,7 +1787,10 @@ class CairnToolHandler:
         hours = args.get("hours", 24)
         limit = args.get("limit", 10)
 
-        events = self.thunderbird.get_upcoming_events(hours=hours, limit=limit)
+        try:
+            events = self.thunderbird.get_upcoming_events(hours=hours, limit=limit)
+        except Exception:
+            return {"count": 0, "events": [], "note": "Calendar temporarily unavailable"}
 
         return {
             "count": len(events),
@@ -3384,7 +3390,8 @@ class CairnToolHandler:
             pass
         try:
             from cairn.cairn.health.checks.software_currency import SoftwareCurrencyCheck
-            runner.register(SoftwareCurrencyCheck())
+            from cairn.db import get_db
+            runner.register(SoftwareCurrencyCheck(get_db()))
         except ImportError:
             pass
         try:

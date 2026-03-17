@@ -339,16 +339,16 @@ export function createCairnView(
   // Welcome message
   const welcomeMsg = el('div');
   welcomeMsg.style.cssText = `
-    background: rgba(59, 130, 246, 0.1);
-    border: 1px solid rgba(59, 130, 246, 0.2);
+    background: rgba(var(--theme-primary-rgb, 212, 168, 86), 0.1);
+    border: 1px solid rgba(var(--theme-primary-rgb, 212, 168, 86), 0.2);
     border-radius: 12px;
     padding: 16px;
-    color: rgba(255,255,255,0.9);
+    color: var(--text-primary, rgba(255,255,255,0.9));
   `;
   welcomeMsg.innerHTML = `
     <div style="font-weight: 600; margin-bottom: 8px;">CAIRN</div>
-    <div style="font-size: 13px; line-height: 1.5; color: rgba(255,255,255,0.7);">
-      Your attention minder. Ask me anything, or type <kbd style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; font-size: 12px;">/</kbd> to see what I can do.
+    <div style="font-size: 13px; line-height: 1.5; color: var(--text-secondary, rgba(255,255,255,0.7));">
+      Your attention minder. Ask me anything, or type <kbd style="background: var(--bg-elevated, rgba(255,255,255,0.1)); padding: 2px 6px; border-radius: 4px; font-size: 12px;">/</kbd> to see what I can do.
     </div>
   `;
   chatMessages.appendChild(welcomeMsg);
@@ -356,11 +356,11 @@ export function createCairnView(
   // Thunderbird integration prompt (shown if not connected and not declined)
   const thunderbirdPrompt = el('div');
   thunderbirdPrompt.style.cssText = `
-    background: rgba(59, 130, 246, 0.1);
-    border: 1px solid rgba(59, 130, 246, 0.3);
+    background: rgba(var(--theme-primary-rgb, 212, 168, 86), 0.1);
+    border: 1px solid rgba(var(--theme-primary-rgb, 212, 168, 86), 0.3);
     border-radius: 12px;
     padding: 16px;
-    color: rgba(255,255,255,0.9);
+    color: var(--text-primary, rgba(255,255,255,0.9));
     display: none;
   `;
   chatMessages.appendChild(thunderbirdPrompt);
@@ -1334,6 +1334,14 @@ export function createCairnView(
   }
 
   function addAssistantMessage(result: ChatRespondResult): void {
+    // If this response requires user approval, render the approval widget instead
+    if (result.pending_approval_id) {
+      const widget = renderApprovalWidget(result.pending_approval_id, result.answer);
+      chatMessages.insertBefore(widget, thinkingIndicator);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return;
+    }
+
     // Snapshot consciousness events accumulated during this response. The defensive copy
     // is required because startConsciousnessPolling resets the array on the next message,
     // which would clear events from all previously rendered messages without a copy.
@@ -1357,6 +1365,130 @@ export function createCairnView(
     // Insert before thinking indicator
     chatMessages.insertBefore(msgEl, thinkingIndicator);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  function renderApprovalWidget(approvalId: string, explanation: string): HTMLElement {
+    const container = el('div');
+    container.className = 'approval-widget';
+    container.style.cssText = `
+      background: rgba(234, 179, 8, 0.08);
+      border: 1px solid rgba(234, 179, 8, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      margin: 8px 0;
+    `;
+
+    // Explanation text
+    const textEl = el('div');
+    textEl.style.cssText = `
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 14px;
+      line-height: 1.5;
+      margin-bottom: 12px;
+      white-space: pre-wrap;
+    `;
+    textEl.textContent = explanation;
+
+    // Button row
+    const btnRow = el('div');
+    btnRow.style.cssText = `
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    `;
+
+    const approveBtn = el('button');
+    approveBtn.className = 'approval-btn approve';
+    approveBtn.style.cssText = `
+      background: rgba(34, 197, 94, 0.15);
+      border: 1px solid rgba(34, 197, 94, 0.4);
+      border-radius: 8px;
+      padding: 8px 20px;
+      color: #22c55e;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    `;
+    approveBtn.textContent = 'Approve';
+    approveBtn.addEventListener('mouseenter', () => {
+      approveBtn.style.background = 'rgba(34, 197, 94, 0.25)';
+    });
+    approveBtn.addEventListener('mouseleave', () => {
+      approveBtn.style.background = 'rgba(34, 197, 94, 0.15)';
+    });
+
+    const rejectBtn = el('button');
+    rejectBtn.className = 'approval-btn reject';
+    rejectBtn.style.cssText = `
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      border-radius: 8px;
+      padding: 8px 20px;
+      color: #ef4444;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    `;
+    rejectBtn.textContent = "Don't Approve";
+    rejectBtn.addEventListener('mouseenter', () => {
+      rejectBtn.style.background = 'rgba(239, 68, 68, 0.25)';
+    });
+    rejectBtn.addEventListener('mouseleave', () => {
+      rejectBtn.style.background = 'rgba(239, 68, 68, 0.15)';
+    });
+
+    async function handleApproval(action: 'approve' | 'reject') {
+      // Disable buttons during in-flight request
+      approveBtn.disabled = true;
+      rejectBtn.disabled = true;
+      approveBtn.style.opacity = '0.5';
+      rejectBtn.style.opacity = '0.5';
+      approveBtn.style.cursor = 'default';
+      rejectBtn.style.cursor = 'default';
+
+      try {
+        const result = await callbacks.kernelRequest('approval/respond', {
+          approval_id: approvalId,
+          action,
+        }) as { status: string; result?: { answer?: string } };
+
+        // Replace widget content with outcome
+        if (action === 'approve' && result.result?.answer) {
+          // Show the execution result as a normal assistant message
+          textEl.textContent = result.result.answer;
+          container.style.borderColor = 'rgba(34, 197, 94, 0.3)';
+          container.style.background = 'rgba(34, 197, 94, 0.05)';
+          btnRow.remove();
+        } else if (action === 'reject') {
+          textEl.textContent = 'Cancelled.';
+          textEl.style.color = 'rgba(255, 255, 255, 0.5)';
+          container.style.borderColor = 'rgba(239, 68, 68, 0.2)';
+          container.style.background = 'rgba(239, 68, 68, 0.03)';
+          btnRow.remove();
+        } else {
+          textEl.textContent = 'Approved, but no result was returned.';
+          btnRow.remove();
+        }
+      } catch (err) {
+        textEl.textContent = `Error: ${err instanceof Error ? err.message : 'Unknown error'}`;
+        container.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+        btnRow.remove();
+      }
+
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    approveBtn.addEventListener('click', () => handleApproval('approve'));
+    rejectBtn.addEventListener('click', () => handleApproval('reject'));
+
+    btnRow.appendChild(approveBtn);
+    btnRow.appendChild(rejectBtn);
+    container.appendChild(textEl);
+    container.appendChild(btnRow);
+
+    return container;
   }
 
   function showThinking(): void {

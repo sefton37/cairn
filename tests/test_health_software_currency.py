@@ -9,13 +9,19 @@ from unittest.mock import MagicMock, patch
 
 from cairn.cairn.health.checks.software_currency import SoftwareCurrencyCheck
 from cairn.cairn.health.runner import Severity
+from cairn.providers.base import ProviderHealth
+
+
+def _make_check() -> SoftwareCurrencyCheck:
+    """Return a SoftwareCurrencyCheck with a stub db."""
+    return SoftwareCurrencyCheck(db=MagicMock())
 
 
 def test_provider_available_returns_healthy():
     """Check should return healthy when Ollama provider is available."""
-    check = SoftwareCurrencyCheck()
+    check = _make_check()
 
-    mock_health = {"available": True}
+    mock_health = ProviderHealth(reachable=True)
     with patch(
         "cairn.providers.factory.check_provider_health",
         return_value=mock_health,
@@ -30,9 +36,9 @@ def test_provider_available_returns_healthy():
 
 def test_provider_unavailable_returns_warning():
     """Check should return warning when provider is not available."""
-    check = SoftwareCurrencyCheck()
+    check = _make_check()
 
-    mock_health = {"available": False, "error": "Connection refused"}
+    mock_health = ProviderHealth(reachable=False, error="Connection refused")
     with patch(
         "cairn.providers.factory.check_provider_health",
         return_value=mock_health,
@@ -47,10 +53,10 @@ def test_provider_unavailable_returns_warning():
 
 
 def test_provider_unavailable_without_error_message():
-    """Check should handle missing error key gracefully."""
-    check = SoftwareCurrencyCheck()
+    """Check should handle missing error gracefully."""
+    check = _make_check()
 
-    mock_health = {"available": False}
+    mock_health = ProviderHealth(reachable=False, error=None)
     with patch(
         "cairn.providers.factory.check_provider_health",
         return_value=mock_health,
@@ -64,7 +70,7 @@ def test_provider_unavailable_without_error_message():
 
 def test_import_error_returns_healthy():
     """Check should return healthy when provider module cannot be imported."""
-    check = SoftwareCurrencyCheck()
+    check = _make_check()
 
     # Mock the import statement itself to raise ImportError
     import sys
@@ -79,7 +85,7 @@ def test_import_error_returns_healthy():
 
 def test_generic_exception_returns_warning():
     """Check should return warning on unexpected exceptions."""
-    check = SoftwareCurrencyCheck()
+    check = _make_check()
 
     with patch(
         "cairn.providers.factory.check_provider_health",
@@ -96,15 +102,15 @@ def test_generic_exception_returns_warning():
 
 def test_check_name_property():
     """Check should have correct name property."""
-    check = SoftwareCurrencyCheck()
+    check = _make_check()
     assert check.name == "software_currency"
 
 
 def test_run_returns_list():
     """run() should always return a list of results."""
-    check = SoftwareCurrencyCheck()
+    check = _make_check()
 
-    mock_health = {"available": True}
+    mock_health = ProviderHealth(reachable=True)
     with patch(
         "cairn.providers.factory.check_provider_health",
         return_value=mock_health,
@@ -116,14 +122,15 @@ def test_run_returns_list():
 
 
 def test_check_uses_factory_check_provider_health():
-    """Check should use check_provider_health from factory module."""
-    check = SoftwareCurrencyCheck()
+    """Check should call check_provider_health with the db instance."""
+    db = MagicMock()
+    check = SoftwareCurrencyCheck(db=db)
 
-    mock_check = MagicMock(return_value={"available": True})
+    mock_check = MagicMock(return_value=ProviderHealth(reachable=True))
     with patch(
         "cairn.providers.factory.check_provider_health",
         mock_check,
     ):
         check.run()
 
-    mock_check.assert_called_once_with()
+    mock_check.assert_called_once_with(db)

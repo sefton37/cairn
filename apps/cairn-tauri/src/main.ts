@@ -7,6 +7,7 @@
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 
 import './style.css';
+import { initTheme } from './themes';
 
 // Modular imports
 import {
@@ -17,6 +18,7 @@ import {
   validateSession,
   logout,
   getSessionUsername,
+  getSessionToken,
 } from './kernel';
 import { checkSessionOrLogin, showLockOverlay } from './lockScreen';
 import { el, escapeHtml, rowHeader, label, textInput, textArea, smallButton } from './dom';
@@ -28,6 +30,7 @@ import { createAgentBar } from './agentBar';
 import type { AgentId } from './agentBar';
 import { createReosView } from './reosView';
 import { createRivaView } from './rivaView';
+import { createCopperView } from './copperView';
 
 import { buildPlayWindow } from './playWindow';
 import type {
@@ -312,7 +315,8 @@ function buildUi() {
   });
 
   // Load attention items at startup for "What Needs My Attention" section (next 7 days)
-  void (async () => {
+  // Returns a promise so the greeting can wait for this to complete (avoids DB lock contention)
+  const attentionLoaded = (async () => {
     try {
       const result = await kernelRequest('cairn/attention', { hours: 168, limit: 50 }) as {
         count: number;
@@ -572,8 +576,9 @@ function buildUi() {
   const meterText = el('span') as HTMLSpanElement;
 
   // ============ Create Agent Views ============
-  const reosView = createReosView({ kernelRequest });
+  const reosView = createReosView({ kernelRequest, getSessionCred: getSessionToken });
   const rivaView = createRivaView();
+  const copperView = createCopperView({ kernelRequest });
 
   // Insert context meter + health indicator into CAIRN's chat header
   cairnView.chatHeader.appendChild(navContextMeter);
@@ -591,8 +596,10 @@ function buildUi() {
   mainViewContainer.appendChild(cairnView.container);
   mainViewContainer.appendChild(reosView.container);
   mainViewContainer.appendChild(rivaView.container);
+  mainViewContainer.appendChild(copperView.container);
   reosView.container.style.display = 'none';
   rivaView.container.style.display = 'none';
+  copperView.container.style.display = 'none';
 
   // View router: swap which view is displayed in mainViewContainer
   const viewMap: Record<AgentId, HTMLElement> = {
@@ -600,6 +607,7 @@ function buildUi() {
     cairn: cairnView.container,
     reos: reosView.container,
     riva: rivaView.container,
+    copper: copperView.container,
   };
 
   function switchView(id: AgentId) {
@@ -611,11 +619,19 @@ function buildUi() {
     if (id === 'play') {
       playOverlay.open();
     }
-    // ReOS dashboard polling lifecycle
+    // ReOS dashboard polling and terminal lifecycle
     if (id === 'reos') {
       reosView.startPolling();
+      reosView.startTerminal();
     } else {
       reosView.stopPolling();
+      reosView.stopTerminal();
+    }
+    // Copper dashboard polling lifecycle
+    if (id === 'copper') {
+      copperView.startPolling();
+    } else {
+      copperView.stopPolling();
     }
   }
 
@@ -749,20 +765,6 @@ function buildUi() {
   document.addEventListener('keydown', (e) => {
     const chatInput = cairnView.getChatInput();
 
-    // Ctrl+K or Cmd+K to focus input
-    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-      e.preventDefault();
-      chatInput.focus();
-      chatInput.select();
-    }
-
-    // Ctrl+L to clear chat
-    if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
-      e.preventDefault();
-      cairnView.clearChat();
-      cairnView.addChatMessage('assistant', 'Chat cleared. How can I help?');
-    }
-
     // Escape to clear input
     if (e.key === 'Escape' && document.activeElement === chatInput) {
       chatInput.value = '';
@@ -776,8 +778,13 @@ function buildUi() {
       await refreshActs();
       if (activeActId) await refreshScenes(activeActId);
 
-      // Welcome message
-      cairnView.addChatMessage('assistant', 'Welcome to Talking Rock! Ask me anything about your schedule. Keyboard shortcuts: Ctrl+K to focus, Ctrl+L to clear.');
+      // Wait for attention items to finish loading (avoids DB lock contention)
+      await attentionLoaded;
+
+      // Auto-greeting: Cairn reviews calendar via normal pipeline
+      void handleCairnMessage(
+        'What do I have coming up on my calendar today and this week?'
+      );
     } catch (e) {
       showJsonInInspector('Startup error', { error: String(e) });
     }
@@ -1285,6 +1292,9 @@ async function buildDashboardWindow() {
  * - Sets up session monitoring for auto-lock
  */
 async function initializeApp(): Promise<void> {
+  // Apply saved theme before anything renders (including lock screen)
+  initTheme();
+
   const root = document.getElementById('app');
   if (!root) return;
 

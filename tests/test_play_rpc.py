@@ -25,7 +25,7 @@ def test_play_rpc_me_and_acts_defaults(tmp_path, monkeypatch, isolated_db_single
     me_resp = _rpc(db, req_id=1, method="play/me/read")
     assert "result" in me_resp
     assert "markdown" in me_resp["result"]
-    assert "Me" in str(me_resp["result"]["markdown"])
+    assert "Your Story" in str(me_resp["result"]["markdown"])
 
     acts_resp = _rpc(db, req_id=2, method="play/acts/list")
     result = acts_resp["result"]

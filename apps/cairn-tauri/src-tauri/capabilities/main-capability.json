@@ -12,6 +12,7 @@
     "core:webview:default",
     "core:webview:allow-create-webview-window",
     "dialog:default",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "core:event:default"
   ]
 }

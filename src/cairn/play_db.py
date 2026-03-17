@@ -56,7 +56,9 @@ _local = threading.local()
 # v16: Phase 4 — cc_agent_id and 'claudecode' source on memories, cc_insights table,
 #      linked_scene_id on cc_agents
 # v17: Priority learning — reorder_history, priority_boost_rules tables
-SCHEMA_VERSION = 17
+# v18: RIVA agent orchestrator — riva_projects, riva_plans, riva_plan_steps,
+#      riva_contracts, riva_audits, riva_agent_properties, riva_agent_sessions
+SCHEMA_VERSION = 18
 
 
 def _play_db_path() -> Path:
@@ -191,6 +193,7 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             attachment_id TEXT PRIMARY KEY,
             act_id TEXT REFERENCES acts(act_id) ON DELETE CASCADE,
             scene_id TEXT REFERENCES scenes(scene_id) ON DELETE CASCADE,
+            page_id TEXT REFERENCES pages(page_id) ON DELETE CASCADE,
             file_path TEXT NOT NULL,
             file_name TEXT NOT NULL,
             file_type TEXT NOT NULL,
@@ -199,6 +202,7 @@ def _init_schema(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_attachments_act ON attachments(act_id);
         CREATE INDEX IF NOT EXISTS idx_attachments_scene ON attachments(scene_id);
+        CREATE INDEX IF NOT EXISTS idx_attachments_page ON attachments(page_id);
 
         -- Pages table (v5: nested knowledgebase pages under Acts)
         CREATE TABLE IF NOT EXISTS pages (
@@ -554,6 +558,95 @@ def _init_schema(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_cc_insights_agent ON cc_insights(agent_id);
         CREATE INDEX IF NOT EXISTS idx_cc_insights_status ON cc_insights(status);
+
+        -- RIVA agent orchestrator tables (v18)
+        CREATE TABLE IF NOT EXISTS riva_projects (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            act_id TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS riva_plans (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            agent_id TEXT,
+            title TEXT NOT NULL,
+            user_request TEXT NOT NULL,
+            decomposition_json TEXT,
+            status TEXT NOT NULL DEFAULT 'draft',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS riva_plan_steps (
+            id TEXT PRIMARY KEY,
+            plan_id TEXT NOT NULL,
+            step_number INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            acceptance_criterion TEXT,
+            estimated_minutes INTEGER,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (plan_id) REFERENCES riva_plans(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS riva_contracts (
+            id TEXT PRIMARY KEY,
+            plan_id TEXT NOT NULL UNIQUE,
+            agent_id TEXT NOT NULL,
+            verification_criteria_json TEXT,
+            approved_at TEXT NOT NULL,
+            approved_by TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (plan_id) REFERENCES riva_plans(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS riva_audits (
+            id TEXT PRIMARY KEY,
+            contract_id TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            triggered_by TEXT,
+            git_diff_summary TEXT,
+            files_changed_json TEXT,
+            criteria_results_json TEXT,
+            overall_verdict TEXT,
+            verdict_explanation TEXT,
+            audited_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (contract_id) REFERENCES riva_contracts(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS riva_agent_properties (
+            id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL UNIQUE,
+            claude_md_content TEXT,
+            hooks_config_json TEXT,
+            permissions_json TEXT,
+            env_vars_json TEXT,
+            synced_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS riva_agent_sessions (
+            id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            contract_id TEXT,
+            project_id TEXT,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            status TEXT NOT NULL DEFAULT 'running',
+            trigger TEXT,
+            created_at TEXT NOT NULL
+        );
     """)
 
     conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
@@ -660,6 +753,11 @@ def _run_schema_migrations(conn: sqlite3.Connection, current_version: int) -> No
     if current_version < 17:
         logger.info("Running v17 migration: Priority learning tables")
         _migrate_v16_to_v17(conn)
+
+    # Migration v17 -> v18: RIVA agent orchestrator tables
+    if current_version < 18:
+        logger.info("Running v18 migration: RIVA agent orchestrator tables")
+        _migrate_v17_to_v18(conn)
 
     # Update schema version
     conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
@@ -2905,7 +3003,11 @@ def clear_scene_thunderbird_event_id(scene_id: str) -> bool:
 
 
 def list_attachments(
-    *, act_id: str | None = None, scene_id: str | None = None, beat_id: str | None = None
+    *,
+    act_id: str | None = None,
+    scene_id: str | None = None,
+    beat_id: str | None = None,
+    page_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """List attachments, optionally filtered by scope.
 
@@ -2917,15 +3019,23 @@ def list_attachments(
     if beat_id and not scene_id:
         scene_id = beat_id
 
-    query = "SELECT * FROM attachments WHERE 1=1"
+    # Only return attachments whose act still exists (filter orphans)
+    query = (
+        "SELECT attachments.* FROM attachments"
+        " INNER JOIN acts ON attachments.act_id = acts.act_id"
+        " WHERE 1=1"
+    )
     params: list[Any] = []
 
     if act_id:
-        query += " AND act_id = ?"
+        query += " AND attachments.act_id = ?"
         params.append(act_id)
     if scene_id:
-        query += " AND scene_id = ?"
+        query += " AND attachments.scene_id = ?"
         params.append(scene_id)
+    if page_id:
+        query += " AND attachments.page_id = ?"
+        params.append(page_id)
 
     cursor = conn.execute(query, params)
 
@@ -2935,6 +3045,7 @@ def list_attachments(
             "act_id": row["act_id"],
             "scene_id": row["scene_id"],
             "beat_id": row["scene_id"],  # backward compat
+            "page_id": row["page_id"],
             "file_path": row["file_path"],
             "file_name": row["file_name"],
             "file_type": row["file_type"],
@@ -2949,6 +3060,7 @@ def add_attachment(
     act_id: str | None = None,
     scene_id: str | None = None,
     beat_id: str | None = None,
+    page_id: str | None = None,
     file_path: str,
     file_name: str | None = None,
 ) -> dict[str, Any]:
@@ -2972,10 +3084,10 @@ def add_attachment(
         conn.execute(
             """
             INSERT INTO attachments
-            (attachment_id, act_id, scene_id, file_path, file_name, file_type, added_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (attachment_id, act_id, scene_id, page_id, file_path, file_name, file_type, added_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-            (attachment_id, act_id, scene_id, file_path, file_name, file_type, now),
+            (attachment_id, act_id, scene_id, page_id, file_path, file_name, file_type, now),
         )
 
     return {
@@ -2983,6 +3095,7 @@ def add_attachment(
         "act_id": act_id,
         "scene_id": scene_id,
         "beat_id": scene_id,  # backward compat
+        "page_id": page_id,
         "file_path": file_path,
         "file_name": file_name,
         "file_type": file_type,
@@ -3737,3 +3850,111 @@ def get_active_boost_rules() -> list[dict]:
            WHERE active = 1"""
     )
     return [dict(row) for row in cursor.fetchall()]
+
+
+# ---------------------------------------------------------------------------
+# Migration v17 -> v18: RIVA agent orchestrator
+# ---------------------------------------------------------------------------
+
+
+def _migrate_v17_to_v18(conn: sqlite3.Connection) -> None:
+    """Migrate from v17 to v18 schema.
+
+    Adds RIVA agent orchestrator tables:
+    - riva_projects: top-level work containers, optionally linked to Play Acts
+    - riva_plans: Ollama-decomposed work breakdowns
+    - riva_plan_steps: individual steps within a plan
+    - riva_contracts: approved plans become enforceable contracts
+    - riva_audits: post-completion verification results
+    - riva_agent_properties: DB-backed source of truth for per-agent config
+    - riva_agent_sessions: links cc_history runs to contracts
+    """
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS riva_projects (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            act_id TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS riva_plans (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            agent_id TEXT,
+            title TEXT NOT NULL,
+            user_request TEXT NOT NULL,
+            decomposition_json TEXT,
+            status TEXT NOT NULL DEFAULT 'draft',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS riva_plan_steps (
+            id TEXT PRIMARY KEY,
+            plan_id TEXT NOT NULL,
+            step_number INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            acceptance_criterion TEXT,
+            estimated_minutes INTEGER,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (plan_id) REFERENCES riva_plans(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS riva_contracts (
+            id TEXT PRIMARY KEY,
+            plan_id TEXT NOT NULL UNIQUE,
+            agent_id TEXT NOT NULL,
+            verification_criteria_json TEXT,
+            approved_at TEXT NOT NULL,
+            approved_by TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (plan_id) REFERENCES riva_plans(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS riva_audits (
+            id TEXT PRIMARY KEY,
+            contract_id TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            triggered_by TEXT,
+            git_diff_summary TEXT,
+            files_changed_json TEXT,
+            criteria_results_json TEXT,
+            overall_verdict TEXT,
+            verdict_explanation TEXT,
+            audited_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (contract_id) REFERENCES riva_contracts(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS riva_agent_properties (
+            id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL UNIQUE,
+            claude_md_content TEXT,
+            hooks_config_json TEXT,
+            permissions_json TEXT,
+            env_vars_json TEXT,
+            synced_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS riva_agent_sessions (
+            id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            contract_id TEXT,
+            project_id TEXT,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            status TEXT NOT NULL DEFAULT 'running',
+            trigger TEXT,
+            created_at TEXT NOT NULL
+        );
+    """)

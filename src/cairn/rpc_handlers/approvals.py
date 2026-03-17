@@ -82,12 +82,37 @@ def handle_approval_respond(
         return {"status": "rejected", "result": None}
 
     if action == "approve":
-        # Command execution requires linux_tools which is no longer available in this build.
-        # Approvals can be rejected; execution must be performed outside this handler.
-        raise RpcError(
-            code=-32601,
-            message="Command execution is not available: linux_tools module has been removed.",
+        db.resolve_approval(approval_id=approval_id, status="approved")
+
+        # Re-execute the original request with force_approve to bypass the gate
+        payload = json.loads(str(approval.get("command") or "{}"))
+        user_request = payload.get("user_request", "")
+        conversation_id = str(approval.get("conversation_id"))
+        agent_type = payload.get("agent_type", "cairn")
+
+        from cairn.agent import ChatAgent
+
+        agent = ChatAgent(db=db)
+        response = agent.respond(
+            user_request,
+            conversation_id=conversation_id,
+            agent_type=agent_type,
+            force_approve=True,
         )
+
+        audit_log(AuditEventType.APPROVAL_GRANTED, {
+            "approval_id": approval_id,
+            "user_request": user_request[:200],
+        })
+
+        return {
+            "status": "executed",
+            "result": {
+                "answer": response.answer,
+                "tool_calls": response.tool_calls,
+                "message_id": response.message_id,
+            },
+        }
 
     raise RpcError(code=-32602, message=f"Invalid action: {action}")
 

@@ -208,6 +208,8 @@ class Database:
         )
 
         # Conversations: chat sessions with context continuity.
+        # NOTE: play_db creates this table first with a block-based schema.
+        # This CREATE IF NOT EXISTS is kept as fallback for standalone usage.
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS conversations (
@@ -219,7 +221,6 @@ class Database:
             )
             """
         )
-
         # Messages: individual chat messages within conversations.
         conn.execute(
             """
@@ -747,16 +748,41 @@ class Database:
     # -------------------------------------------------------------------------
 
     def create_conversation(self, *, conversation_id: str, title: str | None = None) -> str:
-        """Create a new conversation and return its ID."""
+        """Create a new conversation and return its ID.
+
+        The conversations table is defined by play_db with a required block_id
+        foreign key. We create a block first, then the conversation row.
+        """
+        import uuid
+
         now = datetime.now(UTC).isoformat()
-        self._execute(
-            """
-            INSERT INTO conversations (id, title, started_at, last_active_at)
-            VALUES (?, ?, ?, ?)
-            """,
-            (conversation_id, title, now, now),
-        )
-        self.connect().commit()
+        conn = self.connect()
+
+        # Try play_db-compatible schema first (blocks + block_id FK),
+        # fall back to legacy schema for test DBs without blocks table.
+        try:
+            block_id = f"block-{uuid.uuid4()}"
+            act_id = "archived-conversations"
+            conn.execute(
+                """INSERT INTO blocks (id, type, act_id, parent_id, page_id, scene_id,
+                   position, created_at, updated_at)
+                   VALUES (?, 'conversation', ?, NULL, NULL, NULL, 0, ?, ?)""",
+                (block_id, act_id, now, now),
+            )
+            conn.execute(
+                """INSERT INTO conversations (id, block_id, status, started_at,
+                   message_count, is_paused)
+                   VALUES (?, ?, 'active', ?, 0, 0)""",
+                (conversation_id, block_id, now),
+            )
+        except sqlite3.OperationalError:
+            conn.rollback()
+            conn.execute(
+                """INSERT INTO conversations (id, title, started_at, last_active_at)
+                   VALUES (?, ?, ?, ?)""",
+                (conversation_id, title, now, now),
+            )
+        conn.commit()
         return conversation_id
 
     def get_conversation(self, *, conversation_id: str) -> dict[str, object] | None:
@@ -768,28 +794,43 @@ class Database:
         return dict(row) if row is not None else None
 
     def update_conversation_activity(self, *, conversation_id: str) -> None:
-        """Update the last_active_at timestamp for a conversation."""
+        """Update the last_message_at timestamp for a conversation."""
         now = datetime.now(UTC).isoformat()
-        self._execute(
-            "UPDATE conversations SET last_active_at = ? WHERE id = ?",
-            (now, conversation_id),
-        )
+        try:
+            self._execute(
+                "UPDATE conversations SET last_message_at = ? WHERE id = ?",
+                (now, conversation_id),
+            )
+        except sqlite3.OperationalError:
+            self._execute(
+                "UPDATE conversations SET last_active_at = ? WHERE id = ?",
+                (now, conversation_id),
+            )
         self.connect().commit()
 
     def update_conversation_title(self, *, conversation_id: str, title: str) -> None:
-        """Update the title of a conversation."""
-        self._execute(
-            "UPDATE conversations SET title = ? WHERE id = ?",
-            (title, conversation_id),
-        )
-        self.connect().commit()
+        """Update the title of a conversation (no-op if title column absent)."""
+        try:
+            self._execute(
+                "UPDATE conversations SET title = ? WHERE id = ?",
+                (title, conversation_id),
+            )
+            self.connect().commit()
+        except Exception:
+            pass  # play_db schema may not have title column
 
     def iter_conversations(self, limit: int = 50) -> list[dict[str, object]]:
         """List recent conversations (most recent first)."""
-        rows = self._execute(
-            "SELECT * FROM conversations ORDER BY last_active_at DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
+        try:
+            rows = self._execute(
+                "SELECT * FROM conversations ORDER BY COALESCE(last_message_at, started_at) DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            rows = self._execute(
+                "SELECT * FROM conversations ORDER BY COALESCE(last_active_at, started_at) DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
         return [dict(row) for row in rows]
 
     # -------------------------------------------------------------------------
@@ -806,21 +847,67 @@ class Database:
         message_type: str = "text",
         metadata: str | None = None,
     ) -> str:
-        """Add a message to a conversation."""
+        """Add a message to a conversation.
+
+        The messages table is defined by play_db with required block_id and
+        position columns. We create a block and compute position accordingly.
+        The play_db CHECK constraint requires role in ('user','cairn','reos','riva','system').
+        """
+        # Map 'assistant' to 'cairn' for play_db CHECK constraint
+        if role == "assistant":
+            role = "cairn"
+        import uuid
+
         now = datetime.now(UTC).isoformat()
-        self._execute(
-            """
-            INSERT INTO messages (id, conversation_id, role, content, message_type, metadata, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (message_id, conversation_id, role, content, message_type, metadata, now),
-        )
-        # Update conversation activity
-        self._execute(
-            "UPDATE conversations SET last_active_at = ? WHERE id = ?",
-            (now, conversation_id),
-        )
-        self.connect().commit()
+        conn = self.connect()
+
+        try:
+            # play_db-compatible path: create block + use block_id/position columns
+            block_id = f"block-{uuid.uuid4()}"
+            act_id = "archived-conversations"
+
+            conv_row = conn.execute(
+                "SELECT block_id FROM conversations WHERE id = ?",
+                (conversation_id,),
+            ).fetchone()
+            conv_block_id = conv_row["block_id"] if conv_row else None
+
+            cursor = conn.execute(
+                "SELECT COALESCE(MAX(position), -1) + 1 FROM messages WHERE conversation_id = ?",
+                (conversation_id,),
+            )
+            position = cursor.fetchone()[0]
+
+            conn.execute(
+                """INSERT INTO blocks (id, type, act_id, parent_id, page_id, scene_id,
+                   position, created_at, updated_at)
+                   VALUES (?, 'message', ?, ?, NULL, NULL, ?, ?, ?)""",
+                (block_id, act_id, conv_block_id, position, now, now),
+            )
+            conn.execute(
+                """INSERT INTO messages (id, conversation_id, block_id, role, content,
+                   position, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (message_id, conversation_id, block_id, role, content, position, now),
+            )
+            conn.execute(
+                "UPDATE conversations SET last_message_at = ?, message_count = message_count + 1 WHERE id = ?",
+                (now, conversation_id),
+            )
+        except sqlite3.OperationalError:
+            # Legacy schema fallback for test DBs without blocks table
+            conn.rollback()
+            conn.execute(
+                """INSERT INTO messages (id, conversation_id, role, content,
+                   message_type, metadata, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (message_id, conversation_id, role, content, message_type, metadata, now),
+            )
+            conn.execute(
+                "UPDATE conversations SET last_active_at = ? WHERE id = ?",
+                (now, conversation_id),
+            )
+        conn.commit()
         return message_id
 
     def get_messages(
@@ -980,6 +1067,31 @@ class Database:
             (status, now, approval_id),
         )
         self.connect().commit()
+
+    def expire_pending_approvals(
+        self,
+        *,
+        conversation_id: str,
+    ) -> int:
+        """Expire all pending approvals for a conversation.
+
+        Called before creating a new approval to prevent stale accumulation.
+
+        Returns:
+            Number of approvals expired.
+        """
+        now = datetime.now(UTC).isoformat()
+        cursor = self._execute(
+            """
+            UPDATE pending_approvals
+            SET status = 'expired', resolved_at = ?
+            WHERE conversation_id = ? AND status = 'pending'
+            """,
+            (now, conversation_id),
+        )
+        if cursor.rowcount:
+            self.connect().commit()
+        return cursor.rowcount
 
 
 _db_instance: Database | None = None
