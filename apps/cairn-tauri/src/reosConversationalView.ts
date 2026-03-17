@@ -20,6 +20,8 @@ export interface ReosConversationalCallbacks {
   kernelRequest: (method: string, params: unknown) => Promise<unknown>;
   /** Called to get the current hostname for the prompt sigil. */
   getHostname?: () => string | null;
+  /** Called to get the current system context (distro, package manager, etc.) for reos/converse. */
+  getSystemContext?: () => Record<string, unknown>;
 }
 
 interface ConversationTurn {
@@ -130,7 +132,33 @@ export function createConversationalShell(callbacks: ReosConversationalCallbacks
     cursor: pointer;
   `;
 
+  // Debug toggle — shows intent classification below each turn when enabled.
+  let debugEnabled = localStorage.getItem('reos-conv-debug') === '1';
+  const debugBtn = el('button');
+  debugBtn.textContent = '[debug]';
+  debugBtn.title = 'Toggle intent classification display';
+  debugBtn.style.cssText = `
+    padding: 3px 8px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 4px;
+    color: ${debugEnabled ? 'rgba(88,166,255,0.7)' : 'rgba(255,255,255,0.25)'};
+    font-size: 10px;
+    font-family: inherit;
+    cursor: pointer;
+  `;
+  debugBtn.addEventListener('click', () => {
+    debugEnabled = !debugEnabled;
+    localStorage.setItem('reos-conv-debug', debugEnabled ? '1' : '0');
+    debugBtn.style.color = debugEnabled ? 'rgba(88,166,255,0.7)' : 'rgba(255,255,255,0.25)';
+    // Show/hide all existing debug lines
+    scrollBuffer.querySelectorAll('.reos-debug-line').forEach((el) => {
+      (el as HTMLElement).style.display = debugEnabled ? '' : 'none';
+    });
+  });
+
   header.appendChild(headerTitle);
+  header.appendChild(debugBtn);
   header.appendChild(newConvBtn);
 
   // ── Scroll buffer ──
@@ -193,6 +221,23 @@ export function createConversationalShell(callbacks: ReosConversationalCallbacks
 
   // ── Helpers ──────────────────────────────────────────────────────────
 
+  /** Fire-and-forget telemetry. Never throws, never blocks. */
+  function recordEvent(eventType: string, payload: Record<string, unknown>): void {
+    callbacks.kernelRequest('reos/telemetry/event', {
+      session_id: state.conversationId,
+      trace_id: state.conversationId,
+      ts: Date.now(),
+      event_type: eventType,
+      payload,
+    }).catch(() => {/* fire-and-forget */});
+  }
+
+  /** Show brief "Copied!" feedback on a button for 1.5 s then revert. */
+  function showCopiedFeedback(btn: HTMLElement, original: string): void {
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = original; }, 1500);
+  }
+
   function scrollToBottom(): void {
     requestAnimationFrame(() => {
       scrollBuffer.scrollTop = scrollBuffer.scrollHeight;
@@ -236,31 +281,110 @@ export function createConversationalShell(callbacks: ReosConversationalCallbacks
   }
 
   /** Render an inform or clarify turn: plain text, dimmed. */
-  function appendInfoTurn(text: string, isClarify: boolean): void {
+  function appendInfoTurn(
+    text: string,
+    isClarify: boolean,
+    classification?: Record<string, unknown>,
+    turnIndex?: number,
+  ): void {
+    const wrapper = el('div');
+    wrapper.style.cssText = 'display: flex; flex-direction: column; gap: 3px;';
+
     const row = el('div');
     row.style.cssText = `
       padding: 4px 0;
       color: rgba(255,255,255,0.7);
       line-height: 1.6;
       word-break: break-word;
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
     `;
+
+    const textSpan = el('span');
+    textSpan.style.cssText = 'flex: 1;';
 
     if (isClarify) {
       const indicator = el('span');
       indicator.style.cssText = `
-        display: inline-block;
-        margin-right: 6px;
+        flex-shrink: 0;
         color: rgba(88,166,255,0.8);
         font-weight: 600;
       `;
       indicator.textContent = '?';
-      row.appendChild(indicator);
+      textSpan.appendChild(indicator);
+      textSpan.appendChild(document.createTextNode(' '));
     }
 
-    const textNode = document.createTextNode(text);
-    row.appendChild(textNode);
+    textSpan.appendChild(document.createTextNode(text));
+    row.appendChild(textSpan);
 
-    scrollBuffer.appendChild(row);
+    // Thumbs up/down feedback buttons
+    const thumbs = el('div');
+    thumbs.style.cssText = `
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+      align-self: center;
+      opacity: 0.4;
+    `;
+    thumbs.addEventListener('mouseenter', () => { thumbs.style.opacity = '0.75'; });
+    thumbs.addEventListener('mouseleave', () => { thumbs.style.opacity = '0.4'; });
+
+    let feedbackGiven = false;
+    function makeThumb(emoji: string, feedback: 'positive' | 'negative'): HTMLElement {
+      const btn = el('button');
+      btn.textContent = emoji;
+      btn.style.cssText = `
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        font-size: 13px;
+        padding: 0 2px;
+        font-family: inherit;
+        color: inherit;
+      `;
+      btn.addEventListener('click', () => {
+        if (feedbackGiven) return;
+        feedbackGiven = true;
+        // Highlight selected thumb
+        btn.style.opacity = '1';
+        btn.style.filter = 'brightness(1.5)';
+        // Dim the other
+        thumbs.querySelectorAll('button').forEach((b) => {
+          if (b !== btn) (b as HTMLElement).style.opacity = '0.2';
+        });
+        recordEvent('turn_feedback', {
+          turn_index: turnIndex ?? -1,
+          feedback,
+        });
+      });
+      return btn;
+    }
+
+    thumbs.appendChild(makeThumb('\u{1F44D}', 'positive'));
+    thumbs.appendChild(makeThumb('\u{1F44E}', 'negative'));
+    row.appendChild(thumbs);
+
+    wrapper.appendChild(row);
+
+    // Debug line: intent classification
+    if (classification) {
+      const debugLine = el('div');
+      debugLine.className = 'reos-debug-line';
+      debugLine.style.cssText = `
+        font-size: 10px;
+        color: rgba(255,255,255,0.2);
+        padding: 0 4px;
+        display: ${debugEnabled ? '' : 'none'};
+      `;
+      const intent = String(classification['intent'] ?? '—');
+      const confident = String(classification['confident'] ?? '—');
+      debugLine.textContent = `intent: ${intent} | confident: ${confident}`;
+      wrapper.appendChild(debugLine);
+    }
+
+    scrollBuffer.appendChild(wrapper);
     latestCardIsProposal = false;
     scrollToBottom();
   }
@@ -362,9 +486,34 @@ export function createConversationalShell(callbacks: ReosConversationalCallbacks
     `;
     exitLabel.textContent = result.exit_code !== null ? `exit ${result.exit_code}` : 'exit ?';
 
+    // Copy output button
+    const copyOutputBtn = el('button');
+    copyOutputBtn.textContent = 'Copy output';
+    copyOutputBtn.style.cssText = `
+      margin-left: 6px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      font-size: 10px;
+      color: rgba(255,255,255,0.35);
+      font-family: inherit;
+      padding: 0 2px;
+      opacity: 0.5;
+      flex-shrink: 0;
+    `;
+    copyOutputBtn.style.setProperty('transition', 'opacity 0.15s');
+    copyOutputBtn.addEventListener('mouseenter', () => { copyOutputBtn.style.opacity = '0.8'; });
+    copyOutputBtn.addEventListener('mouseleave', () => { copyOutputBtn.style.opacity = '0.5'; });
+    copyOutputBtn.addEventListener('click', () => {
+      const outputText = [result.stdout, result.stderr].filter(Boolean).join('\n').trimEnd();
+      navigator.clipboard.writeText(outputText).catch(() => {/* best-effort */});
+      showCopiedFeedback(copyOutputBtn, 'Copy output');
+    });
+
     blockHeader.appendChild(exitDot);
     blockHeader.appendChild(cmdLabel);
     blockHeader.appendChild(exitLabel);
+    blockHeader.appendChild(copyOutputBtn);
     block.appendChild(blockHeader);
 
     // Output content
@@ -417,6 +566,7 @@ export function createConversationalShell(callbacks: ReosConversationalCallbacks
     result: ReosConverseResult,
     onRun: (command: string, btn: HTMLElement) => void,
     onSkip: (operationId: string, card: HTMLElement) => void,
+    onRunEdited?: (editedCommand: string, originalCommand: string, btn: HTMLElement) => void,
   ): HTMLElement {
     const isDanger = result.turn_type === 'danger';
 
@@ -468,8 +618,11 @@ export function createConversationalShell(callbacks: ReosConversationalCallbacks
       card.appendChild(riskNote);
     }
 
-    // Command block
+    // Command block with copy button
     const command = result.command ?? '';
+    const commandRow = el('div');
+    commandRow.style.cssText = 'position: relative;';
+
     const commandBlock = el('div');
     commandBlock.className = 'card-command';
     commandBlock.style.cssText = `
@@ -480,11 +633,39 @@ export function createConversationalShell(callbacks: ReosConversationalCallbacks
       border: 1px solid rgba(255,255,255,0.06);
       border-radius: 4px;
       padding: 8px 10px;
+      padding-right: 60px;
       word-break: break-all;
       white-space: pre-wrap;
     `;
     commandBlock.textContent = command;
-    card.appendChild(commandBlock);
+
+    const copyCommandBtn = el('button');
+    copyCommandBtn.textContent = 'Copy';
+    copyCommandBtn.style.cssText = `
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      font-size: 10px;
+      color: rgba(255,255,255,0.4);
+      font-family: inherit;
+      padding: 2px 4px;
+      opacity: 0.5;
+    `;
+    copyCommandBtn.style.setProperty('transition', 'opacity 0.15s');
+    copyCommandBtn.addEventListener('mouseenter', () => { copyCommandBtn.style.opacity = '0.8'; });
+    copyCommandBtn.addEventListener('mouseleave', () => { copyCommandBtn.style.opacity = '0.5'; });
+    copyCommandBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(command).catch(() => {/* best-effort */});
+      showCopiedFeedback(copyCommandBtn, 'Copy');
+    });
+
+    commandRow.appendChild(commandBlock);
+    commandRow.appendChild(copyCommandBtn);
+    card.appendChild(commandRow);
 
     // Explanation
     if (result.explanation) {
@@ -555,6 +736,22 @@ export function createConversationalShell(callbacks: ReosConversationalCallbacks
     actions.appendChild(skipBtn);
     card.appendChild(actions);
 
+    // Debug line: intent classification
+    if (result.classification) {
+      const debugLine = el('div');
+      debugLine.className = 'reos-debug-line';
+      debugLine.style.cssText = `
+        font-size: 10px;
+        color: rgba(255,255,255,0.2);
+        padding: 2px 0 0;
+        display: ${debugEnabled ? '' : 'none'};
+      `;
+      const intent = String(result.classification['intent'] ?? '—');
+      const confident = String(result.classification['confident'] ?? '—');
+      debugLine.textContent = `intent: ${intent} | confident: ${confident}`;
+      card.appendChild(debugLine);
+    }
+
     // ── Edit button behavior ──
     let editMode = false;
     let editInput: HTMLInputElement | null = null;
@@ -593,7 +790,13 @@ export function createConversationalShell(callbacks: ReosConversationalCallbacks
       editBtn.onclick = () => {
         if (editInput) {
           const edited = editInput.value.trim();
-          if (edited) onRun(edited, runBtn);
+          if (edited) {
+            if (edited !== command && onRunEdited) {
+              onRunEdited(edited, command, runBtn);
+            } else {
+              onRun(edited, runBtn);
+            }
+          }
         }
       };
 
@@ -602,7 +805,13 @@ export function createConversationalShell(callbacks: ReosConversationalCallbacks
         if (e.key === 'Enter') {
           e.preventDefault();
           const edited = editInput?.value.trim() ?? '';
-          if (edited) onRun(edited, runBtn);
+          if (edited) {
+            if (edited !== command && onRunEdited) {
+              onRunEdited(edited, command, runBtn);
+            } else {
+              onRun(edited, runBtn);
+            }
+          }
         }
       });
     });
@@ -664,6 +873,13 @@ export function createConversationalShell(callbacks: ReosConversationalCallbacks
       execLabel.remove();
       appendOutputBlock(command, result);
 
+      // Telemetry: command executed
+      recordEvent('command_executed', {
+        exit_code: result.exit_code,
+        duration_ms: result.duration_ms,
+        operation_id: operationId,
+      });
+
       // Add execution result to turn history for context
       state.turns.push({
         role: 'system',
@@ -717,6 +933,10 @@ export function createConversationalShell(callbacks: ReosConversationalCallbacks
     setInputDisabled(true);
     isWaiting = true;
 
+    // Telemetry: user submitted a turn
+    const submitTs = Date.now();
+    recordEvent('turn_submitted', { text: trimmed });
+
     const thinkingEl = appendThinkingIndicator();
 
     // Build turn_history for RPC (last 8 turns)
@@ -725,14 +945,18 @@ export function createConversationalShell(callbacks: ReosConversationalCallbacks
       content: t.content,
     }));
 
+    // Resolve system context from vitals
+    const systemContext = callbacks.getSystemContext ? callbacks.getSystemContext() : {};
+
     void callbacks.kernelRequest('reos/converse', {
       natural_language: trimmed,
       conversation_id: state.conversationId,
       turn_history: turnHistory,
-      system_context: {},
+      system_context: systemContext,
     }).then((raw) => {
       thinkingEl.remove();
       const result = raw as ReosConverseResult;
+      const turnIndex = state.turns.length;
 
       // Record assistant turn
       state.turns.push({
@@ -747,16 +971,22 @@ export function createConversationalShell(callbacks: ReosConversationalCallbacks
       state.pendingOperationId = result.operation_id ?? null;
       state.pendingCommand = result.command ?? null;
 
+      // Telemetry: response rendered
+      recordEvent('turn_rendered', {
+        turn_type: result.turn_type,
+        latency_ms: Date.now() - submitTs,
+      });
+
       // Render the appropriate turn type
       switch (result.turn_type) {
         case 'clarify':
-          appendInfoTurn(result.message, true);
+          appendInfoTurn(result.message, true, result.classification, turnIndex);
           setInputDisabled(false);
           inputEl.focus();
           break;
 
         case 'inform':
-          appendInfoTurn(result.message, false);
+          appendInfoTurn(result.message, false, result.classification, turnIndex);
           setInputDisabled(false);
           inputEl.focus();
           break;
@@ -766,8 +996,8 @@ export function createConversationalShell(callbacks: ReosConversationalCallbacks
           appendCommandCard(
             result,
             (command, btn) => {
-              // Run callback
-              void btn; // btn is available if needed for state
+              // Run callback (unedited)
+              recordEvent('command_approved', { command, operation_id: result.operation_id });
               executeCommand(
                 command,
                 result.operation_id,
@@ -777,6 +1007,7 @@ export function createConversationalShell(callbacks: ReosConversationalCallbacks
             },
             (operationId, card) => {
               // Skip callback — call abort RPC and dim the card
+              recordEvent('command_rejected', { operation_id: operationId });
               void callbacks.kernelRequest('reos/converse/abort', {
                 operation_id: operationId,
               }).catch(() => {/* silent */});
@@ -793,6 +1024,21 @@ export function createConversationalShell(callbacks: ReosConversationalCallbacks
               setInputDisabled(false);
               inputEl.focus();
             },
+            (editedCommand, originalCommand, btn) => {
+              // Edited run callback — fire correction telemetry then execute
+              recordEvent('command_corrected', {
+                original: originalCommand,
+                edited: editedCommand,
+                operation_id: result.operation_id,
+              });
+              recordEvent('command_approved', { command: editedCommand, operation_id: result.operation_id });
+              executeCommand(
+                editedCommand,
+                result.operation_id,
+                btn,
+                btn.closest('.reos-card') as HTMLElement,
+              );
+            },
           );
           // Input stays disabled — user must click Run/Edit/Skip to continue
           // UNLESS they press n which will Skip
@@ -805,7 +1051,7 @@ export function createConversationalShell(callbacks: ReosConversationalCallbacks
           break;
 
         default:
-          appendInfoTurn(result.message, false);
+          appendInfoTurn(result.message, false, result.classification, turnIndex);
           setInputDisabled(false);
           inputEl.focus();
           break;

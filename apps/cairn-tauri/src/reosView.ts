@@ -598,6 +598,11 @@ export function createReosView(callbacks: ReosViewCallbacks): {
   const conv = createConversationalShell({
     kernelRequest: callbacks.kernelRequest,
     getHostname: () => lastVitals?.hostname ?? null,
+    getSystemContext: () => lastVitals ? {
+      distro: lastVitals.distro,
+      package_manager: lastVitals.package_manager,
+      active_service_count: lastVitals.active_service_count,
+    } : {},
   });
   const convContent = conv.container;
   convContent.style.cssText += `
