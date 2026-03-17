@@ -15,6 +15,7 @@ import '@xterm/xterm/css/xterm.css';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { el } from './dom';
+import { createConversationalShell } from './reosConversationalView';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -532,8 +533,114 @@ export function createReosView(callbacks: ReosViewCallbacks): {
     box-sizing: border-box;
   `;
 
-  terminalPane.appendChild(termHeader);
-  terminalPane.appendChild(termBody);
+  // ── Tab Bar ────────────────────────────────────────────────────────────
+  //
+  // The right panel has two tabs: Terminal (PTY) and Conversational (DOM-based shell).
+  // CRITICAL: switching to Conversational does NOT stop the PTY — it only hides/shows
+  // DOM containers. Long-running commands are never interrupted by a tab switch.
+
+  const TAB_KEY = 'reos-active-tab';
+  type ReosTab = 'terminal' | 'conversational';
+  let activeTab: ReosTab = (localStorage.getItem(TAB_KEY) as ReosTab | null) ?? 'terminal';
+
+  const tabBar = el('div');
+  tabBar.style.cssText = `
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    background: rgba(0,0,0,0.25);
+    flex-shrink: 0;
+  `;
+
+  function makeTab(label: string, tabId: ReosTab): HTMLElement {
+    const btn = el('button');
+    btn.textContent = label;
+    btn.dataset.tabId = tabId;
+    btn.style.cssText = `
+      padding: 8px 16px;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      background: transparent;
+      transition: color 0.15s, border-color 0.15s;
+    `;
+    return btn;
+  }
+
+  const termTab = makeTab('\u{1F4BB} Terminal', 'terminal');
+  const convTab = makeTab('\u{1F4AC} Conversational', 'conversational');
+
+  tabBar.appendChild(termTab);
+  tabBar.appendChild(convTab);
+
+  function applyTabStyles(): void {
+    termTab.style.color = activeTab === 'terminal' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)';
+    termTab.style.borderBottomColor = activeTab === 'terminal' ? '#58a6ff' : 'transparent';
+    convTab.style.color = activeTab === 'conversational' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)';
+    convTab.style.borderBottomColor = activeTab === 'conversational' ? '#58a6ff' : 'transparent';
+  }
+
+  // Wrap terminal header + body into a dedicated container
+  const termContent = el('div');
+  termContent.style.cssText = `
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  `;
+  termContent.appendChild(termHeader);
+  termContent.appendChild(termBody);
+
+  // Instantiate the conversational shell
+  const conv = createConversationalShell({
+    kernelRequest: callbacks.kernelRequest,
+    getHostname: () => lastVitals?.hostname ?? null,
+  });
+  const convContent = conv.container;
+  convContent.style.cssText += `
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  `;
+
+  function switchTab(tab: ReosTab): void {
+    if (activeTab === tab) return;
+    activeTab = tab;
+    localStorage.setItem(TAB_KEY, tab);
+
+    if (tab === 'terminal') {
+      termContent.style.display = '';
+      convContent.style.display = 'none';
+      conv.deactivate();
+      // Re-fit the terminal after it becomes visible.
+      requestAnimationFrame(() => { fitAddon?.fit(); });
+    } else {
+      termContent.style.display = 'none';
+      convContent.style.display = '';
+      // PTY continues running in background — do NOT call stopTerminal().
+      conv.activate();
+    }
+
+    applyTabStyles();
+  }
+
+  termTab.addEventListener('click', () => switchTab('terminal'));
+  convTab.addEventListener('click', () => switchTab('conversational'));
+
+  // Apply initial tab state
+  if (activeTab === 'conversational') {
+    termContent.style.display = 'none';
+  } else {
+    convContent.style.display = 'none';
+  }
+  applyTabStyles();
+
+  terminalPane.appendChild(tabBar);
+  terminalPane.appendChild(termContent);
+  terminalPane.appendChild(convContent);
 
   container.appendChild(dashboard);
   container.appendChild(terminalPane);

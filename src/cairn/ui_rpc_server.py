@@ -629,6 +629,11 @@ try:
         handle_reos_telemetry_event as _handle_reos_telemetry_event,
         handle_reos_telemetry_query as _handle_reos_telemetry_query,
     )
+    from reos.rpc_handlers.converse import (
+        handle_reos_converse as _handle_reos_converse,
+        handle_reos_execute as _handle_reos_execute,
+        handle_reos_converse_abort as _handle_reos_converse_abort,
+    )
 
     _REOS_AVAILABLE = True
 except ImportError:
@@ -838,6 +843,56 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
             if not isinstance(params, dict):
                 raise RpcError(code=-32602, message="params must be an object")
             return _jsonrpc_result(req_id=req_id, result=_handle_reos_telemetry_query(db, **params))
+
+        # ReOS conversational shell — multi-param handlers.
+        if _REOS_AVAILABLE and method == "reos/converse":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            natural_language = params.get("natural_language")
+            if not isinstance(natural_language, str) or not natural_language:
+                raise RpcError(code=-32602, message="natural_language is required")
+            conversation_id = params.get("conversation_id", "")
+            turn_history = params.get("turn_history", [])
+            system_context = params.get("system_context", {})
+            if not isinstance(turn_history, list):
+                raise RpcError(code=-32602, message="turn_history must be an array")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_reos_converse(
+                    db,
+                    natural_language=natural_language,
+                    conversation_id=conversation_id,
+                    turn_history=turn_history,
+                    system_context=system_context,
+                ),
+            )
+
+        if _REOS_AVAILABLE and method == "reos/execute":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            command = params.get("command")
+            if not isinstance(command, str) or not command:
+                raise RpcError(code=-32602, message="command is required")
+            operation_id = params.get("operation_id", "")
+            conversation_id = params.get("conversation_id", "")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_reos_execute(
+                    db,
+                    operation_id=operation_id,
+                    command=command,
+                    conversation_id=conversation_id,
+                ),
+            )
+
+        if _REOS_AVAILABLE and method == "reos/converse/abort":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            operation_id = params.get("operation_id", "")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_reos_converse_abort(db, operation_id=operation_id),
+            )
 
         if method == "chat/respond":
             if not isinstance(params, dict):

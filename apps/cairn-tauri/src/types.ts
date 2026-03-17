@@ -836,6 +836,45 @@ export type ReosProposeResult = {
   latency_ms: number | null;
 };
 
+// ReOS — Conversational shell turn result (reos/converse)
+export type ReosConverseResult = {
+  turn_type: 'clarify' | 'inform' | 'propose' | 'danger' | 'refuse';
+  message: string;
+  command: string | null;
+  explanation: string | null;
+  is_risky: boolean;
+  risk_reason: string | null;
+  operation_id: string;
+  classification: Record<string, unknown>;
+  latency_ms: number;
+};
+
+// ReOS — Command execution result (reos/execute)
+export type ReosExecuteResult = {
+  success: boolean;
+  exit_code: number | null;
+  stdout: string;
+  stderr: string;
+  duration_ms: number;
+  truncated: boolean;
+};
+
+// ReOS — Conversation turn (frontend state)
+export type ReosConversationTurn = {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  command?: string;
+  commandOutput?: {
+    exit_code: number | null;
+    stdout: string;
+    stderr: string;
+    duration_ms: number;
+    truncated: boolean;
+  };
+  turnType?: 'clarify' | 'inform' | 'propose' | 'danger' | 'refuse';
+  timestamp: number;
+};
+
 // ReOS — Telemetry query response (reos/telemetry/query)
 export type ReosTelemetryQueryResult = {
   rows: Record<string, unknown>[];
