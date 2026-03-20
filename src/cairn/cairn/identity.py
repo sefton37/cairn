@@ -162,12 +162,8 @@ def _build_act_content(act: play_fs.Act) -> str:
 def _build_scene_content(scene: play_fs.Scene) -> str:
     """Build content string from a Scene."""
     parts = [f"Project: {scene.title}"]
-    if scene.intent:
-        parts.append(f"Intent: {scene.intent}")
-    if scene.status:
-        parts.append(f"Status: {scene.status}")
-    if scene.time_horizon:
-        parts.append(f"Timeframe: {scene.time_horizon}")
+    if scene.stage:
+        parts.append(f"Stage: {scene.stage}")
     if scene.notes:
         parts.append(f"Notes: {scene.notes}")
     return "\n".join(parts)

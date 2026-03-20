@@ -40,6 +40,34 @@ ToolSelector = Callable[[BehaviorModeContext], str | None]
 ArgExtractor = Callable[[BehaviorModeContext], dict[str, Any]]
 
 
+def _routed_tool_selector(domain: str) -> ToolSelector:
+    """Create a tool selector that uses the per-domain LLM router."""
+
+    def selector(ctx: BehaviorModeContext) -> str | None:
+        if not ctx.llm:
+            return None
+        from cairn.cairn.tool_router import route_to_tool
+
+        tool_name, _ = route_to_tool(domain, ctx.user_input, ctx.llm, ctx.play_data)
+        return tool_name
+
+    return selector
+
+
+def _routed_arg_extractor(domain: str) -> ArgExtractor:
+    """Create an arg extractor that uses the per-domain LLM router (cached)."""
+
+    def extractor(ctx: BehaviorModeContext) -> dict[str, Any]:
+        if not ctx.llm:
+            return {}
+        from cairn.cairn.tool_router import route_to_tool
+
+        _, args = route_to_tool(domain, ctx.user_input, ctx.llm, ctx.play_data)
+        return args
+
+    return extractor
+
+
 def _static_tool(tool_name: str) -> ToolSelector:
     """Create a tool selector that always returns the same tool."""
 
@@ -126,16 +154,25 @@ def _play_tool_selector(ctx: BehaviorModeContext) -> str | None:
 
 
 def _play_arg_extractor(ctx: BehaviorModeContext) -> dict[str, Any]:
-    """Extract args for Play tools using LLM when available."""
-    tool = _play_tool_selector(ctx)
-    args: dict[str, Any] = {}
+    """Extract args for Play tools using LLM when available.
 
-    if tool == "cairn_update_scene":
-        args = _llm_extract_scene_move_args(ctx)
-    elif tool == "cairn_search_contacts":
-        args["query"] = ctx.user_input
-    elif tool == "cairn_list_scenes":
-        # Try to extract act_name for filtering
+    Uses the router for tool selection, then applies dedicated extractors
+    for operations (like scene moves) that need richer argument extraction.
+    """
+    from cairn.cairn.tool_router import route_to_tool
+
+    if ctx.llm:
+        tool, args = route_to_tool("play", ctx.user_input, ctx.llm, ctx.play_data)
+    else:
+        tool, args = _play_tool_selector(ctx), {}
+
+    if tool == "cairn_update_scene" and not args.get("scene_name"):
+        # Router selected update_scene but may not have extracted move args.
+        # Delegate to the dedicated scene-move extractor for richer extraction.
+        move_args = _llm_extract_scene_move_args(ctx)
+        if move_args:
+            return move_args
+    elif tool == "cairn_list_scenes" and not args.get("act_name"):
         act_name = _llm_extract_entity_name(ctx, "act")
         if act_name:
             args["act_name"] = act_name
@@ -334,8 +371,8 @@ CONVERSATION_MODE = BehaviorMode(
 GENERAL_QUERY_MODE = BehaviorMode(
     name="general_query",
     needs_tool=True,
-    tool_selector=_static_tool("cairn_list_items"),
-    arg_extractor=_no_args,
+    tool_selector=_routed_tool_selector("general"),
+    arg_extractor=_routed_arg_extractor("general"),
     system_prompt_template=(
         "You are CAIRN, the Attention Minder — a friendly local AI assistant. "
         "You are an AI — the user is a separate human being. "
@@ -362,8 +399,8 @@ EMAIL_QUERY_MODE = BehaviorMode(
 PERSONAL_QUERY_MODE = BehaviorMode(
     name="personal_query",
     needs_tool=True,
-    tool_selector=_static_tool("cairn_list_items"),
-    arg_extractor=_no_args,
+    tool_selector=_routed_tool_selector("personal"),
+    arg_extractor=_routed_arg_extractor("personal"),
     system_prompt_template=(
         "You are CAIRN, the Attention Minder — an AI assistant. "
         "You are NOT the user. The user is a separate human being. "
@@ -386,8 +423,8 @@ FEEDBACK_MODE = BehaviorMode(
 CALENDAR_QUERY_MODE = BehaviorMode(
     name="calendar_query",
     needs_tool=True,
-    tool_selector=_static_tool("cairn_get_calendar"),
-    arg_extractor=_no_args,
+    tool_selector=_routed_tool_selector("calendar"),
+    arg_extractor=_routed_arg_extractor("calendar"),
     system_prompt_template=(
         "You are CAIRN, the Attention Minder. "
         "Respond based STRICTLY on the data provided.\n"
@@ -406,8 +443,8 @@ CALENDAR_QUERY_MODE = BehaviorMode(
 CONTACTS_QUERY_MODE = BehaviorMode(
     name="contacts_query",
     needs_tool=True,
-    tool_selector=_static_tool("cairn_search_contacts"),
-    arg_extractor=_contacts_args,
+    tool_selector=_routed_tool_selector("contacts"),
+    arg_extractor=_routed_arg_extractor("contacts"),
     system_prompt_template=(
         "You are CAIRN, the Attention Minder. " "Respond based STRICTLY on the data provided."
     ),
@@ -418,8 +455,8 @@ CONTACTS_QUERY_MODE = BehaviorMode(
 TASKS_QUERY_MODE = BehaviorMode(
     name="tasks_query",
     needs_tool=True,
-    tool_selector=_static_tool("cairn_get_todos"),
-    arg_extractor=_no_args,
+    tool_selector=_routed_tool_selector("tasks"),
+    arg_extractor=_routed_arg_extractor("tasks"),
     system_prompt_template=(
         "You are CAIRN, the Attention Minder. " "Respond based STRICTLY on the data provided."
     ),
@@ -430,8 +467,8 @@ TASKS_QUERY_MODE = BehaviorMode(
 KNOWLEDGE_QUERY_MODE = BehaviorMode(
     name="knowledge_query",
     needs_tool=True,
-    tool_selector=_static_tool("cairn_list_items"),
-    arg_extractor=_no_args,
+    tool_selector=_routed_tool_selector("knowledge"),
+    arg_extractor=_routed_arg_extractor("knowledge"),
     system_prompt_template=(
         "You are CAIRN, the Attention Minder. " "Respond based STRICTLY on the data provided."
     ),
@@ -460,8 +497,8 @@ def _health_arg_extractor(ctx: BehaviorModeContext) -> dict[str, Any]:
 HEALTH_QUERY_MODE = BehaviorMode(
     name="health_query",
     needs_tool=True,
-    tool_selector=_health_tool_selector,
-    arg_extractor=_health_arg_extractor,
+    tool_selector=_routed_tool_selector("health"),
+    arg_extractor=_routed_arg_extractor("health"),
     system_prompt_template=(
         "You are CAIRN, the Attention Minder. "
         "Present the health report findings clearly and helpfully.\n"
@@ -475,7 +512,7 @@ HEALTH_QUERY_MODE = BehaviorMode(
 PLAY_QUERY_MODE = BehaviorMode(
     name="play_query",
     needs_tool=True,
-    tool_selector=_play_tool_selector,
+    tool_selector=_routed_tool_selector("play"),
     arg_extractor=_play_arg_extractor,
     system_prompt_template=(
         "You are CAIRN, the Attention Minder. "
@@ -489,7 +526,7 @@ PLAY_QUERY_MODE = BehaviorMode(
 PLAY_MUTATION_MODE = BehaviorMode(
     name="play_mutation",
     needs_tool=True,
-    tool_selector=_play_tool_selector,
+    tool_selector=_routed_tool_selector("play"),
     arg_extractor=_play_arg_extractor,
     system_prompt_template=(
         "You are CAIRN, the Attention Minder. "
@@ -511,6 +548,35 @@ UNDO_MODE = BehaviorMode(
     needs_hallucination_check=False,
     verification_mode="STANDARD",
 )
+
+SURFACING_MODE = BehaviorMode(
+    name="surfacing",
+    needs_tool=True,
+    tool_selector=_routed_tool_selector("surfacing"),
+    arg_extractor=_routed_arg_extractor("surfacing"),
+    system_prompt_template=(
+        "You are CAIRN, the Attention Minder. "
+        "Present surfaced items naturally and helpfully. "
+        "Frame everything as 'here is what is waiting when you are ready' — "
+        "never guilt, never urgency theater."
+    ),
+    needs_hallucination_check=True,
+    verification_mode="FAST",
+)
+
+META_MODE = BehaviorMode(
+    name="meta",
+    needs_tool=True,
+    tool_selector=_routed_tool_selector("meta"),
+    arg_extractor=_routed_arg_extractor("meta"),
+    system_prompt_template=(
+        "You are CAIRN, the Attention Minder. "
+        "Report the result of the action to the user."
+    ),
+    needs_hallucination_check=False,
+    verification_mode="FAST",
+)
+
 
 def create_default_registry() -> BehaviorModeRegistry:
     """Create a registry with all known behavior modes registered."""
@@ -553,6 +619,17 @@ def create_default_registry() -> BehaviorModeRegistry:
     reg.register("file", "human", "execute", "undo", UNDO_MODE)
     reg.register("stream", "human", "execute", "undo", UNDO_MODE)
     reg.register("stream", "human", "interpret", "undo", UNDO_MODE)
+
+    # Surfacing (what needs attention, morning brief, next steps)
+    reg.register("stream", "human", "read", "surfacing", SURFACING_MODE)
+    reg.register("stream", "human", "interpret", "surfacing", SURFACING_MODE)
+    reg.register_domain("surfacing", SURFACING_MODE)
+
+    # Meta (confirm, cancel, undo)
+    reg.register("stream", "human", "execute", "meta", META_MODE)
+    reg.register("file", "human", "execute", "meta", META_MODE)
+    reg.register("stream", "human", "interpret", "meta", META_MODE)
+    reg.register_domain("meta", META_MODE)
 
     # Health
     reg.register("stream", "human", "read", "health", HEALTH_QUERY_MODE)

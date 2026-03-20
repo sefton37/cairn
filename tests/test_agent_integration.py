@@ -114,7 +114,7 @@ class TestChatAgentRespond:
 
         tool_plan = {
             "tool_calls": [
-                {"name": "cairn_play_acts_list", "arguments": {}},
+                {"name": "cairn_list_acts", "arguments": {}},
             ]
         }
         ollama = FakeOllama(
@@ -125,7 +125,7 @@ class TestChatAgentRespond:
         result = agent.respond("What are my acts?")
 
         assert len(calls) == 1
-        assert calls[0]["name"] == "cairn_play_acts_list"
+        assert calls[0]["name"] == "cairn_list_acts"
         assert result.answer == "Here are your acts."
         assert len(result.tool_calls) == 1
 
@@ -145,7 +145,7 @@ class TestChatAgentRespond:
 
         tool_plan = {
             "tool_calls": [
-                {"name": "cairn_play_acts_list", "arguments": {}},
+                {"name": "cairn_list_acts", "arguments": {}},
             ]
         }
         ollama = FakeOllama(
@@ -505,7 +505,7 @@ class TestChatAgentAnswerGeneration:
         monkeypatch.setattr(agent_mod, "call_tool", fake_call_tool)
 
         tool_plan = {
-            "tool_calls": [{"name": "cairn_play_acts_list", "arguments": {}}]
+            "tool_calls": [{"name": "cairn_list_acts", "arguments": {}}]
         }
         ollama = FakeOllama(
             tool_plan_json=json.dumps(tool_plan),

@@ -302,7 +302,7 @@ def list_tools() -> list[Tool]:
                 name="cairn_list_items",
                 description=(
                     "List items in the knowledge base with optional filters. "
-                    "Returns items with their CAIRN metadata (kanban state, priority, etc.). "
+                    "Returns items with their CAIRN metadata. "
                     "Useful for personal queries about goals, projects, and stored knowledge."
                 ),
                 input_schema={
@@ -312,15 +312,6 @@ def list_tools() -> list[Tool]:
                             "type": "string",
                             "enum": ["act", "scene"],
                             "description": "Filter by entity type",
-                        },
-                        "kanban_state": {
-                            "type": "string",
-                            "enum": ["active", "backlog", "waiting", "someday", "done"],
-                            "description": "Filter by kanban state",
-                        },
-                        "has_priority": {
-                            "type": "boolean",
-                            "description": "true = only with priority, false = only without",
                         },
                         "is_overdue": {
                             "type": "boolean",
@@ -379,41 +370,6 @@ def list_tools() -> list[Tool]:
         ]
     )
 
-    # =========================================================================
-    # Play alias tools (cairn_play_* → same as cairn_list_*)
-    # These names are used in agent tests and older prompt templates.
-    # =========================================================================
-    tools.extend(
-        [
-            Tool(
-                name="cairn_play_acts_list",
-                description="List all Acts in The Play (alias for cairn_list_acts).",
-                input_schema={"type": "object", "properties": {}},
-            ),
-            Tool(
-                name="cairn_play_scenes_list",
-                description="List Scenes in an Act (alias for cairn_list_scenes).",
-                input_schema={
-                    "type": "object",
-                    "properties": {
-                        "act_name": {
-                            "type": "string",
-                            "description": "Name of the Act (fuzzy matched)",
-                        },
-                        "act_id": {
-                            "type": "string",
-                            "description": "Act ID (alternative to act_name)",
-                        },
-                        "path": {
-                            "type": "string",
-                            "description": "Ignored (legacy argument from system tool era)",
-                        },
-                    },
-                },
-            ),
-        ]
-    )
-
     return tools
 
 
@@ -423,14 +379,6 @@ def call_tool(db: Database, *, name: str, arguments: dict[str, Any] | None) -> A
     CAIRN tools delegate to CairnToolHandler.
     """
     args = arguments or {}
-
-    # --- Play alias tools: remap to canonical cairn_list_* names ---
-    _play_aliases = {
-        "cairn_play_acts_list": "cairn_list_acts",
-        "cairn_play_scenes_list": "cairn_list_scenes",
-    }
-    if name in _play_aliases:
-        name = _play_aliases[name]
 
     # --- CAIRN Tools (Knowledge Management & Thunderbird Integration) ---
     if name.startswith("cairn_"):

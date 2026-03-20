@@ -68,6 +68,9 @@ _DOMAIN_TO_INTENT_CATEGORY = {
     "undo": "UNDO",
     "feedback": "FEEDBACK",
     "conversation": "CONVERSATION",
+    "surfacing": "TASKS",    # Map to TASKS for backward compat
+    "meta": "UNDO",          # Map to UNDO for backward compat
+    "health": "KNOWLEDGE",   # Map to KNOWLEDGE for backward compat
 }
 
 # Action hint → IntentAction name mapping
@@ -205,6 +208,11 @@ class CairnAtomicBridge:
         Returns:
             CairnOperationResult with operation, verification, and response.
         """
+        # Clear tool router cache to prevent cross-request leaks
+        from cairn.cairn.tool_router import clear_router_cache
+
+        clear_router_cache()
+
         # Step 0: Check for pending clarification before normal processing
         pending = self.processor.store.get_pending_clarification(user_id)
         if pending:

@@ -3,10 +3,9 @@
 MCP tool definitions for CAIRN - the Attention Minder.
 
 These tools provide:
-1. Knowledge Base CRUD - List, get, touch, set priority, kanban state
+1. Knowledge Base CRUD - List, get, touch items
 2. Surfacing - Get what needs attention next
-3. Contact Management - Link contacts to entities
-4. Thunderbird Integration - Calendar and contact access
+3. Thunderbird Integration - Calendar and contact access
 """
 
 from __future__ import annotations
@@ -55,7 +54,7 @@ def list_tools() -> list[Tool]:
             name="cairn_list_items",
             description=(
                 "List items in the knowledge base with optional filters. "
-                "Returns items with their CAIRN metadata (kanban state, priority, etc.)."
+                "Returns items with their CAIRN metadata."
             ),
             input_schema={
                 "type": "object",
@@ -64,15 +63,6 @@ def list_tools() -> list[Tool]:
                         "type": "string",
                         "enum": ["act", "scene"],
                         "description": "Filter by entity type",
-                    },
-                    "kanban_state": {
-                        "type": "string",
-                        "enum": ["active", "backlog", "waiting", "someday", "done"],
-                        "description": "Filter by kanban state",
-                    },
-                    "has_priority": {
-                        "type": "boolean",
-                        "description": "true = only with priority, false = only without",
                     },
                     "is_overdue": {
                         "type": "boolean",
@@ -121,97 +111,6 @@ def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["entity_type", "entity_id"],
-            },
-        ),
-        Tool(
-            name="cairn_set_priority",
-            description=(
-                "Set priority for an item. Priority is 1-5 (higher = more important). "
-                "Priority is user-driven - CAIRN surfaces when decisions are needed."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "entity_type": {
-                        "type": "string",
-                        "enum": ["act", "scene"],
-                    },
-                    "entity_id": {"type": "string"},
-                    "priority": {
-                        "type": "number",
-                        "minimum": 1,
-                        "maximum": 5,
-                        "description": "Priority level (1-5, higher = more important)",
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": "Optional reason for the priority",
-                    },
-                },
-                "required": ["entity_type", "entity_id", "priority"],
-            },
-        ),
-        Tool(
-            name="cairn_set_kanban_state",
-            description=(
-                "Move an item between kanban states: active, backlog, waiting, someday, done."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "entity_type": {
-                        "type": "string",
-                        "enum": ["act", "scene"],
-                    },
-                    "entity_id": {"type": "string"},
-                    "state": {
-                        "type": "string",
-                        "enum": ["active", "backlog", "waiting", "someday", "done"],
-                    },
-                    "waiting_on": {
-                        "type": "string",
-                        "description": "Who/what we're waiting on (for 'waiting' state)",
-                    },
-                },
-                "required": ["entity_type", "entity_id", "state"],
-            },
-        ),
-        Tool(
-            name="cairn_set_due_date",
-            description="Set or clear the due date for an item.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "entity_type": {
-                        "type": "string",
-                        "enum": ["act", "scene"],
-                    },
-                    "entity_id": {"type": "string"},
-                    "due_date": {
-                        "type": "string",
-                        "description": "Due date in ISO format (YYYY-MM-DD), or null to clear",
-                    },
-                },
-                "required": ["entity_type", "entity_id"],
-            },
-        ),
-        Tool(
-            name="cairn_defer_item",
-            description="Defer an item until a later date. Moves to 'someday' if active.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "entity_type": {
-                        "type": "string",
-                        "enum": ["act", "scene"],
-                    },
-                    "entity_id": {"type": "string"},
-                    "defer_until": {
-                        "type": "string",
-                        "description": "Date to defer until (ISO format YYYY-MM-DD)",
-                    },
-                },
-                "required": ["entity_type", "entity_id", "defer_until"],
             },
         ),
         # =====================================================================
@@ -267,36 +166,6 @@ def list_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="cairn_surface_needs_priority",
-            description="Get items that need a priority decision.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "limit": {
-                        "type": "number",
-                        "description": "Max items (default: 10)",
-                    },
-                },
-            },
-        ),
-        Tool(
-            name="cairn_surface_waiting",
-            description="Get items in 'waiting' state.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "min_days": {
-                        "type": "number",
-                        "description": "Only show items waiting at least this many days",
-                    },
-                    "limit": {
-                        "type": "number",
-                        "description": "Max items (default: 10)",
-                    },
-                },
-            },
-        ),
-        Tool(
             name="cairn_surface_attention",
             description=(
                 "Get items that need attention - primarily upcoming calendar events. "
@@ -314,72 +183,6 @@ def list_tools() -> list[Tool]:
                         "type": "number",
                         "description": "Max items (default: 10)",
                     },
-                },
-            },
-        ),
-        # =====================================================================
-        # Contact Knowledge Graph
-        # =====================================================================
-        Tool(
-            name="cairn_link_contact",
-            description="Link a Thunderbird contact to a Play entity.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "contact_id": {
-                        "type": "string",
-                        "description": "Thunderbird contact ID",
-                    },
-                    "entity_type": {
-                        "type": "string",
-                        "enum": ["act", "scene"],
-                    },
-                    "entity_id": {"type": "string"},
-                    "relationship": {
-                        "type": "string",
-                        "enum": ["owner", "collaborator", "stakeholder", "waiting_on"],
-                        "description": "Relationship type",
-                    },
-                    "notes": {
-                        "type": "string",
-                        "description": "Optional notes about the link",
-                    },
-                },
-                "required": ["contact_id", "entity_type", "entity_id", "relationship"],
-            },
-        ),
-        Tool(
-            name="cairn_unlink_contact",
-            description="Remove a contact link.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "link_id": {"type": "string", "description": "The link ID to remove"},
-                },
-                "required": ["link_id"],
-            },
-        ),
-        Tool(
-            name="cairn_surface_contact",
-            description="Get everything related to a specific contact.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "contact_id": {"type": "string", "description": "Thunderbird contact ID"},
-                    "limit": {"type": "number", "description": "Max items (default: 10)"},
-                },
-                "required": ["contact_id"],
-            },
-        ),
-        Tool(
-            name="cairn_get_contact_links",
-            description="Get contact links for an entity or contact.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "contact_id": {"type": "string"},
-                    "entity_type": {"type": "string", "enum": ["act", "scene"]},
-                    "entity_id": {"type": "string"},
                 },
             },
         ),
@@ -436,7 +239,7 @@ def list_tools() -> list[Tool]:
             description=(
                 "Get todos (Beats) from The Play with CAIRN metadata. "
                 "Beats are tasks within Scenes within Acts. "
-                "Returns priority, due dates, kanban state, and linked calendar events."
+                "Returns due dates and linked calendar events."
             ),
             input_schema={
                 "type": "object",
@@ -444,11 +247,6 @@ def list_tools() -> list[Tool]:
                     "include_completed": {
                         "type": "boolean",
                         "description": "Include completed todos (default: false)",
-                    },
-                    "kanban_state": {
-                        "type": "string",
-                        "enum": ["active", "backlog", "waiting", "someday", "done"],
-                        "description": "Filter by kanban state (optional)",
                     },
                 },
             },
@@ -660,111 +458,6 @@ def list_tools() -> list[Tool]:
             },
         ),
         # =====================================================================
-        # Analytics
-        # =====================================================================
-        Tool(
-            name="cairn_activity_summary",
-            description="Get activity summary for an entity or overall.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "entity_type": {"type": "string", "enum": ["act", "scene"]},
-                    "entity_id": {"type": "string"},
-                    "days": {"type": "number", "description": "Days of history (default: 7)"},
-                },
-            },
-        ),
-        # =====================================================================
-        # Coherence Verification (Identity-based filtering)
-        # =====================================================================
-        Tool(
-            name="cairn_check_coherence",
-            description=(
-                "Check if an attention demand coheres with the user's identity. "
-                "Returns a score (-1.0 to 1.0) and recommendation (accept/defer/reject)."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "demand_text": {
-                        "type": "string",
-                        "description": "The attention demand to check",
-                    },
-                    "source": {
-                        "type": "string",
-                        "description": "Where this demand came from (e.g., 'email', 'thought')",
-                    },
-                    "urgency": {
-                        "type": "number",
-                        "minimum": 0,
-                        "maximum": 10,
-                        "description": "Claimed urgency (0-10, default: 5)",
-                    },
-                },
-                "required": ["demand_text"],
-            },
-        ),
-        Tool(
-            name="cairn_add_anti_pattern",
-            description=(
-                "Add an anti-pattern to automatically reject matching attention demands. "
-                "Anti-patterns are topics or sources the user wants filtered out."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "pattern": {
-                        "type": "string",
-                        "description": "The pattern to reject (e.g., 'spam', 'marketing')",
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": "Optional reason for adding this pattern",
-                    },
-                },
-                "required": ["pattern"],
-            },
-        ),
-        Tool(
-            name="cairn_remove_anti_pattern",
-            description="Remove an anti-pattern from the rejection list.",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "pattern": {
-                        "type": "string",
-                        "description": "The pattern to remove",
-                    },
-                },
-                "required": ["pattern"],
-            },
-        ),
-        Tool(
-            name="cairn_list_anti_patterns",
-            description="List all current anti-patterns that are used to filter attention demands.",
-            input_schema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="cairn_get_identity_summary",
-            description=(
-                "Get a summary of the user's identity model as understood by CAIRN. "
-                "Includes core identity, facets, and anti-patterns."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "include_facets": {
-                        "type": "boolean",
-                        "description": "Include identity facets (default: true)",
-                    },
-                    "max_facets": {
-                        "type": "number",
-                        "description": "Max facets to include (default: 10)",
-                    },
-                },
-            },
-        ),
-        # =====================================================================
         # Undo
         # =====================================================================
         Tool(
@@ -818,39 +511,6 @@ def list_tools() -> list[Tool]:
                         "description": "The confirmation ID to cancel (optional if only one pending)",
                     },
                 },
-            },
-        ),
-        # =====================================================================
-        # System Settings
-        # =====================================================================
-        Tool(
-            name="cairn_set_autostart",
-            description=(
-                "Enable or disable Talking Rock autostart on Ubuntu login. "
-                "Use when user asks to 'start automatically', 'open on boot', "
-                "'launch on login', or similar requests about startup behavior."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "enabled": {
-                        "type": "boolean",
-                        "description": "True to enable autostart on login, False to disable",
-                    },
-                },
-                "required": ["enabled"],
-            },
-        ),
-        Tool(
-            name="cairn_get_autostart",
-            description=(
-                "Get current autostart status for Talking Rock. "
-                "Use when user asks if autostart is enabled, or wants to know "
-                "the current startup configuration."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {},
             },
         ),
         # =====================================================================
@@ -1158,18 +818,6 @@ class CairnToolHandler:
         if name == "cairn_touch_item":
             return self._touch_item(args)
 
-        if name == "cairn_set_priority":
-            return self._set_priority(args)
-
-        if name == "cairn_set_kanban_state":
-            return self._set_kanban_state(args)
-
-        if name == "cairn_set_due_date":
-            return self._set_due_date(args)
-
-        if name == "cairn_defer_item":
-            return self._defer_item(args)
-
         # =====================================================================
         # Surfacing
         # =====================================================================
@@ -1182,29 +830,8 @@ class CairnToolHandler:
         if name == "cairn_surface_stale":
             return self._surface_stale(args)
 
-        if name == "cairn_surface_needs_priority":
-            return self._surface_needs_priority(args)
-
-        if name == "cairn_surface_waiting":
-            return self._surface_waiting(args)
-
         if name == "cairn_surface_attention":
             return self._surface_attention(args)
-
-        # =====================================================================
-        # Contact Management
-        # =====================================================================
-        if name == "cairn_link_contact":
-            return self._link_contact(args)
-
-        if name == "cairn_unlink_contact":
-            return self._unlink_contact(args)
-
-        if name == "cairn_surface_contact":
-            return self._surface_contact(args)
-
-        if name == "cairn_get_contact_links":
-            return self._get_contact_links(args)
 
         # =====================================================================
         # Thunderbird
@@ -1258,30 +885,6 @@ class CairnToolHandler:
             return self._delete_scene(args)
 
         # =====================================================================
-        # Analytics
-        # =====================================================================
-        if name == "cairn_activity_summary":
-            return self._activity_summary(args)
-
-        # =====================================================================
-        # Coherence Verification
-        # =====================================================================
-        if name == "cairn_check_coherence":
-            return self._check_coherence(args)
-
-        if name == "cairn_add_anti_pattern":
-            return self._add_anti_pattern(args)
-
-        if name == "cairn_remove_anti_pattern":
-            return self._remove_anti_pattern(args)
-
-        if name == "cairn_list_anti_patterns":
-            return self._list_anti_patterns()
-
-        if name == "cairn_get_identity_summary":
-            return self._get_identity_summary(args)
-
-        # =====================================================================
         # Undo
         # =====================================================================
         if name == "cairn_undo_last":
@@ -1295,15 +898,6 @@ class CairnToolHandler:
 
         if name == "cairn_cancel_action":
             return self._cancel_action(args)
-
-        # =====================================================================
-        # System Settings
-        # =====================================================================
-        if name == "cairn_set_autostart":
-            return self._set_autostart(args)
-
-        if name == "cairn_get_autostart":
-            return self._get_autostart()
 
         # =====================================================================
         # Block Editor
@@ -1365,19 +959,11 @@ class CairnToolHandler:
     def _list_items(self, args: dict[str, Any]) -> dict[str, Any]:
         """List items with filters."""
         entity_type = args.get("entity_type")
-        kanban_state_str = args.get("kanban_state")
-        has_priority = args.get("has_priority")
         is_overdue = args.get("is_overdue", False)
         limit = args.get("limit", 50)
 
-        kanban_state = None
-        if kanban_state_str:
-            kanban_state = KanbanState(kanban_state_str)
-
         items = self.store.list_metadata(
             entity_type=entity_type,
-            kanban_state=kanban_state,
-            has_priority=has_priority,
             is_overdue=is_overdue,
             limit=limit,
         )
@@ -1815,7 +1401,6 @@ class CairnToolHandler:
         from cairn import play_fs
 
         include_completed = args.get("include_completed", False)
-        kanban_filter = args.get("kanban_state")  # Optional: "active", "backlog", etc.
 
         todos = []
 
@@ -1828,16 +1413,9 @@ class CairnToolHandler:
                 # Get CAIRN metadata for this Scene
                 metadata = self.store.get_metadata("scene", scene.scene_id)
 
-                # Filter by kanban state
-                if kanban_filter:
-                    if metadata is None or metadata.kanban_state.value != kanban_filter:
-                        continue
-
                 # Filter completed if requested
                 if not include_completed:
                     if scene.stage.lower() in ("done", "completed", "complete"):
-                        continue
-                    if metadata and metadata.kanban_state.value == "done":
                         continue
 
                 todo_item = {
@@ -1857,12 +1435,9 @@ class CairnToolHandler:
                 if metadata:
                     todo_item.update(
                         {
-                            "kanban_state": metadata.kanban_state.value,
-                            "priority": metadata.priority,
                             "due_date": metadata.due_date.isoformat()
                             if metadata.due_date
                             else None,
-                            "waiting_on": metadata.waiting_on,
                             "last_touched": metadata.last_touched.isoformat()
                             if metadata.last_touched
                             else None,
@@ -1871,10 +1446,7 @@ class CairnToolHandler:
                 else:
                     todo_item.update(
                         {
-                            "kanban_state": "backlog",
-                            "priority": None,
                             "due_date": None,
-                            "waiting_on": None,
                             "last_touched": None,
                         }
                     )
@@ -2403,7 +1975,7 @@ class CairnToolHandler:
                 {
                     "scene_id": s.scene_id,
                     "title": s.title,
-                    "intent": s.intent,
+                    "stage": s.stage,
                     "is_stage_direction": s.scene_id
                     == play_fs._get_stage_direction_scene_id(act_id),
                 }

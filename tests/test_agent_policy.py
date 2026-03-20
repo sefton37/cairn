@@ -43,7 +43,7 @@ def test_agent_strips_include_diff_when_not_opted_in(
 ) -> None:
     """Test that include_diff is stripped when user doesn't opt in.
 
-    NOTE: This test uses cairn_play_acts_list since git tools were removed.
+    NOTE: This test uses cairn_list_acts since git tools were removed.
     The test now verifies that arbitrary extra arguments are passed through,
     since include_diff policy doesn't apply to non-git tools.
     """
@@ -62,7 +62,7 @@ def test_agent_strips_include_diff_when_not_opted_in(
 
     tool_plan = {
         "tool_calls": [
-            {"name": "cairn_play_acts_list", "arguments": {}},
+            {"name": "cairn_list_acts", "arguments": {}},
         ]
     }
 
@@ -71,8 +71,8 @@ def test_agent_strips_include_diff_when_not_opted_in(
     monkeypatch.setattr(agent, "_try_reasoning", lambda *args, **kwargs: None)
     _answer = agent.respond("How is my system?")
 
-    assert any(c["name"] == "cairn_play_acts_list" for c in calls)
-    info_call = next(c for c in calls if c["name"] == "cairn_play_acts_list")
+    assert any(c["name"] == "cairn_list_acts" for c in calls)
+    info_call = next(c for c in calls if c["name"] == "cairn_list_acts")
     assert info_call["arguments"] == {}
 
 
@@ -95,7 +95,7 @@ def test_agent_passes_arguments_to_tools(
 
     tool_plan = {
         "tool_calls": [
-            {"name": "cairn_play_scenes_list", "arguments": {"path": "/home"}},
+            {"name": "cairn_list_scenes", "arguments": {"path": "/home"}},
         ]
     }
 
@@ -104,7 +104,7 @@ def test_agent_passes_arguments_to_tools(
     monkeypatch.setattr(agent, "_try_reasoning", lambda *args, **kwargs: None)
     _answer = agent.respond("Check disk usage for /home")
 
-    disk_call = next(c for c in calls if c["name"] == "cairn_play_scenes_list")
+    disk_call = next(c for c in calls if c["name"] == "cairn_list_scenes")
     assert disk_call["arguments"].get("path") == "/home"
 
 
@@ -126,8 +126,8 @@ def test_agent_respects_tool_call_limit(
 
     tool_plan = {
         "tool_calls": [
-            {"name": "cairn_play_acts_list", "arguments": {}},
-            {"name": "cairn_play_scenes_list", "arguments": {"path": "/"}},
+            {"name": "cairn_list_acts", "arguments": {}},
+            {"name": "cairn_list_scenes", "arguments": {"path": "/"}},
         ]
     }
 

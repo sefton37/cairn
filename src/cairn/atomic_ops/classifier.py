@@ -145,6 +145,8 @@ Classify the user's request into five dimensions:
    - "personal": questions about the user (identity, goals, values, preferences, "tell me about myself")
    - "conversation": greetings, small talk, acknowledgments, social niceties
    - "feedback": meta-commentary about the assistant's responses or behavior
+   - "surfacing": what needs attention, what to focus on, next steps, morning brief, stale/neglected items, waiting-on
+   - "meta": confirming actions ("yes", "do it"), canceling ("no", "cancel"), undoing ("undo", "revert"), system settings
    - "undo": reverting or undoing a previous action
    - "health": system health, data freshness, "how am I doing?", wellness checks
    - "general": anything that doesn't fit the above categories
@@ -192,7 +194,16 @@ EXAMPLES (showing input → output JSON):
     "confident":true,"domain":"play","action_hint":"update"}
 "undo that":
   {"destination":"file","consumer":"human","semantics":"execute",
-    "confident":true,"domain":"undo","action_hint":null}
+    "confident":true,"domain":"meta","action_hint":null}
+"what should I focus on?":
+  {"destination":"stream","consumer":"human","semantics":"read",
+    "confident":true,"domain":"surfacing","action_hint":"view"}
+"what needs my attention?":
+  {"destination":"stream","consumer":"human","semantics":"read",
+    "confident":true,"domain":"surfacing","action_hint":"view"}
+"yes do it":
+  {"destination":"stream","consumer":"human","semantics":"execute",
+    "confident":true,"domain":"meta","action_hint":null}
 "you're repeating yourself":
   {"destination":"stream","consumer":"human",
     "semantics":"interpret","confident":true,
@@ -385,7 +396,11 @@ class AtomicClassifier:
         elif words & {"todo", "task", "reminder", "deadline"}:
             domain = "tasks"
         elif words & {"undo", "revert", "reverse"}:
-            domain = "undo"
+            domain = "meta"
+        elif words & {"focus", "attention", "stale", "neglect", "neglected", "waiting", "surface", "brief", "morning", "priorities", "priority", "next"}:
+            domain = "surfacing"
+        elif words & {"confirm", "cancel", "yes", "no", "approve", "reject", "nevermind"}:
+            domain = "meta"
         elif words & {
             "health", "checkup", "wellness", "vitality",
             "freshness", "integrity", "snapshot",

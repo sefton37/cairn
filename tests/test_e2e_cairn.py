@@ -1303,7 +1303,6 @@ class TestMCPToolsE2E:
             "cairn_list_items",
             "cairn_get_item",
             "cairn_surface_next",
-            "cairn_set_priority",
         ]
 
         for expected in expected_tools:
@@ -1336,7 +1335,7 @@ class TestMCPToolsE2E:
         metadata = cairn_store.get_metadata("scene", "tool-test")
         assert metadata is not None
 
-        # Set priority (cairn_set_priority uses this)
+        # Set priority (store layer uses this)
         cairn_store.set_priority("scene", "tool-test", 4, reason="Testing")
         updated = cairn_store.get_metadata("scene", "tool-test")
         assert updated is not None
