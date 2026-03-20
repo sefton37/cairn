@@ -94,7 +94,7 @@ def _check_ollama_available() -> tuple[bool, str | None, str | None]:
     Returns:
         Tuple of (is_available, base_url, model_name)
     """
-    import requests
+    import httpx
 
     # Try common Ollama URLs
     urls_to_try = [
@@ -105,7 +105,7 @@ def _check_ollama_available() -> tuple[bool, str | None, str | None]:
     for base_url in urls_to_try:
         try:
             # Check if Ollama is running
-            response = requests.get(f"{base_url}/api/tags", timeout=2)
+            response = httpx.get(f"{base_url}/api/tags", timeout=2)
             if response.status_code == 200:
                 data = response.json()
                 models = data.get("models", [])
