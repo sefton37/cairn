@@ -7,6 +7,6 @@ steps:
     commands:
       - echo "machine forgejo.local login token password $FORGEJO_TOKEN" > ~/.netrc
       - apt-get update -qq && apt-get install -y -qq libsqlcipher-dev > /dev/null 2>&1
-      - pip install -e ".[dev]" --quiet
+      - pip install -e ".[dev,semantic]" --quiet
       - pip install git+http://forgejo.local:3000/talking-rock/talking_rock_core.git --quiet
-      - PYTHONPATH=src pytest tests/ -x --tb=short -q --no-cov -m "not slow"
+      - PYTHONPATH=src pytest tests/ --tb=short -q --no-cov -m "not slow"
