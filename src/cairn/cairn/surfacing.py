@@ -575,7 +575,7 @@ class CairnSurfacer:
             return []
 
         try:
-            emails = self.email_service.get_recent_emails(days=30)
+            emails = self.email_service.get_important_unread(min_importance=0.3)
         except Exception as e:
             logger.warning("Failed to get recent emails: %s", e)
             return []

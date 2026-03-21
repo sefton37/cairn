@@ -312,7 +312,7 @@ class EmailIntelligenceService:
             """SELECT gloda_message_id, sender_email, sanitized_subject,
                       notability, body_embedding, subject_embedding
             FROM email_cache
-            WHERE date >= ?
+            WHERE date >= ? AND is_read = 0 AND dismissed = 0
             ORDER BY date DESC
             LIMIT ?""",
             (since, limit),
