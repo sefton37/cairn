@@ -179,7 +179,6 @@ def cmd_run_memory(args: argparse.Namespace) -> None:
     for model_name in models:
         runner = MemoryBenchmarkRunner(
             model_name=model_name,
-            resume=args.resume,
             db_path=args.db,
             ollama_url=args.ollama_url,
             timeout=args.timeout,

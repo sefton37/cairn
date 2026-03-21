@@ -370,7 +370,40 @@ class MemoryBenchmarkRunner:
             )
 
             # 7. Synthetic conversation ID — stable per (case, persona) pair
+            #    Must exist in conversations table (FK constraint)
             conv_id = f"bench-{case.case_id}-{profile.persona_id}"
+            from cairn.play_db import _get_connection as _play_conn
+
+            pconn = _play_conn()
+            # Create a minimal conversation row. Schema varies across persona DBs
+            # so detect columns and insert accordingly.
+            cols_info = pconn.execute("PRAGMA table_info(conversations)").fetchall()
+            col_names = {row[1] for row in cols_info}
+            if "block_id" in col_names:
+                # Older schema: needs a block_id (create a dummy block first)
+                block_id = f"blk-bench-{case.case_id[:20]}-{profile.persona_id[:10]}"
+                your_story_row = pconn.execute(
+                    "SELECT act_id FROM acts LIMIT 1"
+                ).fetchone()
+                act_id = your_story_row[0] if your_story_row else "your-story"
+                pconn.execute(
+                    """INSERT OR IGNORE INTO blocks (id, type, act_id, position, created_at, updated_at)
+                       VALUES (?, 'conversation', ?, 0, datetime('now'), datetime('now'))""",
+                    (block_id, act_id),
+                )
+                pconn.execute(
+                    """INSERT OR IGNORE INTO conversations (id, block_id, status)
+                       VALUES (?, ?, 'active')""",
+                    (conv_id, block_id),
+                )
+            else:
+                # Newer schema
+                pconn.execute(
+                    """INSERT OR IGNORE INTO conversations (id, created_at, conversation_state)
+                       VALUES (?, datetime('now'), 'active')""",
+                    (conv_id,),
+                )
+            pconn.commit()
 
             # 8. Time the full pipeline call
             t0 = time.time()
@@ -396,7 +429,7 @@ class MemoryBenchmarkRunner:
 
                     conn = _get_connection()
                     row = conn.execute(
-                        "SELECT title FROM acts WHERE id = ?",
+                        "SELECT title FROM acts WHERE act_id = ?",
                         (memory.destination_act_id,),
                     ).fetchone()
                     if row:
