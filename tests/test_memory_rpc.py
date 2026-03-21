@@ -118,6 +118,16 @@ def mock_embedding_service(monkeypatch):
 
     monkeypatch.setattr(emb_mod, "get_embedding_service", lambda: mock)
 
+    # Patch where get_embedding_service is actually called (imported name in retriever)
+    from cairn.memory import retriever as ret_mod
+
+    monkeypatch.setattr(ret_mod, "get_embedding_service", lambda: mock)
+
+    # Reset module-level singletons so they recreate with the mocked service
+    from cairn.rpc_handlers import memory as mem_rpc_mod
+
+    monkeypatch.setattr(mem_rpc_mod, "_retriever", None)
+
     return mock
 
 
