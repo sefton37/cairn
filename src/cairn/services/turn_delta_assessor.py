@@ -137,7 +137,7 @@ class TurnDeltaAssessor:
 
     def _get_pipeline(self) -> CompressionPipeline:
         if self._compression_pipeline is None:
-            self._compression_pipeline = CompressionPipeline()
+            self._compression_pipeline = CompressionPipeline(provider=self._provider)
         return self._compression_pipeline
 
     @staticmethod

@@ -44,6 +44,7 @@ class TestStateCaptureInit:
         assert backup_dir.exists()
         assert backup_dir.is_dir()
 
+    @pytest.mark.skipif(os.getuid() == 0, reason="root can write to read-only directories")
     def test_state_capture_init_permission_denied(self, tmp_path: Path) -> None:
         """StateCapture raises when backup directory creation fails due to permissions."""
         # Create a read-only parent directory

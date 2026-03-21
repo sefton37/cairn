@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import sqlite3
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -1121,7 +1122,7 @@ class ChatAgent:
             if play_attachments:
                 att_list = ", ".join(f"{a.file_name} ({a.file_type})" for a in play_attachments)
                 ctx_parts.append(f"PLAY_ATTACHMENTS: {att_list}")
-        except (FileNotFoundError, PermissionError, OSError) as e:
+        except (FileNotFoundError, PermissionError, OSError, sqlite3.OperationalError) as e:
             logger.warning("Failed to read me.md: %s", e)
 
         # 3. Selected Act and its hierarchy
@@ -1161,7 +1162,7 @@ class ChatAgent:
             if act_attachments:
                 att_list = ", ".join(f"{a.file_name} ({a.file_type})" for a in act_attachments)
                 act_ctx += f"\nACT_ATTACHMENTS: {att_list}"
-        except (FileNotFoundError, PermissionError, OSError) as e:
+        except (FileNotFoundError, PermissionError, OSError, sqlite3.OperationalError) as e:
             logger.debug("Failed to list act attachments for %s: %s", active_id, e)
 
         ctx_parts.append(act_ctx)
@@ -1184,7 +1185,7 @@ class ChatAgent:
                     if scene_attachments:
                         att_list = ", ".join(f"{a.file_name}" for a in scene_attachments)
                         scene_ctx += f"\n    Attachments: {att_list}"
-                except (FileNotFoundError, PermissionError, OSError) as e:
+                except (FileNotFoundError, PermissionError, OSError, sqlite3.OperationalError) as e:
                     logger.debug("Failed to list scene attachments for %s: %s", scene.scene_id, e)
 
                 ctx_parts.append(scene_ctx)
