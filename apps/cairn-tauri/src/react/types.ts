@@ -20,7 +20,8 @@ export type BlockType =
   | 'callout'
   | 'scene'
   | 'table'
-  | 'document_chunk';
+  | 'document_chunk'
+  | 'memory';
 
 /**
  * Block types that support nesting children.

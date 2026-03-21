@@ -12,4 +12,5 @@ export { CodeBlock } from './CodeBlock';
 export { DividerBlock } from './DividerBlock';
 export { CalloutBlock } from './CalloutBlock';
 export { SceneBlock } from './SceneBlock';
+export { MemoryBlock } from './MemoryBlock';
 export { RichTextContent } from './RichTextContent';

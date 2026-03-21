@@ -65,6 +65,13 @@ Capture notes, context, and details for this specific Scene.
 Scenes can be linked to calendar events and have progress stages.
 
 Scenes are the atomic units of progress within an Act.`,
+
+  memories: `Memories extracted from your conversations with CAIRN.
+
+Each memory block here represents a fact, preference, priority,
+commitment, or relationship learned from your conversations.
+
+Review and approve memories to let them inform future conversations.`,
 };
 
 interface PlayOverlayState {
@@ -72,6 +79,7 @@ interface PlayOverlayState {
   selectedLevel: PlayLevel;
   activeActId: string | null;
   selectedSceneId: string | null;
+  selectedMemoriesPageId: string | null;
   actsCache: PlayActsListResult['acts'];
   scenesCache: PlayScene[];
   kbText: string;
@@ -93,6 +101,7 @@ export function createPlayOverlay(onClose: () => void): {
     selectedLevel: 'play',
     activeActId: null,
     selectedSceneId: null,
+    selectedMemoriesPageId: null,
     actsCache: [],
     scenesCache: [],
     kbText: '',
@@ -233,6 +242,12 @@ export function createPlayOverlay(onClose: () => void): {
   }
 
   async function refreshKbContent() {
+    // Memories level uses the block editor; no KB content needed
+    if (state.selectedLevel === 'memories') {
+      state.kbText = '';
+      return;
+    }
+
     if (!state.activeActId && state.selectedLevel !== 'play') {
       state.kbText = '';
       return;
@@ -438,6 +453,24 @@ export function createPlayOverlay(onClose: () => void): {
       state.expandedActs.add(actId);
     }
     render();
+  }
+
+  function selectMemoriesLevel(actId: string) {
+    state.activeActId = actId;
+    state.selectedLevel = 'memories';
+    state.selectedSceneId = null;
+    state.expandedActs.add(actId);
+
+    void (async () => {
+      // Ensure the memories page exists and get its ID
+      const result = (await kernelRequest('lifecycle/memories/ensure_page', {
+        act_id: actId,
+      })) as { page_id: string };
+      state.selectedMemoriesPageId = result.page_id;
+      await kernelRequest('play/acts/set_active', { act_id: actId });
+      await refreshData();
+      render();
+    })();
   }
 
   // Show color picker dropdown for an Act
@@ -698,8 +731,29 @@ export function createPlayOverlay(onClose: () => void): {
       });
       sidebar.appendChild(actItem);
 
-      // Scenes (if expanded and this is the active act)
+      // Scenes and Memories (if expanded and this is the active act)
       if (isExpanded && act.act_id === state.activeActId) {
+        // Memories nav item — links to the Act's Memories system page
+        const memoriesSelected =
+          state.selectedLevel === 'memories' && state.activeActId === act.act_id;
+        const memoriesItem = el('div');
+        memoriesItem.className = `tree-item scene ${memoriesSelected ? 'selected' : ''}`;
+        memoriesItem.style.display = 'flex';
+        memoriesItem.style.alignItems = 'center';
+
+        const memoriesIcon = el('span');
+        memoriesIcon.className = 'tree-icon';
+        memoriesIcon.textContent = '\u25cf';  // bullet
+
+        const memoriesLabel = el('span');
+        memoriesLabel.textContent = ' Memories';
+        memoriesLabel.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(255,255,255,0.6);font-style:italic;';
+
+        memoriesItem.appendChild(memoriesIcon);
+        memoriesItem.appendChild(memoriesLabel);
+        memoriesItem.addEventListener('click', () => selectMemoriesLevel(act.act_id));
+        sidebar.appendChild(memoriesItem);
+
         // New scene button
         const newSceneBtn = el('button');
         newSceneBtn.className = 'tree-new-btn scene-level';
@@ -806,7 +860,7 @@ export function createPlayOverlay(onClose: () => void): {
     titleInput.placeholder = getLevelTitle();
     titleInput.value = getCurrentTitle();
 
-    if (state.selectedLevel !== 'play') {
+    if (state.selectedLevel !== 'play' && state.selectedLevel !== 'memories') {
       titleInput.addEventListener('blur', async () => {
         const newTitle = titleInput.value.trim();
         if (!newTitle) return;
@@ -967,10 +1021,14 @@ export function createPlayOverlay(onClose: () => void): {
     const editorSceneId = state.selectedLevel === 'scene'
       ? state.selectedSceneId
       : null;
+    // For memories level, use the memories page_id so the editor loads that page
+    const editorPageId = state.selectedLevel === 'memories'
+      ? (state.selectedMemoriesPageId ?? null)
+      : null;
 
     state.editorCleanup = mountBlockEditor(editorWrap, {
       actId: editorActId,
-      pageId: null,
+      pageId: editorPageId,
       sceneId: editorSceneId,
       kernelRequest,
     });
@@ -1045,6 +1103,8 @@ export function createPlayOverlay(onClose: () => void): {
         return 'Act Title';
       case 'scene':
         return 'Scene Title';
+      case 'memories':
+        return 'Memories';
     }
   }
 
@@ -1059,6 +1119,10 @@ export function createPlayOverlay(onClose: () => void): {
       case 'scene': {
         const scene = state.scenesCache.find((s) => s.scene_id === state.selectedSceneId);
         return scene?.title ?? '';
+      }
+      case 'memories': {
+        const act = state.actsCache.find((a) => a.act_id === state.activeActId);
+        return act ? `${act.title} — Memories` : 'Memories';
       }
     }
   }
@@ -1082,6 +1146,9 @@ export function createPlayOverlay(onClose: () => void): {
               title: newTitle,
             });
           }
+          break;
+        case 'memories':
+          // Memories page title is system-managed; no user updates
           break;
       }
       await refreshData();

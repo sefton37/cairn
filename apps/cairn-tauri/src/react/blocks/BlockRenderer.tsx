@@ -13,6 +13,7 @@ import { CodeBlock } from './CodeBlock';
 import { DividerBlock } from './DividerBlock';
 import { CalloutBlock } from './CalloutBlock';
 import { SceneBlock } from './SceneBlock';
+import { MemoryBlock } from './MemoryBlock';
 
 interface BlockRendererProps {
   block: Block;
@@ -20,6 +21,7 @@ interface BlockRendererProps {
   onDelete?: (blockId: string) => void;
   isEditing?: boolean;
   depth?: number;
+  kernelRequest?: (method: string, params: Record<string, unknown>) => Promise<unknown>;
 }
 
 export function BlockRenderer({
@@ -28,6 +30,7 @@ export function BlockRenderer({
   onDelete,
   isEditing = false,
   depth = 0,
+  kernelRequest,
 }: BlockRendererProps) {
   const commonProps = {
     block,
@@ -67,6 +70,9 @@ export function BlockRenderer({
     case 'scene':
       return <SceneBlock {...commonProps} />;
 
+    case 'memory':
+      return <MemoryBlock {...commonProps} kernelRequest={kernelRequest} />;
+
     case 'page':
       // Pages are container blocks, render children
       return (
@@ -79,6 +85,7 @@ export function BlockRenderer({
               onDelete={onDelete}
               isEditing={isEditing}
               depth={depth + 1}
+              kernelRequest={kernelRequest}
             />
           ))}
         </div>

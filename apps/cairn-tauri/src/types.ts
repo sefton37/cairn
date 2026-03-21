@@ -471,7 +471,8 @@ export type PlayAttachmentsMutationResult = {
 };
 
 // Play levels for placeholder text (2-tier: Acts and Scenes)
-export type PlayLevel = 'play' | 'act' | 'scene';
+// 'memories' is a virtual level for the Act's Memories system page
+export type PlayLevel = 'play' | 'act' | 'scene' | 'memories';
 
 // Intent detection types (Phase 6 - Conversational Troubleshooting)
 export type IntentDetectResult = {
@@ -874,6 +875,11 @@ export type ReosConversationTurn = {
   turnType?: 'clarify' | 'inform' | 'propose' | 'danger' | 'refuse';
   timestamp: number;
 };
+
+// Memory types (lifecycle memory system)
+export type MemoryType = 'fact' | 'preference' | 'priority' | 'commitment' | 'relationship';
+
+export type MemoryStatus = 'pending_review' | 'approved' | 'rejected' | 'superseded';
 
 // ReOS — Telemetry query response (reos/telemetry/query)
 export type ReosTelemetryQueryResult = {
