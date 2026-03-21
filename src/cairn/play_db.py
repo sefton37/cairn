@@ -58,7 +58,8 @@ _local = threading.local()
 # v17: Priority learning — reorder_history, priority_boost_rules tables
 # v18: RIVA agent orchestrator — riva_projects, riva_plans, riva_plan_steps,
 #      riva_contracts, riva_audits, riva_agent_properties, riva_agent_sessions
-SCHEMA_VERSION = 18
+# v19: Memories first-class — memory_type on memories, system_page_role on pages
+SCHEMA_VERSION = 19
 
 
 def _play_db_path() -> Path:
@@ -205,6 +206,7 @@ def _init_schema(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_attachments_page ON attachments(page_id);
 
         -- Pages table (v5: nested knowledgebase pages under Acts)
+        -- v19: system_page_role for system-managed pages (e.g. 'memories' per Act)
         CREATE TABLE IF NOT EXISTS pages (
             page_id TEXT PRIMARY KEY,
             act_id TEXT NOT NULL REFERENCES acts(act_id) ON DELETE CASCADE,
@@ -213,11 +215,16 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             icon TEXT,
             position INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            system_page_role TEXT
+                CHECK (system_page_role IN ('memories') OR system_page_role IS NULL)
         );
 
         CREATE INDEX IF NOT EXISTS idx_pages_act_id ON pages(act_id);
         CREATE INDEX IF NOT EXISTS idx_pages_parent ON pages(parent_page_id);
+        -- Enforce at-most-one system-role page per Act (e.g. one Memories page per Act)
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_pages_system_role_per_act
+            ON pages(act_id, system_page_role) WHERE system_page_role IS NOT NULL;
 
         -- Blocks table (v7: Notion-style block editor)
         CREATE TABLE IF NOT EXISTS blocks (
@@ -332,6 +339,7 @@ def _init_schema(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_messages_position ON messages(conversation_id, position);
 
         -- Memories table (v12: Compressed meaning from conversations)
+        -- v19: memory_type column classifies the memory (NULL for unclassified)
         CREATE TABLE IF NOT EXISTS memories (
             id TEXT PRIMARY KEY,
             block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
@@ -353,6 +361,7 @@ def _init_schema(conn: sqlite3.Connection) -> None:
                 CHECK (source IN ('compression', 'turn_assessment', 'priority_signal', 'claudecode')),
             cc_agent_id TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            memory_type TEXT,
             FOREIGN KEY (destination_act_id) REFERENCES acts(act_id) ON DELETE SET NULL,
             CHECK (status IN ('pending_review', 'approved', 'rejected', 'superseded'))
         );
@@ -758,6 +767,11 @@ def _run_schema_migrations(conn: sqlite3.Connection, current_version: int) -> No
     if current_version < 18:
         logger.info("Running v18 migration: RIVA agent orchestrator tables")
         _migrate_v17_to_v18(conn)
+
+    # Migration v18 -> v19: memory_type on memories, system_page_role on pages
+    if current_version < 19:
+        logger.info("Running v19 migration: memory_type and system_page_role")
+        _migrate_v18_to_v19(conn)
 
     # Update schema version
     conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
@@ -3958,3 +3972,83 @@ def _migrate_v17_to_v18(conn: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL
         );
     """)
+
+
+# ---------------------------------------------------------------------------
+# Migration v18 -> v19: memory_type on memories, system_page_role on pages
+# ---------------------------------------------------------------------------
+
+
+def _migrate_v18_to_v19(conn: sqlite3.Connection) -> None:
+    """Migrate from v18 to v19 schema.
+
+    Adds two columns (idempotent via PRAGMA table_info checks):
+    - memories.memory_type: classifies the memory (NULL for existing/unclassified)
+    - pages.system_page_role: identifies system-managed pages (e.g. 'memories' per Act)
+
+    Also creates a unique partial index enforcing at-most-one system-role page per Act.
+    """
+    cursor = conn.execute("PRAGMA table_info(memories)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if "memory_type" not in columns:
+        conn.execute("ALTER TABLE memories ADD COLUMN memory_type TEXT")
+
+    cursor = conn.execute("PRAGMA table_info(pages)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if "system_page_role" not in columns:
+        conn.execute("ALTER TABLE pages ADD COLUMN system_page_role TEXT")
+
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_pages_system_role_per_act "
+        "ON pages(act_id, system_page_role) WHERE system_page_role IS NOT NULL"
+    )
+    logger.info("v19 migration complete")
+
+
+# ---------------------------------------------------------------------------
+# Memories page provisioning (v19)
+# ---------------------------------------------------------------------------
+
+
+def ensure_memories_page(act_id: str) -> str:
+    """Find or create the system Memories page for an Act. Returns page_id.
+
+    Idempotent — safe to call on every memory creation. The unique index on
+    (act_id, system_page_role) enforces at-most-one Memories page per Act at
+    the DB level. Concurrent creation attempts are handled via IntegrityError
+    re-query.
+    """
+    conn = _get_connection()
+    cursor = conn.execute(
+        "SELECT page_id FROM pages WHERE act_id = ? AND system_page_role = 'memories'",
+        (act_id,),
+    )
+    row = cursor.fetchone()
+    if row:
+        return str(row["page_id"])
+
+    # Create the Memories page, then stamp its system_page_role.
+    try:
+        _, page_id = create_page(
+            act_id=act_id,
+            title="Memories",
+            icon="\U0001f9e0",  # brain emoji
+            parent_page_id=None,
+        )
+        with _transaction() as txn:
+            txn.execute(
+                "UPDATE pages SET system_page_role = 'memories' WHERE page_id = ?",
+                (page_id,),
+            )
+        return page_id
+    except sqlite3.IntegrityError:
+        # Concurrent insert raced us to the unique index — re-query and return existing.
+        conn2 = _get_connection()
+        cursor2 = conn2.execute(
+            "SELECT page_id FROM pages WHERE act_id = ? AND system_page_role = 'memories'",
+            (act_id,),
+        )
+        row2 = cursor2.fetchone()
+        if row2:
+            return str(row2["page_id"])
+        raise  # Unexpected error — re-raise so the caller sees it.

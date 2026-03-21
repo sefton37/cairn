@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import os
 import struct
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -32,7 +32,6 @@ from cairn.services.memory_service import (
     MemoryError,
     MemoryService,
 )
-
 
 # =============================================================================
 # Fixtures
@@ -821,3 +820,366 @@ class TestMemoryDataclass:
 
         assert memory.id == original.id
         assert memory.narrative == "From row test."
+
+
+# =============================================================================
+# TestSetMemoryType
+# =============================================================================
+
+
+class TestSetMemoryType:
+    """Tests for MemoryService.set_memory_type()."""
+
+    def _make_service(self) -> MemoryService:
+        return MemoryService(
+            provider=_mock_provider(),
+            embedding_service=_mock_embedding_service(),
+        )
+
+    def test_set_memory_type_persists(self, mem_db, conversation_id):
+        """set_memory_type writes memory_type to the database."""
+        service = self._make_service()
+        memory = service.store(conversation_id, "I work at Acme Corp.")
+
+        service.set_memory_type(memory.id, "fact")
+
+        conn = _get_connection()
+        row = conn.execute(
+            "SELECT memory_type FROM memories WHERE id = ?", (memory.id,)
+        ).fetchone()
+        assert row["memory_type"] == "fact"
+
+    @pytest.mark.parametrize("memory_type", ["fact", "preference", "relationship"])
+    def test_auto_approve_types_set_approved(self, mem_db, conversation_id, memory_type):
+        """fact/preference/relationship auto-approve: status becomes 'approved'."""
+        service = self._make_service()
+        memory = service.store(conversation_id, f"A {memory_type} memory.")
+
+        assert memory.status == "pending_review"
+        service.set_memory_type(memory.id, memory_type)
+
+        conn = _get_connection()
+        row = conn.execute(
+            "SELECT status, user_reviewed FROM memories WHERE id = ?", (memory.id,)
+        ).fetchone()
+        assert row["status"] == "approved"
+        assert row["user_reviewed"] == 0  # system-approved, not user-reviewed
+
+    @pytest.mark.parametrize("memory_type", ["commitment", "priority"])
+    def test_non_auto_approve_types_stay_pending(self, mem_db, conversation_id, memory_type):
+        """commitment/priority do NOT auto-approve: status stays 'pending_review'."""
+        service = self._make_service()
+        memory = service.store(conversation_id, f"A {memory_type} memory.")
+
+        assert memory.status == "pending_review"
+        service.set_memory_type(memory.id, memory_type)
+
+        conn = _get_connection()
+        row = conn.execute(
+            "SELECT status FROM memories WHERE id = ?", (memory.id,)
+        ).fetchone()
+        assert row["status"] == "pending_review"
+
+    def test_all_valid_types_persist(self, mem_db, conversation_id):
+        """All five valid types can be set and are readable back from the DB."""
+        service = self._make_service()
+        valid_types = ["fact", "preference", "priority", "commitment", "relationship"]
+
+        for i, memory_type in enumerate(valid_types):
+            memory = service.store(conversation_id, f"Memory {i}: {memory_type} narrative.")
+            service.set_memory_type(memory.id, memory_type)
+
+            conn = _get_connection()
+            row = conn.execute(
+                "SELECT memory_type FROM memories WHERE id = ?", (memory.id,)
+            ).fetchone()
+            assert row["memory_type"] == memory_type
+
+    def test_set_memory_type_does_not_approve_already_approved(
+        self, mem_db, conversation_id
+    ):
+        """Auto-approve only fires when status is 'pending_review'; already approved is safe."""
+        service = self._make_service()
+        memory = service.store(conversation_id, "Fact about the user.")
+        # Manually approve first
+        service.approve(memory.id)
+
+        # Now set type to fact — should not error, status stays 'approved'
+        service.set_memory_type(memory.id, "fact")
+
+        conn = _get_connection()
+        row = conn.execute(
+            "SELECT status FROM memories WHERE id = ?", (memory.id,)
+        ).fetchone()
+        assert row["status"] == "approved"
+
+    def test_memory_type_field_on_dataclass(self, mem_db, conversation_id):
+        """Memory dataclass has memory_type field, defaults to None."""
+        service = self._make_service()
+        memory = service.store(conversation_id, "Test narrative.")
+        assert memory.memory_type is None
+
+    def test_from_row_reads_memory_type(self, mem_db, conversation_id):
+        """Memory.from_row() correctly reads memory_type from DB after set."""
+        service = self._make_service()
+        memory = service.store(conversation_id, "Test narrative.")
+        service.set_memory_type(memory.id, "preference")
+
+        conn = _get_connection()
+        row = conn.execute(
+            "SELECT * FROM memories WHERE id = ?", (memory.id,)
+        ).fetchone()
+        reloaded = Memory.from_row(row)
+        assert reloaded.memory_type == "preference"
+
+    def test_to_dict_includes_memory_type(self, mem_db, conversation_id):
+        """Memory.to_dict() includes the memory_type field."""
+        service = self._make_service()
+        memory = service.store(conversation_id, "Test narrative.")
+        service.set_memory_type(memory.id, "commitment")
+
+        # Reload to pick up persisted type
+        reloaded = service.get_by_id(memory.id)
+        assert reloaded is not None
+        d = reloaded.to_dict()
+        assert "memory_type" in d
+        assert d["memory_type"] == "commitment"
+
+
+# =============================================================================
+# TestMemoriesPageProvisioning (Step 3)
+# =============================================================================
+
+
+class TestMemoriesPageProvisioning:
+    """New memories have their block's page_id pointing to the Act's Memories page."""
+
+    @staticmethod
+    def _make_service() -> MemoryService:
+        return MemoryService(
+            provider=_mock_provider(),
+            embedding_service=_mock_embedding_service(),
+        )
+
+    def test_store_creates_block_with_page_id(self, mem_db, conversation_id):
+        """Memory block has a non-NULL page_id pointing to the Memories page."""
+        service = self._make_service()
+        memory = service.store(conversation_id, "A fact about the user.")
+
+        conn = _get_connection()
+        block = conn.execute(
+            "SELECT page_id FROM blocks WHERE id = ?", (memory.block_id,)
+        ).fetchone()
+        assert block is not None
+        assert block["page_id"] is not None, "block.page_id should not be NULL"
+
+    def test_store_block_page_is_memories_page(self, mem_db, conversation_id):
+        """The page_id on the block belongs to a page with system_page_role='memories'."""
+        service = self._make_service()
+        memory = service.store(conversation_id, "Another fact.")
+
+        conn = _get_connection()
+        block = conn.execute(
+            "SELECT page_id FROM blocks WHERE id = ?", (memory.block_id,)
+        ).fetchone()
+        assert block is not None
+
+        page = conn.execute(
+            "SELECT system_page_role, title FROM pages WHERE page_id = ?",
+            (block["page_id"],),
+        ).fetchone()
+        assert page is not None
+        assert page["system_page_role"] == "memories"
+        assert page["title"] == "Memories"
+
+    def test_two_memories_share_same_memories_page(self, mem_db, conversation_id):
+        """Two memories for the same act use the same Memories page (idempotent)."""
+        service = self._make_service()
+        m1 = service.store(conversation_id, "First memory.")
+        m2 = service.store(conversation_id, "Second memory.")
+
+        conn = _get_connection()
+        page_id_1 = conn.execute(
+            "SELECT page_id FROM blocks WHERE id = ?", (m1.block_id,)
+        ).fetchone()["page_id"]
+        page_id_2 = conn.execute(
+            "SELECT page_id FROM blocks WHERE id = ?", (m2.block_id,)
+        ).fetchone()["page_id"]
+
+        assert page_id_1 == page_id_2, "Both memories should share the same Memories page"
+
+    def test_only_one_memories_page_per_act(self, mem_db, conversation_id):
+        """Calling store twice does not create duplicate Memories pages."""
+        service = self._make_service()
+        service.store(conversation_id, "Memory one.")
+        service.store(conversation_id, "Memory two.")
+
+        conn = _get_connection()
+        count = conn.execute(
+            "SELECT COUNT(*) FROM pages WHERE act_id = ? AND system_page_role = 'memories'",
+            (YOUR_STORY_ACT_ID,),
+        ).fetchone()[0]
+        assert count == 1
+
+    def test_memory_with_destination_act_uses_that_acts_memories_page(
+        self, mem_db, conversation_id
+    ):
+        """Memory routed to a non-default act gets that act's Memories page."""
+        with _transaction() as c:
+            c.execute(
+                """INSERT INTO acts (act_id, title, active, position, created_at, updated_at)
+                   VALUES ('act-health', 'Health', 1, 1, '2024-01-01', '2024-01-01')"""
+            )
+
+        service = self._make_service()
+        memory = service.store(
+            conversation_id,
+            "Health-related memory.",
+            destination_act_id="act-health",
+        )
+
+        conn = _get_connection()
+        block = conn.execute(
+            "SELECT page_id FROM blocks WHERE id = ?", (memory.block_id,)
+        ).fetchone()
+        assert block["page_id"] is not None
+
+        page = conn.execute(
+            "SELECT act_id, system_page_role FROM pages WHERE page_id = ?",
+            (block["page_id"],),
+        ).fetchone()
+        assert page["act_id"] == "act-health"
+        assert page["system_page_role"] == "memories"
+
+
+# =============================================================================
+# TestActRouting (Step 4)
+# =============================================================================
+
+
+def _mock_routing_provider(act_id: str | None, confidence: float = 0.9) -> MagicMock:
+    """Create a mock provider that returns an act routing response."""
+    provider = MagicMock()
+    provider.chat_json.return_value = json.dumps({
+        "destination_act_id": act_id,
+        "confidence": confidence,
+        "reason": "test routing reason",
+    })
+    return provider
+
+
+class TestActRouting:
+    """Tests for _route_to_act() and its integration in store()."""
+
+    @staticmethod
+    def _make_service(provider: MagicMock | None = None) -> MemoryService:
+        return MemoryService(
+            provider=provider or _mock_provider(),
+            embedding_service=_mock_embedding_service(),
+        )
+
+    def _insert_user_act(self, act_id: str, title: str, position: int = 1) -> None:
+        """Helper: insert a user (non-system) act."""
+        with _transaction() as c:
+            c.execute(
+                """INSERT INTO acts (act_id, title, active, position, created_at, updated_at)
+                   VALUES (?, ?, 1, ?, '2024-01-01', '2024-01-01')""",
+                (act_id, title, position),
+            )
+
+    def test_route_to_act_returns_valid_act_id(self, mem_db, conversation_id):
+        """_route_to_act returns the act_id when provider returns a valid one."""
+        self._insert_user_act("act-career", "Career")
+        provider = _mock_routing_provider("act-career")
+        service = self._make_service(provider=provider)
+
+        result = service._route_to_act("I got a promotion at work.")
+        assert result == "act-career"
+
+    def test_route_to_act_no_user_acts_returns_none(self, mem_db, conversation_id):
+        """_route_to_act returns None immediately when no user acts exist."""
+        # Only system acts (Your Story) exist — no user acts with system_role IS NULL
+        provider = MagicMock()
+        service = self._make_service(provider=provider)
+
+        result = service._route_to_act("Cross-cutting memory.")
+        assert result is None
+        # Provider should NOT have been called
+        provider.chat_json.assert_not_called()
+
+    def test_route_to_act_provider_failure_returns_none(self, mem_db, conversation_id):
+        """_route_to_act returns None (not raises) when provider throws an exception."""
+        self._insert_user_act("act-career", "Career")
+        provider = MagicMock()
+        provider.chat_json.side_effect = RuntimeError("Ollama unavailable")
+        service = self._make_service(provider=provider)
+
+        result = service._route_to_act("Some narrative.")
+        assert result is None
+
+    def test_route_to_act_invalid_act_id_returned_gives_none(
+        self, mem_db, conversation_id
+    ):
+        """_route_to_act returns None when provider returns an act_id not in the DB."""
+        self._insert_user_act("act-career", "Career")
+        provider = _mock_routing_provider("act-nonexistent")
+        service = self._make_service(provider=provider)
+
+        result = service._route_to_act("Some narrative.")
+        assert result is None
+
+    def test_route_to_act_null_from_provider_returns_none(self, mem_db, conversation_id):
+        """_route_to_act returns None when provider returns null destination_act_id."""
+        self._insert_user_act("act-career", "Career")
+        provider = _mock_routing_provider(None)
+        service = self._make_service(provider=provider)
+
+        result = service._route_to_act("Cross-cutting memory.")
+        assert result is None
+
+    def test_store_uses_routing_when_no_destination_provided(
+        self, mem_db, conversation_id
+    ):
+        """store() calls _route_to_act when destination_act_id is not passed."""
+        self._insert_user_act("act-health", "Health")
+        provider = _mock_routing_provider("act-health")
+        service = self._make_service(provider=provider)
+
+        memory = service.store(conversation_id, "I started a daily walk routine.")
+
+        assert memory.destination_act_id == "act-health"
+        assert memory.is_your_story is False
+
+    def test_store_explicit_destination_takes_precedence(self, mem_db, conversation_id):
+        """Explicit destination_act_id bypasses _route_to_act."""
+        self._insert_user_act("act-career", "Career")
+        self._insert_user_act("act-health", "Health", position=2)
+
+        # Provider would route to 'act-career' if called
+        provider = _mock_routing_provider("act-career")
+        service = self._make_service(provider=provider)
+
+        # But we pass explicit destination to a different act
+        memory = service.store(
+            conversation_id,
+            "Some memory.",
+            destination_act_id="act-health",
+        )
+
+        assert memory.destination_act_id == "act-health"
+        # Provider should NOT have been called for routing (explicit wins)
+        provider.chat_json.assert_not_called()
+
+    def test_store_routing_failure_falls_back_to_your_story(
+        self, mem_db, conversation_id
+    ):
+        """When routing fails (provider error), memory goes to Your Story."""
+        self._insert_user_act("act-career", "Career")
+        provider = MagicMock()
+        # Dedup judgment is fine, but routing explodes
+        provider.chat_json.side_effect = RuntimeError("connection refused")
+        service = self._make_service(provider=provider)
+
+        memory = service.store(conversation_id, "Some narrative.")
+        assert memory.destination_act_id is None
+        assert memory.is_your_story is True

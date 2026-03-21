@@ -31,6 +31,7 @@ from ..play_db import (
     YOUR_STORY_ACT_ID,
     _get_connection,
     _transaction,
+    ensure_memories_page,
     init_db,
 )
 from ..providers.ollama import OllamaProvider
@@ -67,6 +68,23 @@ Are these the SAME substantive insight/decision/fact?
   "merged_narrative": "if match, an improved narrative combining both; else empty string"
 }}"""
 
+ACT_ROUTING_SYSTEM = """\
+You are a memory router for a personal attention minder. Given a memory narrative and a list \
+of Acts (life narratives), choose the single most relevant Act for this memory. \
+If no Act clearly fits, return null.
+
+Output valid JSON only."""
+
+ACT_ROUTING_USER = """\
+Memory narrative:
+{narrative}
+
+Available Acts:
+{acts_json}
+
+Which act_id best matches this memory? Return null if cross-cutting or unroutable.
+{{"destination_act_id": "<act_id>" | null, "confidence": 0.0-1.0, "reason": "brief"}}"""
+
 
 # =============================================================================
 # Data Types
@@ -79,6 +97,11 @@ def _now_iso() -> str:
 
 def _new_id() -> str:
     return uuid4().hex[:12]
+
+
+VALID_MEMORY_TYPES: frozenset[str] = frozenset(
+    {"fact", "preference", "priority", "commitment", "relationship"}
+)
 
 
 @dataclass
@@ -101,6 +124,7 @@ class Memory:
     original_narrative: str | None
     created_at: str
     source: str = "compression"
+    memory_type: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -120,6 +144,7 @@ class Memory:
             "original_narrative": self.original_narrative,
             "created_at": self.created_at,
             "source": self.source,
+            "memory_type": self.memory_type,
         }
 
     @classmethod
@@ -129,6 +154,11 @@ class Memory:
             source = row["source"]
         except (IndexError, KeyError):
             source = "compression"
+        # memory_type column added in v19; handle gracefully for older DBs
+        try:
+            memory_type = row["memory_type"]
+        except (IndexError, KeyError):
+            memory_type = None
         return cls(
             id=row["id"],
             block_id=row["block_id"],
@@ -146,6 +176,7 @@ class Memory:
             original_narrative=row["original_narrative"],
             created_at=row["created_at"],
             source=source,
+            memory_type=memory_type,
         )
 
 
@@ -256,6 +287,10 @@ class MemoryService:
                 embedding = self._get_embedding_service().embed(narrative)
             except Exception:
                 logger.warning("Failed to generate embedding for dedup, skipping")
+
+        # If no explicit routing, attempt intelligent act routing
+        if destination_act_id is None:
+            destination_act_id = self._route_to_act(narrative)
 
         # Check for duplicates
         dedup = self._check_duplicate(narrative, embedding)
@@ -449,13 +484,16 @@ class MemoryService:
         is_your_story = destination_act_id is None
         act_id = destination_act_id or YOUR_STORY_ACT_ID
 
+        # Attach the block to the Act's Memories page (find or create it)
+        memories_page_id = ensure_memories_page(act_id)
+
         with _transaction() as conn:
-            # Create block
+            # Create block, placed on the Act's Memories page
             conn.execute(
                 """INSERT INTO blocks (id, type, act_id, parent_id, page_id, scene_id,
                    position, created_at, updated_at)
-                   VALUES (?, 'memory', ?, NULL, NULL, NULL, 0, ?, ?)""",
-                (block_id, act_id, now, now),
+                   VALUES (?, 'memory', ?, NULL, ?, NULL, 0, ?, ?)""",
+                (block_id, act_id, memories_page_id, now, now),
             )
 
             # Create memory row
@@ -569,6 +607,39 @@ class MemoryService:
             MemoryError: If memory not found or not in pending_review status.
         """
         return self._review_transition(memory_id, "rejected")
+
+    def set_memory_type(self, memory_id: str, memory_type: str) -> None:
+        """Set the memory_type classification on a memory.
+
+        For fact/preference/relationship types, auto-approves the memory
+        (sets status='approved', user_reviewed=0) when currently pending_review.
+        For commitment/priority types, leaves the status unchanged.
+
+        Args:
+            memory_id: The memory to classify.
+            memory_type: One of 'fact', 'preference', 'priority', 'commitment', 'relationship'.
+        """
+        auto_approve_types = frozenset({"fact", "preference", "relationship"})
+        auto_approved = memory_type in auto_approve_types
+
+        with _transaction() as conn:
+            conn.execute(
+                "UPDATE memories SET memory_type = ? WHERE id = ?",
+                (memory_type, memory_id),
+            )
+            if auto_approved:
+                conn.execute(
+                    "UPDATE memories SET status = 'approved', user_reviewed = 0 "
+                    "WHERE id = ? AND status = 'pending_review'",
+                    (memory_id,),
+                )
+
+        logger.info(
+            "Set memory %s type=%s (auto_approved=%s)",
+            memory_id,
+            memory_type,
+            auto_approved,
+        )
 
     def delete(self, memory_id: str) -> None:
         """Hard-delete a memory and all related data.
@@ -688,6 +759,67 @@ class MemoryService:
         memory.is_your_story = is_your_story
         logger.info("Routed memory %s to act %s", memory_id, destination_act_id)
         return memory
+
+    def _route_to_act(self, narrative: str) -> str | None:
+        """Use LLM to determine the best destination Act for a memory.
+
+        Fetches all non-system, active acts. Returns act_id or None (→ Your Story).
+        Degrades gracefully to None on any error — the caller falls back to Your Story.
+        """
+        try:
+            conn = _get_connection()
+            cursor = conn.execute(
+                """SELECT act_id, title, notes FROM acts
+                   WHERE system_role IS NULL AND active = 1
+                   ORDER BY position ASC"""
+            )
+            acts = [dict(row) for row in cursor.fetchall()]
+
+            # No user acts (or only system acts) — skip LLM call
+            if not acts:
+                return None
+
+            acts_json = json.dumps(
+                [
+                    {
+                        "act_id": a["act_id"],
+                        "title": a["title"],
+                        "notes": a["notes"] or "",
+                    }
+                    for a in acts
+                ],
+                indent=2,
+            )
+            valid_act_ids = {a["act_id"] for a in acts}
+
+            provider = self._get_provider()
+            user_prompt = ACT_ROUTING_USER.format(
+                narrative=narrative,
+                acts_json=acts_json,
+            )
+            raw = provider.chat_json(
+                system=ACT_ROUTING_SYSTEM,
+                user=user_prompt,
+                temperature=0.1,
+            )
+            parsed = json.loads(raw)
+
+            if not isinstance(parsed, dict):
+                return None
+
+            act_id = parsed.get("destination_act_id")
+            if act_id and act_id in valid_act_ids:
+                logger.info(
+                    "Act routing: narrative routed to act=%s (confidence=%s, reason=%s)",
+                    act_id,
+                    parsed.get("confidence"),
+                    parsed.get("reason"),
+                )
+                return str(act_id)
+            return None
+        except Exception as e:
+            logger.warning("Act routing failed, defaulting to Your Story: %s", e)
+            return None
 
     # -------------------------------------------------------------------------
     # Correction & Supersession

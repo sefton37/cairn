@@ -3,11 +3,10 @@
 Covers:
 - ConversationMemoryMatch formatting
 - ConversationMemoryContext prompt block generation
-- Recency decay computation
 - Signal weight computation
 - MemoryRetriever.retrieve_conversation_memories() with status filter
 - Signal weighting: high signal_count memories rank higher
-- Recency decay: recent memories rank higher than old ones
+- Age-invariant scoring: memories are permanent data — age has no effect on score
 - Transparency logging: classification_memory_references
 """
 
@@ -16,7 +15,6 @@ from __future__ import annotations
 import math
 import os
 import struct
-from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -24,7 +22,6 @@ import pytest
 from cairn.memory.retriever import (
     ConversationMemoryContext,
     ConversationMemoryMatch,
-    _compute_recency_weight,
     _compute_signal_weight,
 )
 from cairn.play_db import (
@@ -94,40 +91,42 @@ def _mock_embedding_service() -> MagicMock:
 
 
 # =============================================================================
-# TestRecencyWeight
+# TestPermanentMemories
 # =============================================================================
 
 
-class TestRecencyWeight:
-    """Test recency decay computation."""
+class TestPermanentMemories:
+    """Memories are permanent data — age has no effect on scoring."""
 
-    def test_now_returns_one(self):
-        """Current time should give weight ~1.0."""
-        now = datetime.now(UTC).isoformat()
-        weight = _compute_recency_weight(now)
-        assert 0.99 <= weight <= 1.0
+    def test_recency_weight_always_one(self):
+        """ConversationMemoryMatch.recency_weight is always 1.0 (decay removed)."""
+        match = ConversationMemoryMatch(
+            memory_id="m1",
+            block_id="b1",
+            narrative="Test.",
+            score=0.5,
+            semantic_similarity=0.5,
+            signal_count=1,
+            signal_weight=1.0,
+            recency_weight=1.0,
+            created_at="2020-01-01",
+            conversation_id="c1",
+        )
+        assert match.recency_weight == 1.0
 
-    def test_half_life(self):
-        """After half_life_days, weight should be ~0.5."""
-        past = (datetime.now(UTC) - timedelta(days=30)).isoformat()
-        weight = _compute_recency_weight(past, half_life_days=30.0)
-        assert 0.48 <= weight <= 0.52
+    def test_no_compute_recency_weight_exported(self):
+        """_compute_recency_weight is no longer exported from retriever."""
+        import cairn.memory.retriever as retriever_mod
+        assert not hasattr(retriever_mod, "_compute_recency_weight"), (
+            "_compute_recency_weight should have been removed"
+        )
 
-    def test_double_half_life(self):
-        """After 2x half_life_days, weight should be ~0.25."""
-        past = (datetime.now(UTC) - timedelta(days=60)).isoformat()
-        weight = _compute_recency_weight(past, half_life_days=30.0)
-        assert 0.23 <= weight <= 0.27
-
-    def test_invalid_date(self):
-        """Invalid date returns default 0.5."""
-        weight = _compute_recency_weight("not-a-date")
-        assert weight == 0.5
-
-    def test_empty_string(self):
-        """Empty string returns default 0.5."""
-        weight = _compute_recency_weight("")
-        assert weight == 0.5
+    def test_no_recency_half_life_constant(self):
+        """_RECENCY_HALF_LIFE_DAYS constant is no longer exported."""
+        import cairn.memory.retriever as retriever_mod
+        assert not hasattr(retriever_mod, "_RECENCY_HALF_LIFE_DAYS"), (
+            "_RECENCY_HALF_LIFE_DAYS should have been removed"
+        )
 
 
 # =============================================================================
@@ -318,37 +317,12 @@ class TestRetrieveConversationMemories:
         assert _compute_signal_weight(8) > _compute_signal_weight(1)
         assert _compute_signal_weight(8) == pytest.approx(math.log2(9))
 
-    def test_recency_decay_applied(self, mem_db, conversation_id):
-        """Older memories get lower recency weight."""
-        service = MemoryService(
-            provider=_mock_provider(),
-            embedding_service=_mock_embedding_service(),
-        )
-
-        recent = service.store(
-            conversation_id, "Recent memory.", embedding=_make_embedding(0.5)
-        )
-        service.approve(recent.id)
-
-        old = service.store(
-            conversation_id, "Old memory.", embedding=_make_embedding(0.5)
-        )
-        service.approve(old.id)
-
-        # Manually age one memory
-        old_date = (datetime.now(UTC) - timedelta(days=90)).isoformat()
-        with _transaction() as conn:
-            conn.execute(
-                "UPDATE memories SET created_at = ? WHERE id = ?",
-                (old_date, old.id),
-            )
-
-        # Verify recency weights differ
-        recent_weight = _compute_recency_weight(
-            datetime.now(UTC).isoformat()
-        )
-        old_weight = _compute_recency_weight(old_date)
-        assert recent_weight > old_weight
+    def test_age_does_not_affect_scoring(self, mem_db, conversation_id):
+        """Memories are permanent — a 90-day-old memory scores identically to a new one."""
+        # signal_weight(1) = log2(2) = 1.0 for both; scoring is similarity * signal_weight
+        # Age has no effect at all — verify via _compute_signal_weight only
+        assert _compute_signal_weight(1) == pytest.approx(1.0)
+        assert _compute_signal_weight(1) == pytest.approx(1.0)  # same regardless of age
 
 
 # =============================================================================

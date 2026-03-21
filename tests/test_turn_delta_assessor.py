@@ -483,3 +483,195 @@ class TestTurnAssessmentQueueLifecycle:
         """Calling stop() on a queue that was never started must not raise."""
         queue = TurnAssessmentQueue()
         queue.stop()  # Must not raise.
+
+
+# =============================================================================
+# TestClassifyMemoryType
+# =============================================================================
+
+
+class TestClassifyMemoryType:
+    """Tests for TurnDeltaAssessor._classify_memory_type()."""
+
+    @pytest.mark.parametrize(
+        "memory_type",
+        ["fact", "preference", "relationship", "commitment", "priority"],
+    )
+    def test_returns_valid_type(self, memory_type):
+        """Returns the classified type string for each valid type."""
+        provider = MagicMock()
+        provider.chat_json.return_value = json.dumps({
+            "memory_type": memory_type,
+            "confidence": 0.9,
+            "reason": "test reason",
+        })
+        provider._model = "llama3.2:1b"
+
+        assessor = TurnDeltaAssessor(provider=provider)
+        result = assessor._classify_memory_type("I work at Acme Corp.")
+        assert result == memory_type
+
+    def test_returns_none_on_provider_failure(self):
+        """Returns None when the provider raises an exception."""
+        provider = MagicMock()
+        provider.chat_json.side_effect = RuntimeError("LLM unreachable")
+        provider._model = "llama3.2:1b"
+
+        assessor = TurnDeltaAssessor(provider=provider)
+        result = assessor._classify_memory_type("I work at Acme Corp.")
+        assert result is None
+
+    def test_returns_none_on_bad_json(self):
+        """Returns None when the provider returns malformed JSON."""
+        provider = MagicMock()
+        provider.chat_json.return_value = "not valid json {"
+        provider._model = "llama3.2:1b"
+
+        assessor = TurnDeltaAssessor(provider=provider)
+        result = assessor._classify_memory_type("I work at Acme Corp.")
+        assert result is None
+
+    def test_returns_none_on_invalid_type(self):
+        """Returns None when the returned type is not in the allowed set."""
+        provider = MagicMock()
+        provider.chat_json.return_value = json.dumps({
+            "memory_type": "unknown_type",
+            "confidence": 0.7,
+            "reason": "test",
+        })
+        provider._model = "llama3.2:1b"
+
+        assessor = TurnDeltaAssessor(provider=provider)
+        result = assessor._classify_memory_type("I work at Acme Corp.")
+        assert result is None
+
+    def test_returns_none_on_non_dict_response(self):
+        """Returns None when the provider returns a JSON array instead of object."""
+        provider = MagicMock()
+        provider.chat_json.return_value = json.dumps(["fact", 0.9])
+        provider._model = "llama3.2:1b"
+
+        assessor = TurnDeltaAssessor(provider=provider)
+        result = assessor._classify_memory_type("I work at Acme Corp.")
+        assert result is None
+
+    def test_returns_none_when_memory_type_key_missing(self):
+        """Returns None when the JSON response lacks the memory_type key."""
+        provider = MagicMock()
+        provider.chat_json.return_value = json.dumps({
+            "confidence": 0.5,
+            "reason": "missing key",
+        })
+        provider._model = "llama3.2:1b"
+
+        assessor = TurnDeltaAssessor(provider=provider)
+        result = assessor._classify_memory_type("I work at Acme Corp.")
+        assert result is None
+
+
+class TestExtractAndStoreCallsClassify:
+    """On CREATE, _extract_and_store calls set_memory_type after memory creation."""
+
+    def _make_provider_create_with_type(self, memory_type: str) -> MagicMock:
+        """Provider: first call → CREATE, subsequent calls run the pipeline,
+        one extra call → type classification."""
+        provider = MagicMock()
+        call_count = {"n": 0}
+
+        def json_side_effect(*, system, user, **kw):
+            n = call_count["n"]
+            call_count["n"] += 1
+            if n == 0:
+                return json.dumps({"assessment": "CREATE", "what": "Made a decision"})
+            if n % 2 == 1:
+                return json.dumps({"decisions": [{"what": "Use SQLite", "why": "Simple"}]})
+            return json.dumps({})
+
+        def text_side_effect(*, system, user, **kw):
+            return "User uses SQLite for local storage."
+
+        provider.chat_json.side_effect = json_side_effect
+        provider.chat_text.return_value = "User uses SQLite for local storage."
+        provider._model = "llama3.2:1b"
+
+        # The type classification call is separate; we patch _classify_memory_type instead.
+        return provider
+
+    def test_set_memory_type_called_on_create(self, lifecycle_conversation):
+        """When a memory is created, set_memory_type is called with the classified type."""
+        provider = MagicMock()
+        call_count = {"n": 0}
+
+        def json_side_effect(*, system, user, **kw):
+            n = call_count["n"]
+            call_count["n"] += 1
+            if n == 0:
+                return json.dumps({"assessment": "CREATE", "what": "Made a decision"})
+            if n % 2 == 1:
+                return json.dumps({"decisions": [{"what": "Use SQLite", "why": "Simple"}]})
+            return json.dumps({})
+
+        provider.chat_json.side_effect = json_side_effect
+        provider.chat_text.return_value = "User uses SQLite for local storage."
+        provider._model = "llama3.2:1b"
+
+        mock_memory_service = MagicMock()
+        mock_memory = MagicMock()
+        mock_memory.id = "mem-type-test"
+        mock_memory_service.store.return_value = mock_memory
+
+        assessor = TurnDeltaAssessor(
+            provider=provider,
+            memory_service=mock_memory_service,
+        )
+
+        # Patch _classify_memory_type to return "fact" without another provider call
+        with patch.object(assessor, "_classify_memory_type", return_value="fact"):
+            assessor.assess_turn(
+                conversation_id=lifecycle_conversation.id,
+                turn_position=1,
+                user_message="I use SQLite for my projects.",
+                cairn_response="SQLite is a great choice.",
+            )
+
+        mock_memory_service.set_memory_type.assert_called_once_with("mem-type-test", "fact")
+
+    def test_set_memory_type_not_called_when_classify_returns_none(
+        self, lifecycle_conversation
+    ):
+        """When _classify_memory_type returns None, set_memory_type is not called."""
+        provider = MagicMock()
+        call_count = {"n": 0}
+
+        def json_side_effect(*, system, user, **kw):
+            n = call_count["n"]
+            call_count["n"] += 1
+            if n == 0:
+                return json.dumps({"assessment": "CREATE", "what": "Made a decision"})
+            if n % 2 == 1:
+                return json.dumps({"decisions": [{"what": "Use SQLite", "why": "Simple"}]})
+            return json.dumps({})
+
+        provider.chat_json.side_effect = json_side_effect
+        provider.chat_text.return_value = "User uses SQLite for local storage."
+        provider._model = "llama3.2:1b"
+
+        mock_memory_service = MagicMock()
+        mock_memory = MagicMock()
+        mock_memory.id = "mem-type-none"
+        mock_memory_service.store.return_value = mock_memory
+
+        assessor = TurnDeltaAssessor(
+            provider=provider,
+            memory_service=mock_memory_service,
+        )
+
+        with patch.object(assessor, "_classify_memory_type", return_value=None):
+            assessor.assess_turn(
+                conversation_id=lifecycle_conversation.id,
+                turn_position=1,
+                user_message="I use SQLite for my projects.",
+                cairn_response="SQLite is a great choice.",
+            )
+
+        mock_memory_service.set_memory_type.assert_not_called()

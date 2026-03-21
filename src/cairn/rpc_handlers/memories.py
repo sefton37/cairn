@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from cairn.db import Database
+from cairn.play_db import _get_connection, ensure_memories_page
 from cairn.services.memory_service import MemoryError, MemoryService
 
 from ._base import require_params, rpc_handler
@@ -310,3 +311,65 @@ def handle_memories_resolve_thread(
         return {"delta": result}
     except MemoryError as e:
         return {"error": str(e)}
+
+
+# =============================================================================
+# Play integration handlers
+# =============================================================================
+
+
+@require_params("act_id")
+@rpc_handler("lifecycle/memories/by_act_page")
+def handle_memories_by_act_page(
+    db: Database, *, act_id: str, status: str | None = None
+) -> dict[str, Any]:
+    """Get memories for an Act, grouped by their Memories page.
+
+    Returns memories and the memories_page_id (None if page doesn't exist yet).
+    """
+    conn = _get_connection()
+    conditions = ["destination_act_id = ?"]
+    params: list[Any] = [act_id]
+
+    if status is not None:
+        conditions.append("status = ?")
+        params.append(status)
+
+    where = " AND ".join(conditions)
+    cursor = conn.execute(
+        f"SELECT id, narrative, memory_type, status, signal_count, created_at, block_id"
+        f" FROM memories WHERE {where} ORDER BY created_at DESC",
+        params,
+    )
+    memories = [
+        {
+            "id": row["id"],
+            "narrative": row["narrative"],
+            "memory_type": row["memory_type"],
+            "status": row["status"],
+            "signal_count": row["signal_count"],
+            "created_at": row["created_at"],
+            "block_id": row["block_id"],
+        }
+        for row in cursor.fetchall()
+    ]
+
+    # Look up the memories page (read-only; None if not yet provisioned).
+    page_cursor = conn.execute(
+        "SELECT page_id FROM pages WHERE act_id = ? AND system_page_role = 'memories'",
+        (act_id,),
+    )
+    page_row = page_cursor.fetchone()
+    memories_page_id: str | None = str(page_row["page_id"]) if page_row else None
+
+    return {"memories": memories, "memories_page_id": memories_page_id}
+
+
+@require_params("act_id")
+@rpc_handler("lifecycle/memories/ensure_page")
+def handle_memories_ensure_page(
+    db: Database, *, act_id: str
+) -> dict[str, Any]:
+    """Find or create the Memories page for an Act. Returns page_id."""
+    page_id = ensure_memories_page(act_id)
+    return {"page_id": page_id}

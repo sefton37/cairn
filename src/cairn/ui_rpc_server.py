@@ -248,6 +248,12 @@ from .rpc_handlers.memories import (
 from .rpc_handlers.memories import (
     handle_memories_resolve_thread as _handle_memories_resolve_thread,
 )
+from .rpc_handlers.memories import (
+    handle_memories_by_act_page as _handle_memories_by_act_page,
+)
+from .rpc_handlers.memories import (
+    handle_memories_ensure_page as _handle_memories_ensure_page,
+)
 from .rpc_handlers.consciousness import (
     handle_cairn_chat_async as _handle_cairn_chat_async,
 )
@@ -2604,6 +2610,31 @@ def _handle_jsonrpc_request(db: Database, req: dict[str, Any]) -> dict[str, Any]
                     delta_id=delta_id,
                     resolution_note=params.get("resolution_note", ""),
                 ),
+            )
+
+        if method == "lifecycle/memories/by_act_page":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            act_id = params.get("act_id")
+            if not isinstance(act_id, str) or not act_id:
+                raise RpcError(code=-32602, message="act_id is required")
+            status = params.get("status")
+            if status is not None and not isinstance(status, str):
+                raise RpcError(code=-32602, message="status must be a string or null")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_memories_by_act_page(db, act_id=act_id, status=status),
+            )
+
+        if method == "lifecycle/memories/ensure_page":
+            if not isinstance(params, dict):
+                raise RpcError(code=-32602, message="params must be an object")
+            act_id = params.get("act_id")
+            if not isinstance(act_id, str) or not act_id:
+                raise RpcError(code=-32602, message="act_id is required")
+            return _jsonrpc_result(
+                req_id=req_id,
+                result=_handle_memories_ensure_page(db, act_id=act_id),
             )
 
         # --- Conversation Archive (LLM-driven memory system) ---

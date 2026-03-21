@@ -53,6 +53,30 @@ Rules:
 - CREATE only for clear decisions, commitments, preferences, facts
 - When in doubt, NO_CHANGE"""
 
+TYPE_CLASSIFICATION_SYSTEM = """\
+You are a memory type classifier. Given a compressed memory narrative, classify it into \
+exactly one of these types:
+- fact: A stable assertion about the world or the user. "I work at Acme."
+- preference: A preference or style. "I prefer concise answers."
+- relationship: A relationship between people. "Alex is my manager."
+- commitment: A promise, obligation, or deadline. "I told Sarah I'd review by Thursday."
+- priority: A relative ordering or urgency decision. "Shipping the demo matters more right now."
+
+Output valid JSON only. No preamble."""
+
+TYPE_CLASSIFICATION_USER = """\
+Memory narrative:
+{narrative}
+
+Classify this memory:
+{{"memory_type": "fact"|"preference"|"relationship"|"commitment"|"priority",
+  "confidence": 0.0-1.0,
+  "reason": "brief explanation"}}"""
+
+VALID_MEMORY_TYPES: frozenset[str] = frozenset(
+    {"fact", "preference", "priority", "commitment", "relationship"}
+)
+
 
 # =============================================================================
 # Data Types
@@ -263,6 +287,41 @@ class TurnDeltaAssessor:
             logger.warning("Turn classification failed, defaulting NO_CHANGE: %s", e)
             return "NO_CHANGE", ""
 
+    def _classify_memory_type(self, narrative: str) -> str | None:
+        """Classify a memory narrative into a type category.
+
+        Returns the type string ('fact', 'preference', 'relationship',
+        'commitment', or 'priority'), or None on any failure.
+
+        None is the safe default — callers should treat it as unclassified.
+        """
+        user_prompt = TYPE_CLASSIFICATION_USER.format(narrative=narrative)
+        try:
+            provider = self._get_provider()
+            raw = provider.chat_json(
+                system=TYPE_CLASSIFICATION_SYSTEM,
+                user=user_prompt,
+                temperature=0.1,
+            )
+            parsed = json.loads(raw)
+            if not isinstance(parsed, dict):
+                logger.warning("Memory type classification returned non-dict, ignoring")
+                return None
+
+            memory_type = parsed.get("memory_type")
+            if memory_type not in VALID_MEMORY_TYPES:
+                logger.warning(
+                    "Memory type classification returned invalid type %r, ignoring",
+                    memory_type,
+                )
+                return None
+
+            return memory_type
+
+        except Exception as e:
+            logger.warning("Memory type classification failed, skipping: %s", e)
+            return None
+
     def _extract_and_store(
         self,
         conversation_id: str,
@@ -303,6 +362,13 @@ class TurnDeltaAssessor:
                 memory.id,
                 conversation_id,
             )
+
+            # Classify the memory type in a second lightweight LLM call.
+            # Failure is non-fatal — memory_type defaults to NULL.
+            memory_type = self._classify_memory_type(narrative)
+            if memory_type is not None:
+                memory_service.set_memory_type(memory.id, memory_type)
+
             return memory.id
 
         except Exception as e:

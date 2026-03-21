@@ -7,7 +7,7 @@ Covers:
 - Open thread queries
 - Search excluding superseded memories
 - Multi-conversation memory flows
-- Recency decay integration
+- Permanent memory scoring (age-invariant)
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ from __future__ import annotations
 import json
 import os
 import struct
-from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -483,38 +482,41 @@ class TestMultiConversationFlow:
 
 
 # =============================================================================
-# TestRecencyDecayIntegration
+# TestPermanentMemoryScoring
 # =============================================================================
 
 
-class TestRecencyDecayIntegration:
-    """Recency weight decays over time — older memories score lower."""
+class TestPermanentMemoryScoring:
+    """Memories are permanent data — age has no effect on scoring."""
 
-    def test_older_memories_scored_lower(self, mem_db):
-        """A memory created 60 days ago has lower recency weight than one created now."""
-        from cairn.memory.retriever import _compute_recency_weight
+    def test_older_memories_score_same_as_new(self, mem_db):
+        """A memory created 60 days ago scores the same as one created now (age-invariant)."""
+        from cairn.memory.retriever import _compute_signal_weight
 
-        now_iso = datetime.now(UTC).isoformat()
-        old_iso = (datetime.now(UTC) - timedelta(days=60)).isoformat()
+        # With decay removed, two memories with identical signal_count score identically
+        # regardless of creation date. Signal weight drives differentiation.
+        weight_signal_1 = _compute_signal_weight(1)
+        weight_signal_1_again = _compute_signal_weight(1)
 
-        weight_now = _compute_recency_weight(now_iso)
-        weight_old = _compute_recency_weight(old_iso)
+        assert weight_signal_1 == weight_signal_1_again
 
-        assert weight_now > weight_old
-        # 60 days = 2 × half-life (30 days) → weight ≈ 0.25
-        assert weight_old < 0.5
+    def test_recency_decay_removed(self, mem_db):
+        """_compute_recency_weight is no longer present in the retriever module."""
+        import cairn.memory.retriever as retriever_mod
+        assert not hasattr(retriever_mod, "_compute_recency_weight"), (
+            "Recency decay was removed — _compute_recency_weight should not exist"
+        )
 
-    def test_recency_weight_is_one_for_current_timestamp(self, mem_db):
-        """A memory with timestamp 'now' has recency weight very close to 1.0."""
-        from cairn.memory.retriever import _compute_recency_weight
+    def test_six_month_old_memory_same_score_as_today(self, mem_db):
+        """A 6-month-old memory with the same content and signal_count scores identically."""
+        from cairn.memory.retriever import _compute_signal_weight
 
-        now_iso = datetime.now(UTC).isoformat()
-        weight = _compute_recency_weight(now_iso)
-        assert weight > 0.99
+        # Score = similarity * signal_weight; no age term
+        similarity = 0.8
+        signal_count = 3
+        signal_w = _compute_signal_weight(signal_count)
 
-    def test_recency_weight_invalid_date_returns_default(self, mem_db):
-        """Unparseable date returns the default fallback (0.5)."""
-        from cairn.memory.retriever import _compute_recency_weight
-
-        weight = _compute_recency_weight("not-a-date")
-        assert weight == 0.5
+        # Score is identical regardless of when memory was created
+        score_new = similarity * signal_w
+        score_old = similarity * signal_w  # Same formula — no date term
+        assert score_new == score_old
