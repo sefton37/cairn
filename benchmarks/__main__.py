@@ -182,6 +182,7 @@ def cmd_run_memory(args: argparse.Namespace) -> None:
             db_path=args.db,
             ollama_url=args.ollama_url,
             timeout=args.timeout,
+            anthropic_key=getattr(args, 'anthropic_credential', None),
         )
         try:
             run_uuid = runner.run(cases, profiles, resume=args.resume)
@@ -352,6 +353,7 @@ def main() -> None:
     p_run_mem.add_argument("--timeout", type=int, default=120, help="Per-case timeout (s)")
     p_run_mem.add_argument("--db", help="Database path override")
     p_run_mem.add_argument("--ollama-url", default="http://localhost:11434")
+    p_run_mem.add_argument("--anthropic-credential", help="Anthropic API key for ceiling test")
 
     # --- analyze-memory ---
     p_analyze_mem = sub.add_parser("analyze-memory", help="Analyze memory benchmark results")

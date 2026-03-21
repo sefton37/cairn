@@ -169,11 +169,13 @@ class MemoryBenchmarkRunner:
         db_path: str | None = None,
         ollama_url: str | None = None,
         timeout: int = 120,
+        anthropic_key: str | None = None,
     ) -> None:
         self.model_name = model_name
         self.db_path = db_path
         self.ollama_url = ollama_url or "http://localhost:11434"
         self.timeout = timeout
+        self.anthropic_key = anthropic_key
 
         self._conn: sqlite3.Connection | None = None
         self._run_id: int | None = None
@@ -352,15 +354,23 @@ class MemoryBenchmarkRunner:
             play_init_db()
 
             # 6. Build provider, services, assessor with injected provider
-            from cairn.providers.ollama import OllamaProvider
             from cairn.services.compression_pipeline import CompressionPipeline
             from cairn.services.memory_service import MemoryService
             from cairn.services.turn_delta_assessor import TurnDeltaAssessor
 
-            provider = OllamaProvider(
-                url=self.ollama_url,
-                model=self.model_name,
-            )
+            if self._is_anthropic:
+                from benchmarks.anthropic_provider import InstrumentedAnthropicProvider
+
+                provider = InstrumentedAnthropicProvider(
+                    credential=self.anthropic_key, model=self.model_name
+                )
+            else:
+                from cairn.providers.ollama import OllamaProvider
+
+                provider = OllamaProvider(
+                    url=self.ollama_url,
+                    model=self.model_name,
+                )
             memory_service = MemoryService(provider=provider)
             compression_pipeline = CompressionPipeline(provider=provider)
             assessor = TurnDeltaAssessor(
