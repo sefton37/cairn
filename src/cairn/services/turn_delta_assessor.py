@@ -83,6 +83,19 @@ VALID_MEMORY_TYPES: frozenset[str] = frozenset(
 # =============================================================================
 
 
+import re
+
+
+def _strip_code_fences(text: str) -> str:
+    """Strip markdown code fences from LLM JSON responses.
+
+    Some models (e.g. Anthropic) wrap JSON in ```json ... ``` blocks.
+    """
+    stripped = re.sub(r"^```(?:json)?\s*\n?", "", text.strip())
+    stripped = re.sub(r"\n?```\s*$", "", stripped)
+    return stripped.strip()
+
+
 def _now_iso() -> str:
     from datetime import UTC, datetime
 
@@ -270,7 +283,7 @@ class TurnDeltaAssessor:
                 user=user_prompt,
                 temperature=0.1,
             )
-            parsed = json.loads(raw)
+            parsed = json.loads(_strip_code_fences(raw))
             if not isinstance(parsed, dict):
                 logger.warning("Turn classification returned non-dict, defaulting NO_CHANGE")
                 return "NO_CHANGE", ""
@@ -303,7 +316,7 @@ class TurnDeltaAssessor:
                 user=user_prompt,
                 temperature=0.1,
             )
-            parsed = json.loads(raw)
+            parsed = json.loads(_strip_code_fences(raw))
             if not isinstance(parsed, dict):
                 logger.warning("Memory type classification returned non-dict, ignoring")
                 return None

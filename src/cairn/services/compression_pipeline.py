@@ -15,9 +15,17 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
+
+
+def _strip_code_fences(text: str) -> str:
+    """Strip markdown code fences from LLM JSON responses."""
+    stripped = re.sub(r"^```(?:json)?\s*\n?", "", text.strip())
+    stripped = re.sub(r"\n?```\s*$", "", stripped)
+    return stripped.strip()
 
 from ..providers.ollama import OllamaProvider
 
@@ -258,7 +266,7 @@ class CompressionPipeline:
                 user=user_prompt,
                 temperature=0.1,
             )
-            parsed = json.loads(raw)
+            parsed = json.loads(_strip_code_fences(raw))
             if not isinstance(parsed, dict):
                 logger.warning("Entity extraction returned non-dict: %s", type(parsed))
                 return {}
@@ -312,7 +320,7 @@ class CompressionPipeline:
                 user=user_prompt,
                 temperature=0.1,
             )
-            parsed = json.loads(raw)
+            parsed = json.loads(_strip_code_fences(raw))
             if not isinstance(parsed, dict):
                 logger.warning("State delta detection returned non-dict: %s", type(parsed))
                 return {}

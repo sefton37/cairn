@@ -19,10 +19,18 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
+
+
+def _strip_code_fences(text: str) -> str:
+    """Strip markdown code fences from LLM JSON responses."""
+    stripped = re.sub(r"^```(?:json)?\s*\n?", "", text.strip())
+    stripped = re.sub(r"\n?```\s*$", "", stripped)
+    return stripped.strip()
 
 from ..memory.embeddings import EmbeddingService, get_embedding_service
 from ..memory.graph_store import MemoryGraphStore
@@ -398,7 +406,7 @@ class MemoryService:
                 user=user_prompt,
                 temperature=0.1,
             )
-            parsed = json.loads(raw)
+            parsed = json.loads(_strip_code_fences(raw))
 
             if not isinstance(parsed, dict):
                 return DeduplicationResult(is_duplicate=False, reason="Invalid LLM response")
@@ -802,7 +810,7 @@ class MemoryService:
                 user=user_prompt,
                 temperature=0.1,
             )
-            parsed = json.loads(raw)
+            parsed = json.loads(_strip_code_fences(raw))
 
             if not isinstance(parsed, dict):
                 return None
