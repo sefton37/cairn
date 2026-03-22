@@ -37,30 +37,60 @@ You are a knowledge detector. Given a conversation turn, decide if genuinely NEW
 knowledge was established — a decision made, a fact revealed, a preference stated, \
 a commitment given.
 
-Be CONSERVATIVE. Casual chat, questions without answers, re-statements of known \
-facts are NOT new knowledge. Output valid JSON only."""
+Focus on semantic content, not surface form. A question phrased as a request can \
+still be a commitment. An indirect statement can reveal a fact.
+
+Noise that is NOT new knowledge: pure small talk, open questions that got no answer, \
+re-statements of information already in known context.
+
+Output valid JSON only."""
 
 CLASSIFICATION_USER = """\
 User said: {user_message}
 CAIRN responded: {cairn_response}
 Known context: {known_memories}
 
-Did this turn establish NEW knowledge?
-{{"assessment": "NO_CHANGE" | "CREATE", "what": "one sentence or empty"}}
+Examples of NEW knowledge (CREATE):
+- User: "I work at Dataflow Systems as a senior engineer." → CREATE (career fact)
+- User: "I really prefer async over real-time meetings." → CREATE (stated preference)
+- User: "I told Sarah I'd have the PR ready by Friday." → CREATE (explicit commitment)
+- User: "Could you remind me to review the security proposal by Thursday?" → CREATE \
+(request that functions as a commitment, even though phrased as a question)
 
-Rules:
-- NO_CHANGE for questions, casual chat, known information
-- CREATE only for clear decisions, commitments, preferences, facts
-- When in doubt, NO_CHANGE"""
+Examples of NO new knowledge (NO_CHANGE):
+- User: "How are you today?" → NO_CHANGE (casual, no information)
+- User: "Could you explain what async means?" → NO_CHANGE (question seeking explanation, \
+no commitment or fact revealed)
+- User: "Right, like I said earlier, I prefer async." (already in known context) → \
+NO_CHANGE (restatement)
+
+Did this turn establish NEW knowledge?
+{{"assessment": "NO_CHANGE" | "CREATE", "what": "one sentence or empty"}}"""
 
 TYPE_CLASSIFICATION_SYSTEM = """\
-You are a memory type classifier. Given a compressed memory narrative, classify it into \
-exactly one of these types:
-- fact: A stable assertion about the world or the user. "I work at Acme."
-- preference: A preference or style. "I prefer concise answers."
-- relationship: A relationship between people. "Alex is my manager."
-- commitment: A promise, obligation, or deadline. "I told Sarah I'd review by Thursday."
-- priority: A relative ordering or urgency decision. "Shipping the demo matters more right now."
+You are a memory type classifier. Given a compressed memory narrative, classify it \
+into exactly one of these types with examples:
+
+- fact: A stable assertion about the world or the user.
+  Example: "User works at Dataflow Systems as a senior data engineer."
+
+- preference: A preference or working style the user has expressed.
+  Example: "User prefers async communication over real-time meetings."
+
+- relationship: A relationship between people or between the user and an entity.
+  Example: "Alex is the user's engineering manager at Dataflow."
+
+- commitment: A promise, obligation, or deadline the user has made to someone else, \
+or a request that functions as a self-imposed deadline.
+  Example: "User committed to Sarah to review the security proposal by Thursday."
+
+- priority: A relative ordering or urgency decision that does not involve an external \
+commitment — what matters more right now.
+  Example: "User has decided that shipping the demo takes priority over refactoring."
+
+Boundary note — commitment vs. priority: If there is a named person or external \
+deadline, it is a commitment. If it is an internal ranking decision with no external \
+accountability, it is a priority.
 
 Output valid JSON only. No preamble."""
 
@@ -69,9 +99,7 @@ Memory narrative:
 {narrative}
 
 Classify this memory:
-{{"memory_type": "fact"|"preference"|"relationship"|"commitment"|"priority",
-  "confidence": 0.0-1.0,
-  "reason": "brief explanation"}}"""
+{{"memory_type": "fact"|"preference"|"relationship"|"commitment"|"priority"}}"""
 
 VALID_MEMORY_TYPES: frozenset[str] = frozenset(
     {"fact", "preference", "priority", "commitment", "relationship"}
