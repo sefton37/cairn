@@ -34,34 +34,27 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Stage 1: Intent filter — is the user sharing information or asking/requesting?
-# This is an easier binary for small models than CREATE/NO_CHANGE.
+# Two-stage approach: easier binary first, nuanced detection second.
 # ---------------------------------------------------------------------------
 
 INTENT_FILTER_SYSTEM = """\
-You are an intent classifier. Given what a user said to an AI assistant, \
-decide: is the user SHARING personal information (facts, preferences, plans, \
-commitments, feelings about their life) or ASKING the assistant for something \
-(questions, commands, requests for information)?
+You are an intent classifier. Decide: is the user SHARING personal information \
+or ASKING the assistant for something?
 
-A request that also reveals a commitment counts as SHARING.
-Example: "Could you remind me to review the proposal by Thursday?" → sharing \
-(the user revealed a deadline commitment)
+SHARING means the user is telling you about themselves — facts, preferences, \
+plans, commitments, relationships, decisions about their life.
+ASKING means questions, commands, requests for information, or small talk.
+
+"I work at Dataflow Systems." → sharing
+"I told Sarah I'd finish by Friday." → sharing
+"Remind me to review the proposal by Thursday." → sharing
+"What's on my calendar?" → asking
+"How are you?" → asking
 
 Output valid JSON only."""
 
 INTENT_FILTER_USER = """\
 User said: {user_message}
-
-Examples:
-- "I work at Dataflow Systems." → sharing
-- "I prefer async meetings." → sharing
-- "I told Sarah I'd finish by Friday." → sharing
-- "My partner is a nurse." → sharing
-- "What's on my calendar?" → asking
-- "Show me my Acts." → asking
-- "How are you?" → asking
-- "Could you explain what async means?" → asking
-
 {{"intent": "sharing" | "asking"}}"""
 
 INTENT_FILTER_SCHEMA: dict = {
@@ -79,16 +72,24 @@ INTENT_FILTER_SCHEMA: dict = {
 
 CLASSIFICATION_SYSTEM = """\
 You are a knowledge detector. The user has shared personal information. \
-Decide if this is genuinely NEW knowledge — a decision, fact, preference, \
-or commitment not already in the known context.
+Decide if this is genuinely NEW knowledge not already in the known context.
 
-Re-statements of information already in known context are NOT new. \
-Output valid JSON only."""
+Focus on semantic content, not surface form. A question phrased as a request \
+can still be a commitment. An indirect statement can reveal a fact.
+
+Re-statements of known context are NOT new. Output valid JSON only."""
 
 CLASSIFICATION_USER = """\
 User said: {user_message}
 CAIRN responded: {cairn_response}
 Known context: {known_memories}
+
+Examples:
+- "I work at Dataflow Systems as a senior engineer." → CREATE (career fact)
+- "I prefer async over real-time meetings." → CREATE (preference)
+- "I told Sarah I'd have the PR ready by Friday." → CREATE (commitment)
+- "Could you remind me to review the proposal by Thursday?" → CREATE (commitment)
+- "Right, like I said, I prefer async." (in known context) → NO_CHANGE (restatement)
 
 Is this NEW knowledge?
 {{"assessment": "CREATE" | "NO_CHANGE", "what": "one sentence or empty"}}"""
