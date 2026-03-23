@@ -108,15 +108,30 @@ CLASSIFICATION_SCHEMA: dict = {
 # ---------------------------------------------------------------------------
 
 TYPE_CLASSIFICATION_SYSTEM = """\
-Classify this memory into exactly one type.
+Classify this memory into exactly one type. Use these rules in order:
 
-- fact: A stable assertion. Example: "Works at Dataflow as senior engineer."
-- preference: A style or preference. Example: "Prefers async over meetings."
-- relationship: People connection. Example: "Alex is their manager."
-- commitment: Promise with person or deadline. Example: "Promised Sarah review by Thursday."
-- priority: Internal ranking, no external person. Example: "Demo matters more than refactoring."
+1. relationship: The statement names a specific person and describes who they \
+are or what role they play. "Alex is my manager" → relationship. \
+"Marcus handles the backend" → relationship. "My partner is a nurse" → relationship. \
+NOT fact — even though these are true statements, the key signal is the named person.
 
-If there is a named person or deadline → commitment. If purely internal → priority.
+2. commitment: The user promised, agreed, or obligated themselves to do something, \
+with a person or deadline. "I told Sarah I'd review by Thursday" → commitment. \
+"I said I'd look into the auth bug" → commitment (past tense still counts). \
+NOT priority — if the user said they would do it, it is a commitment.
+
+3. preference: What the user wants, likes, or dislikes about how things work. \
+"I prefer async" → preference. "Don't schedule before 10am" → preference. \
+"I can't stand GUI editors" → preference. NOT commitment — preferences are about \
+style and taste, not obligations.
+
+4. priority: An internal ranking or urgency decision with no named person. \
+"The demo matters more than refactoring" → priority. \
+"The Kubernetes migration is my top focus" → priority.
+
+5. fact: A stable assertion that doesn't fit the above. "I work at Dataflow." → fact. \
+"I have a master's in CS." → fact.
+
 Output valid JSON only."""
 
 TYPE_CLASSIFICATION_USER = """\
