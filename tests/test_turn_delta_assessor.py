@@ -60,24 +60,28 @@ def mock_provider_no_change():
 def mock_provider_create():
     """OllamaProvider that returns CREATE for classification, plus narrative text."""
     provider = MagicMock()
-    # First call: classification → CREATE
-    # Second call (entity extraction in pipeline): entity JSON
-    # Third call (state delta): delta JSON
+    # Call 0: intent filter → sharing
+    # Call 1: knowledge detection → CREATE
+    # Call 2 (entity extraction in pipeline): entity JSON
+    # Call 3 (state delta): delta JSON
     call_count = {"n": 0}
 
     def json_side_effect(*, system, user, **kw):
         n = call_count["n"]
         call_count["n"] += 1
         if n == 0:
-            # Classification call
+            # Intent filter call
+            return json.dumps({"intent": "sharing"})
+        if n == 1:
+            # Knowledge detection call
             return json.dumps({"assessment": "CREATE", "what": "Decided to use PostgreSQL"})
-        if n % 2 == 1:
-            # Entity extraction
-            return json.dumps({
-                "decisions": [{"what": "Use PostgreSQL", "why": "Scalability"}]
-            })
-        # State delta
-        return json.dumps({})
+        if n % 2 == 0:
+            # State delta (even calls after the first two)
+            return json.dumps({})
+        # Entity extraction (odd calls after the first two)
+        return json.dumps({
+            "decisions": [{"what": "Use PostgreSQL", "why": "Scalability"}]
+        })
 
     provider.chat_json.side_effect = json_side_effect
     provider.chat_text.return_value = "Decided to use PostgreSQL for better scalability."
@@ -606,10 +610,12 @@ class TestExtractAndStoreCallsClassify:
             n = call_count["n"]
             call_count["n"] += 1
             if n == 0:
+                return json.dumps({"intent": "sharing"})
+            if n == 1:
                 return json.dumps({"assessment": "CREATE", "what": "Made a decision"})
-            if n % 2 == 1:
-                return json.dumps({"decisions": [{"what": "Use SQLite", "why": "Simple"}]})
-            return json.dumps({})
+            if n % 2 == 0:
+                return json.dumps({})
+            return json.dumps({"decisions": [{"what": "Use SQLite", "why": "Simple"}]})
 
         provider.chat_json.side_effect = json_side_effect
         provider.chat_text.return_value = "User uses SQLite for local storage."
@@ -647,10 +653,12 @@ class TestExtractAndStoreCallsClassify:
             n = call_count["n"]
             call_count["n"] += 1
             if n == 0:
+                return json.dumps({"intent": "sharing"})
+            if n == 1:
                 return json.dumps({"assessment": "CREATE", "what": "Made a decision"})
-            if n % 2 == 1:
-                return json.dumps({"decisions": [{"what": "Use SQLite", "why": "Simple"}]})
-            return json.dumps({})
+            if n % 2 == 0:
+                return json.dumps({})
+            return json.dumps({"decisions": [{"what": "Use SQLite", "why": "Simple"}]})
 
         provider.chat_json.side_effect = json_side_effect
         provider.chat_text.return_value = "User uses SQLite for local storage."

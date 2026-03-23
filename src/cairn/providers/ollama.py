@@ -134,8 +134,15 @@ class OllamaProvider:
         timeout_seconds: float = TIMEOUTS.LLM_DEFAULT,
         temperature: float | None = None,
         top_p: float | None = None,
+        schema: dict[str, Any] | None = None,
     ) -> str:
         """Generate JSON-formatted response.
+
+        Args:
+            schema: Optional JSON Schema dict to constrain the output structure.
+                    When provided, Ollama uses structured generation to enforce
+                    the schema (requires Ollama >=0.3). When None, uses basic
+                    JSON mode (format="json").
 
         Handles models that wrap JSON in markdown code blocks.
         Automatically retries on transient failures.
@@ -146,7 +153,7 @@ class OllamaProvider:
             temperature=temperature,
             top_p=top_p,
         )
-        payload["format"] = "json"
+        payload["format"] = schema if schema is not None else "json"
         response = self._post_chat(payload, timeout_seconds)
 
         # Some models (like magistral) wrap JSON in markdown code blocks

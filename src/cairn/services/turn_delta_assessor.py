@@ -32,17 +32,57 @@ logger = logging.getLogger(__name__)
 # Prompt Templates
 # =============================================================================
 
+# ---------------------------------------------------------------------------
+# Stage 1: Intent filter — is the user sharing information or asking/requesting?
+# This is an easier binary for small models than CREATE/NO_CHANGE.
+# ---------------------------------------------------------------------------
+
+INTENT_FILTER_SYSTEM = """\
+You are an intent classifier. Given what a user said to an AI assistant, \
+decide: is the user SHARING personal information (facts, preferences, plans, \
+commitments, feelings about their life) or ASKING the assistant for something \
+(questions, commands, requests for information)?
+
+A request that also reveals a commitment counts as SHARING.
+Example: "Could you remind me to review the proposal by Thursday?" → sharing \
+(the user revealed a deadline commitment)
+
+Output valid JSON only."""
+
+INTENT_FILTER_USER = """\
+User said: {user_message}
+
+Examples:
+- "I work at Dataflow Systems." → sharing
+- "I prefer async meetings." → sharing
+- "I told Sarah I'd finish by Friday." → sharing
+- "My partner is a nurse." → sharing
+- "What's on my calendar?" → asking
+- "Show me my Acts." → asking
+- "How are you?" → asking
+- "Could you explain what async means?" → asking
+
+{{"intent": "sharing" | "asking"}}"""
+
+INTENT_FILTER_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "intent": {"type": "string", "enum": ["sharing", "asking"]},
+    },
+    "required": ["intent"],
+}
+
+# ---------------------------------------------------------------------------
+# Stage 2: Knowledge detection — is this genuinely new knowledge?
+# Only runs if Stage 1 returns "sharing".
+# ---------------------------------------------------------------------------
+
 CLASSIFICATION_SYSTEM = """\
-You are a knowledge detector. Given a conversation turn, decide if genuinely NEW \
-knowledge was established — a decision made, a fact revealed, a preference stated, \
-a commitment given.
+You are a knowledge detector. The user has shared personal information. \
+Decide if this is genuinely NEW knowledge — a decision, fact, preference, \
+or commitment not already in the known context.
 
-Focus on semantic content, not surface form. A question phrased as a request can \
-still be a commitment. An indirect statement can reveal a fact.
-
-Noise that is NOT new knowledge: pure small talk, open questions that got no answer, \
-re-statements of information already in known context.
-
+Re-statements of information already in known context are NOT new. \
 Output valid JSON only."""
 
 CLASSIFICATION_USER = """\
@@ -50,56 +90,48 @@ User said: {user_message}
 CAIRN responded: {cairn_response}
 Known context: {known_memories}
 
-Examples of NEW knowledge (CREATE):
-- User: "I work at Dataflow Systems as a senior engineer." → CREATE (career fact)
-- User: "I really prefer async over real-time meetings." → CREATE (stated preference)
-- User: "I told Sarah I'd have the PR ready by Friday." → CREATE (explicit commitment)
-- User: "Could you remind me to review the security proposal by Thursday?" → CREATE \
-(request that functions as a commitment, even though phrased as a question)
+Is this NEW knowledge?
+{{"assessment": "CREATE" | "NO_CHANGE", "what": "one sentence or empty"}}"""
 
-Examples of NO new knowledge (NO_CHANGE):
-- User: "How are you today?" → NO_CHANGE (casual, no information)
-- User: "Could you explain what async means?" → NO_CHANGE (question seeking explanation, \
-no commitment or fact revealed)
-- User: "Right, like I said earlier, I prefer async." (already in known context) → \
-NO_CHANGE (restatement)
+CLASSIFICATION_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "assessment": {"type": "string", "enum": ["NO_CHANGE", "CREATE"]},
+        "what": {"type": "string"},
+    },
+    "required": ["assessment", "what"],
+}
 
-Did this turn establish NEW knowledge?
-{{"assessment": "NO_CHANGE" | "CREATE", "what": "one sentence or empty"}}"""
+# ---------------------------------------------------------------------------
+# Type classification
+# ---------------------------------------------------------------------------
 
 TYPE_CLASSIFICATION_SYSTEM = """\
-You are a memory type classifier. Given a compressed memory narrative, classify it \
-into exactly one of these types with examples:
+Classify this memory into exactly one type.
 
-- fact: A stable assertion about the world or the user.
-  Example: "User works at Dataflow Systems as a senior data engineer."
+- fact: A stable assertion. Example: "Works at Dataflow as senior engineer."
+- preference: A style or preference. Example: "Prefers async over meetings."
+- relationship: People connection. Example: "Alex is their manager."
+- commitment: Promise with person or deadline. Example: "Promised Sarah review by Thursday."
+- priority: Internal ranking, no external person. Example: "Demo matters more than refactoring."
 
-- preference: A preference or working style the user has expressed.
-  Example: "User prefers async communication over real-time meetings."
-
-- relationship: A relationship between people or between the user and an entity.
-  Example: "Alex is the user's engineering manager at Dataflow."
-
-- commitment: A promise, obligation, or deadline the user has made to someone else, \
-or a request that functions as a self-imposed deadline.
-  Example: "User committed to Sarah to review the security proposal by Thursday."
-
-- priority: A relative ordering or urgency decision that does not involve an external \
-commitment — what matters more right now.
-  Example: "User has decided that shipping the demo takes priority over refactoring."
-
-Boundary note — commitment vs. priority: If there is a named person or external \
-deadline, it is a commitment. If it is an internal ranking decision with no external \
-accountability, it is a priority.
-
-Output valid JSON only. No preamble."""
+If there is a named person or deadline → commitment. If purely internal → priority.
+Output valid JSON only."""
 
 TYPE_CLASSIFICATION_USER = """\
-Memory narrative:
-{narrative}
-
-Classify this memory:
+Memory: {narrative}
 {{"memory_type": "fact"|"preference"|"relationship"|"commitment"|"priority"}}"""
+
+TYPE_CLASSIFICATION_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "memory_type": {
+            "type": "string",
+            "enum": ["fact", "preference", "relationship", "commitment", "priority"],
+        },
+    },
+    "required": ["memory_type"],
+}
 
 VALID_MEMORY_TYPES: frozenset[str] = frozenset(
     {"fact", "preference", "priority", "commitment", "relationship"}
@@ -291,25 +323,44 @@ class TurnDeltaAssessor:
         cairn_response: str,
         relevant_memories: list[str],
     ) -> tuple[str, str]:
-        """Ask the LLM whether this turn established new knowledge.
+        """Two-stage classification: intent filter then knowledge detection.
+
+        Stage 1: Is the user sharing information or asking/requesting?
+        Stage 2 (only if sharing): Is this genuinely new knowledge?
 
         Returns:
             (assessment, what) — ('NO_CHANGE'|'CREATE', one-line description)
-            On any parse failure, returns ('NO_CHANGE', '').
+            On any failure, returns ('NO_CHANGE', '').
         """
-        known = "\n".join(f"- {m}" for m in relevant_memories) if relevant_memories else "(none)"
-        user_prompt = CLASSIFICATION_USER.format(
-            user_message=user_message,
-            cairn_response=cairn_response,
-            known_memories=known,
-        )
-
         try:
             provider = self._get_provider()
+
+            # --- Stage 1: Intent filter ---
+            intent_prompt = INTENT_FILTER_USER.format(user_message=user_message)
+            raw_intent = provider.chat_json(
+                system=INTENT_FILTER_SYSTEM,
+                user=intent_prompt,
+                temperature=0.1,
+                schema=INTENT_FILTER_SCHEMA,
+            )
+            parsed_intent = json.loads(_strip_code_fences(raw_intent))
+            intent = parsed_intent.get("intent", "asking") if isinstance(parsed_intent, dict) else "asking"
+
+            if intent != "sharing":
+                return "NO_CHANGE", ""
+
+            # --- Stage 2: Knowledge detection (only if sharing) ---
+            known = "\n".join(f"- {m}" for m in relevant_memories) if relevant_memories else "(none)"
+            user_prompt = CLASSIFICATION_USER.format(
+                user_message=user_message,
+                cairn_response=cairn_response,
+                known_memories=known,
+            )
             raw = provider.chat_json(
                 system=CLASSIFICATION_SYSTEM,
                 user=user_prompt,
                 temperature=0.1,
+                schema=CLASSIFICATION_SCHEMA,
             )
             parsed = json.loads(_strip_code_fences(raw))
             if not isinstance(parsed, dict):
@@ -343,6 +394,7 @@ class TurnDeltaAssessor:
                 system=TYPE_CLASSIFICATION_SYSTEM,
                 user=user_prompt,
                 temperature=0.1,
+                schema=TYPE_CLASSIFICATION_SCHEMA,
             )
             parsed = json.loads(_strip_code_fences(raw))
             if not isinstance(parsed, dict):
