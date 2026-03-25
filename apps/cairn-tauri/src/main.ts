@@ -633,6 +633,12 @@ function buildUi() {
     } else {
       copperView.stopPolling();
     }
+    // RIVA project manager polling lifecycle
+    if (id === 'riva') {
+      rivaView.startPolling();
+    } else {
+      rivaView.stopPolling();
+    }
   }
 
   // ============ Agent Bar ============

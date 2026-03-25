@@ -1,0 +1,725 @@
+[
+  {
+    "case_id": "cairn_list_items_basic",
+    "tool_name": "cairn_list_items",
+    "question_template": "Show me everything in my knowledge base.",
+    "variant": "basic",
+    "expected_tool": "cairn_list_items",
+    "expected_args_schema": null,
+    "notes": "Broad list request, no filters"
+  },
+  {
+    "case_id": "cairn_list_items_filtered",
+    "tool_name": "cairn_list_items",
+    "question_template": "List all my acts that are overdue.",
+    "variant": "edge",
+    "expected_tool": "cairn_list_items",
+    "expected_args_schema": {"properties": {"entity_type": {"const": "act"}, "is_overdue": {"const": true}}},
+    "notes": "Filtered by entity type and overdue status"
+  },
+  {
+    "case_id": "cairn_list_items_regression",
+    "tool_name": "cairn_list_items",
+    "question_template": "What do I have going on?",
+    "variant": "regression",
+    "expected_tool": "cairn_list_items",
+    "expected_args_schema": null,
+    "notes": "Vague phrasing that could be calendar or items"
+  },
+
+  {
+    "case_id": "cairn_get_item_basic",
+    "tool_name": "cairn_get_item",
+    "question_template": "Show me the details of the Career act.",
+    "variant": "basic",
+    "expected_tool": "cairn_get_item",
+    "expected_args_schema": {"required": ["entity_type", "entity_id"]},
+    "notes": "Direct request for a specific item"
+  },
+  {
+    "case_id": "cairn_get_item_edge",
+    "tool_name": "cairn_get_item",
+    "question_template": "Tell me everything about that scene I was working on.",
+    "variant": "edge",
+    "expected_tool": "cairn_get_item",
+    "expected_args_schema": {"required": ["entity_type", "entity_id"]},
+    "notes": "Vague reference requiring entity resolution"
+  },
+
+  {
+    "case_id": "cairn_touch_item_basic",
+    "tool_name": "cairn_touch_item",
+    "question_template": "Mark the Health act as viewed.",
+    "variant": "basic",
+    "expected_tool": "cairn_touch_item",
+    "expected_args_schema": {"required": ["entity_type", "entity_id"]},
+    "notes": "Explicit touch request"
+  },
+  {
+    "case_id": "cairn_touch_item_edge",
+    "tool_name": "cairn_touch_item",
+    "question_template": "I just finished working on the Job Search scene.",
+    "variant": "edge",
+    "expected_tool": "cairn_touch_item",
+    "expected_args_schema": {"required": ["entity_type", "entity_id"], "properties": {"activity_type": {"const": "completed"}}},
+    "notes": "Implicit touch via completion statement"
+  },
+
+  {
+    "case_id": "cairn_surface_next_basic",
+    "tool_name": "cairn_surface_next",
+    "question_template": "What should I focus on next?",
+    "variant": "basic",
+    "expected_tool": "cairn_surface_next",
+    "expected_args_schema": null,
+    "notes": "Core surfacing question"
+  },
+  {
+    "case_id": "cairn_surface_next_scoped",
+    "tool_name": "cairn_surface_next",
+    "question_template": "What's the most important thing in my Career act right now?",
+    "variant": "edge",
+    "expected_tool": "cairn_surface_next",
+    "expected_args_schema": null,
+    "notes": "Scoped to a specific act"
+  },
+  {
+    "case_id": "cairn_surface_next_regression",
+    "tool_name": "cairn_surface_next",
+    "question_template": "Priorities?",
+    "variant": "regression",
+    "expected_tool": "cairn_surface_next",
+    "expected_args_schema": null,
+    "notes": "Ultra-terse phrasing"
+  },
+
+  {
+    "case_id": "cairn_surface_today_basic",
+    "tool_name": "cairn_surface_today",
+    "question_template": "What's on my plate today?",
+    "variant": "basic",
+    "expected_tool": "cairn_surface_today",
+    "expected_args_schema": null,
+    "notes": "Daily overview"
+  },
+  {
+    "case_id": "cairn_surface_today_regression",
+    "tool_name": "cairn_surface_today",
+    "question_template": "Good morning, what do I need to know?",
+    "variant": "regression",
+    "expected_tool": "cairn_surface_today",
+    "expected_args_schema": null,
+    "notes": "Greeting-embedded question"
+  },
+
+  {
+    "case_id": "cairn_surface_stale_basic",
+    "tool_name": "cairn_surface_stale",
+    "question_template": "What have I been neglecting?",
+    "variant": "basic",
+    "expected_tool": "cairn_surface_stale",
+    "expected_args_schema": null,
+    "notes": "Stale items surfacing"
+  },
+  {
+    "case_id": "cairn_surface_stale_parameterized",
+    "tool_name": "cairn_surface_stale",
+    "question_template": "Show me anything I haven't touched in two weeks.",
+    "variant": "edge",
+    "expected_tool": "cairn_surface_stale",
+    "expected_args_schema": {"properties": {"days": {"type": "number"}}},
+    "notes": "Explicit timeframe"
+  },
+
+  {
+    "case_id": "cairn_surface_attention_basic",
+    "tool_name": "cairn_surface_attention",
+    "question_template": "What needs my attention this week?",
+    "variant": "basic",
+    "expected_tool": "cairn_surface_attention",
+    "expected_args_schema": null,
+    "notes": "Attention surfacing"
+  },
+  {
+    "case_id": "cairn_surface_attention_regression",
+    "tool_name": "cairn_surface_attention",
+    "question_template": "Anything urgent coming up?",
+    "variant": "regression",
+    "expected_tool": "cairn_surface_attention",
+    "expected_args_schema": null,
+    "notes": "Could be calendar or attention"
+  },
+
+  {
+    "case_id": "cairn_thunderbird_status_basic",
+    "tool_name": "cairn_thunderbird_status",
+    "question_template": "Is my calendar connected?",
+    "variant": "basic",
+    "expected_tool": "cairn_thunderbird_status",
+    "expected_args_schema": null,
+    "notes": "Status check"
+  },
+
+  {
+    "case_id": "cairn_search_contacts_basic",
+    "tool_name": "cairn_search_contacts",
+    "question_template": "Find contact info for Sarah.",
+    "variant": "basic",
+    "expected_tool": "cairn_search_contacts",
+    "expected_args_schema": {"required": ["query"]},
+    "notes": "Basic contact search"
+  },
+  {
+    "case_id": "cairn_search_contacts_edge",
+    "tool_name": "cairn_search_contacts",
+    "question_template": "Who do I know at Google?",
+    "variant": "edge",
+    "expected_tool": "cairn_search_contacts",
+    "expected_args_schema": {"required": ["query"]},
+    "notes": "Organization-based search"
+  },
+
+  {
+    "case_id": "cairn_get_calendar_basic",
+    "tool_name": "cairn_get_calendar",
+    "question_template": "Show me my calendar for this week.",
+    "variant": "basic",
+    "expected_tool": "cairn_get_calendar",
+    "expected_args_schema": null,
+    "notes": "Calendar range query"
+  },
+  {
+    "case_id": "cairn_get_calendar_specific",
+    "tool_name": "cairn_get_calendar",
+    "question_template": "What's on my calendar next Monday through Friday?",
+    "variant": "edge",
+    "expected_tool": "cairn_get_calendar",
+    "expected_args_schema": null,
+    "notes": "Specific date range"
+  },
+
+  {
+    "case_id": "cairn_get_upcoming_events_basic",
+    "tool_name": "cairn_get_upcoming_events",
+    "question_template": "What meetings do I have coming up?",
+    "variant": "basic",
+    "expected_tool": "cairn_get_upcoming_events",
+    "expected_args_schema": null,
+    "notes": "Upcoming events"
+  },
+  {
+    "case_id": "cairn_get_upcoming_events_scoped",
+    "tool_name": "cairn_get_upcoming_events",
+    "question_template": "Am I free for the next 2 hours?",
+    "variant": "edge",
+    "expected_tool": "cairn_get_upcoming_events",
+    "expected_args_schema": {"properties": {"hours": {"type": "number"}}},
+    "notes": "Short lookahead"
+  },
+
+  {
+    "case_id": "cairn_get_todos_basic",
+    "tool_name": "cairn_get_todos",
+    "question_template": "What are my current tasks?",
+    "variant": "basic",
+    "expected_tool": "cairn_get_todos",
+    "expected_args_schema": null,
+    "notes": "Todo listing"
+  },
+  {
+    "case_id": "cairn_get_todos_with_completed",
+    "tool_name": "cairn_get_todos",
+    "question_template": "Show all my tasks including completed ones.",
+    "variant": "edge",
+    "expected_tool": "cairn_get_todos",
+    "expected_args_schema": {"properties": {"include_completed": {"const": true}}},
+    "notes": "Include completed"
+  },
+
+  {
+    "case_id": "cairn_list_acts_basic",
+    "tool_name": "cairn_list_acts",
+    "question_template": "What are my Acts in The Play?",
+    "variant": "basic",
+    "expected_tool": "cairn_list_acts",
+    "expected_args_schema": null,
+    "notes": "List all acts"
+  },
+  {
+    "case_id": "cairn_list_acts_regression",
+    "tool_name": "cairn_list_acts",
+    "question_template": "Show me my life areas.",
+    "variant": "regression",
+    "expected_tool": "cairn_list_acts",
+    "expected_args_schema": null,
+    "notes": "Conceptual phrasing that maps to acts"
+  },
+
+  {
+    "case_id": "cairn_create_act_basic",
+    "tool_name": "cairn_create_act",
+    "question_template": "Create a new Act called Health.",
+    "variant": "basic",
+    "expected_tool": "cairn_create_act",
+    "expected_args_schema": {"required": ["title"], "properties": {"title": {"type": "string", "minLength": 1}}},
+    "notes": "Basic act creation"
+  },
+  {
+    "case_id": "cairn_create_act_with_notes",
+    "tool_name": "cairn_create_act",
+    "question_template": "I want to start tracking my fitness. Create an act for it with a note about running 3x a week.",
+    "variant": "edge",
+    "expected_tool": "cairn_create_act",
+    "expected_args_schema": {"required": ["title"]},
+    "notes": "Natural language creation with embedded notes"
+  },
+
+  {
+    "case_id": "cairn_update_act_basic",
+    "tool_name": "cairn_update_act",
+    "question_template": "Rename the Career act to Professional Development.",
+    "variant": "basic",
+    "expected_tool": "cairn_update_act",
+    "expected_args_schema": {"required": ["act_name"]},
+    "notes": "Basic rename"
+  },
+  {
+    "case_id": "cairn_update_act_color",
+    "tool_name": "cairn_update_act",
+    "question_template": "Change the color of my Health act to green.",
+    "variant": "edge",
+    "expected_tool": "cairn_update_act",
+    "expected_args_schema": {"required": ["act_name"]},
+    "notes": "Color update"
+  },
+
+  {
+    "case_id": "cairn_delete_act_basic",
+    "tool_name": "cairn_delete_act",
+    "question_template": "Delete the Test act.",
+    "variant": "basic",
+    "expected_tool": "cairn_delete_act",
+    "expected_args_schema": {"required": ["act_name", "confirm"]},
+    "notes": "Deletion requiring confirmation"
+  },
+  {
+    "case_id": "cairn_delete_act_protected",
+    "tool_name": "cairn_delete_act",
+    "question_template": "Delete Your Story.",
+    "variant": "regression",
+    "expected_tool": "cairn_delete_act",
+    "expected_args_schema": null,
+    "notes": "Protected act — should fail gracefully"
+  },
+
+  {
+    "case_id": "cairn_set_active_act_basic",
+    "tool_name": "cairn_set_active_act",
+    "question_template": "Switch to the Career act.",
+    "variant": "basic",
+    "expected_tool": "cairn_set_active_act",
+    "expected_args_schema": {"required": ["act_name"]},
+    "notes": "Set active act"
+  },
+  {
+    "case_id": "cairn_set_active_act_regression",
+    "tool_name": "cairn_set_active_act",
+    "question_template": "I want to focus on Health now.",
+    "variant": "regression",
+    "expected_tool": "cairn_set_active_act",
+    "expected_args_schema": null,
+    "notes": "Implicit focus change"
+  },
+
+  {
+    "case_id": "cairn_list_scenes_basic",
+    "tool_name": "cairn_list_scenes",
+    "question_template": "What scenes are in my Career act?",
+    "variant": "basic",
+    "expected_tool": "cairn_list_scenes",
+    "expected_args_schema": {"required": ["act_name"]},
+    "notes": "List scenes in an act"
+  },
+  {
+    "case_id": "cairn_list_scenes_regression",
+    "tool_name": "cairn_list_scenes",
+    "question_template": "What's going on in Career?",
+    "variant": "regression",
+    "expected_tool": "cairn_list_scenes",
+    "expected_args_schema": null,
+    "notes": "Ambiguous — could be list_scenes or surface_next scoped to act"
+  },
+
+  {
+    "case_id": "cairn_create_scene_basic",
+    "tool_name": "cairn_create_scene",
+    "question_template": "Add a scene called Job Search to my Career act.",
+    "variant": "basic",
+    "expected_tool": "cairn_create_scene",
+    "expected_args_schema": {"required": ["act_name", "title"]},
+    "notes": "Basic scene creation"
+  },
+  {
+    "case_id": "cairn_create_scene_with_intent",
+    "tool_name": "cairn_create_scene",
+    "question_template": "I need to track my interview prep. Add it under Career with a note about practicing system design.",
+    "variant": "edge",
+    "expected_tool": "cairn_create_scene",
+    "expected_args_schema": {"required": ["act_name", "title"]},
+    "notes": "Natural language with embedded metadata"
+  },
+
+  {
+    "case_id": "cairn_update_scene_basic",
+    "tool_name": "cairn_update_scene",
+    "question_template": "Rename the Job Search scene to Active Job Hunt.",
+    "variant": "basic",
+    "expected_tool": "cairn_update_scene",
+    "expected_args_schema": {"required": ["scene_name"]},
+    "notes": "Basic rename"
+  },
+  {
+    "case_id": "cairn_update_scene_move",
+    "tool_name": "cairn_update_scene",
+    "question_template": "Move the Interview Prep scene from Career to Your Story.",
+    "variant": "edge",
+    "expected_tool": "cairn_update_scene",
+    "expected_args_schema": {"required": ["scene_name"]},
+    "notes": "Cross-act move"
+  },
+
+  {
+    "case_id": "cairn_delete_scene_basic",
+    "tool_name": "cairn_delete_scene",
+    "question_template": "Delete the old Networking scene from Career.",
+    "variant": "basic",
+    "expected_tool": "cairn_delete_scene",
+    "expected_args_schema": {"required": ["act_name", "scene_name", "confirm"]},
+    "notes": "Scene deletion"
+  },
+  {
+    "case_id": "cairn_delete_scene_protected",
+    "tool_name": "cairn_delete_scene",
+    "question_template": "Remove Stage Direction from Your Story.",
+    "variant": "regression",
+    "expected_tool": "cairn_delete_scene",
+    "expected_args_schema": null,
+    "notes": "Protected scene — should fail gracefully"
+  },
+
+  {
+    "case_id": "cairn_undo_last_basic",
+    "tool_name": "cairn_undo_last",
+    "question_template": "Undo that.",
+    "variant": "basic",
+    "expected_tool": "cairn_undo_last",
+    "expected_args_schema": null,
+    "notes": "Basic undo"
+  },
+  {
+    "case_id": "cairn_undo_last_regression",
+    "tool_name": "cairn_undo_last",
+    "question_template": "Wait, put it back.",
+    "variant": "regression",
+    "expected_tool": "cairn_undo_last",
+    "expected_args_schema": null,
+    "notes": "Colloquial undo phrasing"
+  },
+
+  {
+    "case_id": "cairn_confirm_action_basic",
+    "tool_name": "cairn_confirm_action",
+    "question_template": "Yes, go ahead and delete it.",
+    "variant": "basic",
+    "expected_tool": "cairn_confirm_action",
+    "expected_args_schema": null,
+    "notes": "Confirmation after a pending destructive action"
+  },
+
+  {
+    "case_id": "cairn_cancel_action_basic",
+    "tool_name": "cairn_cancel_action",
+    "question_template": "No, don't delete that. Cancel.",
+    "variant": "basic",
+    "expected_tool": "cairn_cancel_action",
+    "expected_args_schema": null,
+    "notes": "Cancellation of pending action"
+  },
+
+  {
+    "case_id": "cairn_create_block_basic",
+    "tool_name": "cairn_create_block",
+    "question_template": "Add a paragraph to my Career page that says 'Focus on leadership this quarter.'",
+    "variant": "basic",
+    "expected_tool": "cairn_create_block",
+    "expected_args_schema": {"required": ["type", "act_id"]},
+    "notes": "Basic block creation"
+  },
+  {
+    "case_id": "cairn_create_block_todo",
+    "tool_name": "cairn_create_block",
+    "question_template": "Add a to-do item: review Q3 goals.",
+    "variant": "edge",
+    "expected_tool": "cairn_create_block",
+    "expected_args_schema": {"required": ["type", "act_id"], "properties": {"type": {"const": "to_do"}}},
+    "notes": "To-do block creation"
+  },
+  {
+    "case_id": "cairn_create_block_heading",
+    "tool_name": "cairn_create_block",
+    "question_template": "Create a heading called 'Weekly Goals' on my Career page.",
+    "variant": "edge",
+    "expected_tool": "cairn_create_block",
+    "expected_args_schema": {"required": ["type", "act_id"]},
+    "notes": "Heading block"
+  },
+
+  {
+    "case_id": "cairn_update_block_basic",
+    "tool_name": "cairn_update_block",
+    "question_template": "Change that paragraph to say 'Focus on technical leadership.'",
+    "variant": "basic",
+    "expected_tool": "cairn_update_block",
+    "expected_args_schema": {"required": ["block_id"]},
+    "notes": "Block content update"
+  },
+
+  {
+    "case_id": "cairn_search_blocks_basic",
+    "tool_name": "cairn_search_blocks",
+    "question_template": "Search my notes for anything about leadership.",
+    "variant": "basic",
+    "expected_tool": "cairn_search_blocks",
+    "expected_args_schema": {"required": ["query"]},
+    "notes": "Block text search"
+  },
+  {
+    "case_id": "cairn_search_blocks_scoped",
+    "tool_name": "cairn_search_blocks",
+    "question_template": "Find all mentions of budget in my Finance act.",
+    "variant": "edge",
+    "expected_tool": "cairn_search_blocks",
+    "expected_args_schema": {"required": ["query"]},
+    "notes": "Scoped search"
+  },
+
+  {
+    "case_id": "cairn_get_page_content_basic",
+    "tool_name": "cairn_get_page_content",
+    "question_template": "Show me the contents of my Career page.",
+    "variant": "basic",
+    "expected_tool": "cairn_get_page_content",
+    "expected_args_schema": {"required": ["page_id"]},
+    "notes": "Page content retrieval"
+  },
+
+  {
+    "case_id": "cairn_create_page_basic",
+    "tool_name": "cairn_create_page",
+    "question_template": "Create a new page called Meeting Notes in my Career act.",
+    "variant": "basic",
+    "expected_tool": "cairn_create_page",
+    "expected_args_schema": {"required": ["act_id", "title"]},
+    "notes": "Basic page creation"
+  },
+  {
+    "case_id": "cairn_create_page_nested",
+    "tool_name": "cairn_create_page",
+    "question_template": "Add a sub-page called Q3 Review under my Meeting Notes page.",
+    "variant": "edge",
+    "expected_tool": "cairn_create_page",
+    "expected_args_schema": {"required": ["act_id", "title"]},
+    "notes": "Nested page creation"
+  },
+
+  {
+    "case_id": "cairn_list_pages_basic",
+    "tool_name": "cairn_list_pages",
+    "question_template": "What pages are in my Career act?",
+    "variant": "basic",
+    "expected_tool": "cairn_list_pages",
+    "expected_args_schema": {"required": ["act_id"]},
+    "notes": "List pages"
+  },
+
+  {
+    "case_id": "cairn_update_page_basic",
+    "tool_name": "cairn_update_page",
+    "question_template": "Rename my Meeting Notes page to Team Meetings.",
+    "variant": "basic",
+    "expected_tool": "cairn_update_page",
+    "expected_args_schema": {"required": ["page_id"]},
+    "notes": "Page rename"
+  },
+
+  {
+    "case_id": "cairn_add_scene_block_basic",
+    "tool_name": "cairn_add_scene_block",
+    "question_template": "Embed the Job Search scene on my Career page.",
+    "variant": "basic",
+    "expected_tool": "cairn_add_scene_block",
+    "expected_args_schema": {"required": ["act_id", "scene_id"]},
+    "notes": "Scene embed"
+  },
+
+  {
+    "case_id": "cairn_get_unchecked_todos_basic",
+    "tool_name": "cairn_get_unchecked_todos",
+    "question_template": "What to-do items haven't been checked off in my Career act?",
+    "variant": "basic",
+    "expected_tool": "cairn_get_unchecked_todos",
+    "expected_args_schema": {"required": ["act_id"]},
+    "notes": "Unchecked todo query"
+  },
+  {
+    "case_id": "cairn_get_unchecked_todos_regression",
+    "tool_name": "cairn_get_unchecked_todos",
+    "question_template": "What's still on my to-do list?",
+    "variant": "regression",
+    "expected_tool": "cairn_get_unchecked_todos",
+    "expected_args_schema": null,
+    "notes": "No act specified — must infer or use active act"
+  },
+
+  {
+    "case_id": "cairn_get_page_tree_basic",
+    "tool_name": "cairn_get_page_tree",
+    "question_template": "Show me the page hierarchy for my Career act.",
+    "variant": "basic",
+    "expected_tool": "cairn_get_page_tree",
+    "expected_args_schema": {"required": ["act_id"]},
+    "notes": "Page tree"
+  },
+
+  {
+    "case_id": "cairn_export_page_markdown_basic",
+    "tool_name": "cairn_export_page_markdown",
+    "question_template": "Export my Career page as markdown.",
+    "variant": "basic",
+    "expected_tool": "cairn_export_page_markdown",
+    "expected_args_schema": {"required": ["page_id"]},
+    "notes": "Markdown export"
+  },
+
+  {
+    "case_id": "cairn_health_report_basic",
+    "tool_name": "cairn_health_report",
+    "question_template": "How am I doing?",
+    "variant": "basic",
+    "expected_tool": "cairn_health_report",
+    "expected_args_schema": null,
+    "notes": "Health report trigger"
+  },
+  {
+    "case_id": "cairn_health_report_explicit",
+    "tool_name": "cairn_health_report",
+    "question_template": "Run a system health check.",
+    "variant": "edge",
+    "expected_tool": "cairn_health_report",
+    "expected_args_schema": null,
+    "notes": "Explicit health request"
+  },
+
+  {
+    "case_id": "cairn_acknowledge_health_basic",
+    "tool_name": "cairn_acknowledge_health",
+    "question_template": "Dismiss that health finding.",
+    "variant": "basic",
+    "expected_tool": "cairn_acknowledge_health",
+    "expected_args_schema": {"required": ["log_id"]},
+    "notes": "Health acknowledgement"
+  },
+
+  {
+    "case_id": "cairn_health_history_basic",
+    "tool_name": "cairn_health_history",
+    "question_template": "Show me my health trends over the past month.",
+    "variant": "basic",
+    "expected_tool": "cairn_health_history",
+    "expected_args_schema": null,
+    "notes": "Health history"
+  },
+  {
+    "case_id": "cairn_health_history_short",
+    "tool_name": "cairn_health_history",
+    "question_template": "How has my system health been this week?",
+    "variant": "edge",
+    "expected_tool": "cairn_health_history",
+    "expected_args_schema": {"properties": {"days": {"type": "integer"}}},
+    "notes": "Short timeframe"
+  },
+
+  {
+    "case_id": "off_topic_weather",
+    "tool_name": "_off_topic",
+    "question_template": "What's the weather like in Tokyo?",
+    "variant": "off_topic",
+    "expected_tool": "none",
+    "expected_args_schema": null,
+    "notes": "No tool should be called"
+  },
+  {
+    "case_id": "off_topic_joke",
+    "tool_name": "_off_topic",
+    "question_template": "Tell me a joke.",
+    "variant": "off_topic",
+    "expected_tool": "none",
+    "expected_args_schema": null,
+    "notes": "Conversational, no tool"
+  },
+  {
+    "case_id": "off_topic_recipe",
+    "tool_name": "_off_topic",
+    "question_template": "How do I make sourdough bread?",
+    "variant": "off_topic",
+    "expected_tool": "none",
+    "expected_args_schema": null,
+    "notes": "Unrelated knowledge question"
+  },
+  {
+    "case_id": "off_topic_greeting",
+    "tool_name": "_off_topic",
+    "question_template": "Hello!",
+    "variant": "off_topic",
+    "expected_tool": "none",
+    "expected_args_schema": null,
+    "notes": "Greeting, no tool needed"
+  },
+  {
+    "case_id": "off_topic_thanks",
+    "tool_name": "_off_topic",
+    "question_template": "Thanks, that's all for now.",
+    "variant": "off_topic",
+    "expected_tool": "none",
+    "expected_args_schema": null,
+    "notes": "Sign-off, no tool needed"
+  },
+
+  {
+    "case_id": "ambiguous_calendar_vs_today",
+    "tool_name": "_ambiguous",
+    "question_template": "What's happening today?",
+    "variant": "ambiguous",
+    "expected_tool": "cairn_surface_today",
+    "expected_args_schema": null,
+    "notes": "Could be surface_today or get_calendar — surface_today preferred"
+  },
+  {
+    "case_id": "ambiguous_next_vs_todos",
+    "tool_name": "_ambiguous",
+    "question_template": "What should I be working on?",
+    "variant": "ambiguous",
+    "expected_tool": "cairn_surface_next",
+    "expected_args_schema": null,
+    "notes": "Could be surface_next or get_todos — surface_next preferred"
+  },
+  {
+    "case_id": "ambiguous_acts_vs_items",
+    "tool_name": "_ambiguous",
+    "question_template": "Show me everything I'm tracking.",
+    "variant": "ambiguous",
+    "expected_tool": "cairn_list_acts",
+    "expected_args_schema": null,
+    "notes": "Could be list_acts or list_items — acts gives higher-level overview"
+  }
+]

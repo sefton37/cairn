@@ -22,7 +22,8 @@ venv/
 .env.*
 uv.lock
 
-# Talking Rock local data (formerly .reos-data/)
+# Talking Rock local data
+.reos-data/
 .talkingrock/
 *.log
 *.sqlite3
