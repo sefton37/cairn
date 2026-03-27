@@ -54,6 +54,14 @@ from cairn.providers.factory import (
     AVAILABLE_PROVIDERS,
 )
 
+# Quick judge (binary LLM checks)
+from cairn.providers.quick_judge import (
+    INTENT_JUDGE_SYSTEM,
+    SAFETY_JUDGE_SYSTEM,
+    SEMANTIC_JUDGE_SYSTEM,
+    quick_judge,
+)
+
 # Secrets management
 from cairn.providers.secrets import (
     store_api_key,
@@ -85,6 +93,11 @@ __all__ = [
     "get_provider_info",
     "ProviderInfo",
     "AVAILABLE_PROVIDERS",
+    # Quick judge
+    "quick_judge",
+    "SAFETY_JUDGE_SYSTEM",
+    "INTENT_JUDGE_SYSTEM",
+    "SEMANTIC_JUDGE_SYSTEM",
     # Secrets
     "store_api_key",
     "get_api_key",

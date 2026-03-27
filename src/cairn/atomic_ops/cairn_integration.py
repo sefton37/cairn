@@ -90,6 +90,43 @@ _SEVERITY_PREFIX = {
 }
 
 
+def _format_tool_result_fallback(
+    tool_result: dict[str, Any], user_input: str
+) -> str | None:
+    """Format a plain-language fallback when the LLM's response is rejected.
+
+    Returns None if the data is too complex to summarize simply.
+    """
+    # Calendar with events
+    count = tool_result.get("count")
+    events = tool_result.get("events")
+    if isinstance(count, int) and isinstance(events, list):
+        if count == 0:
+            return "Your calendar is clear — no events scheduled."
+        lines = []
+        for ev in events[:10]:
+            title = ev.get("title", "Untitled")
+            start = ev.get("start", "")
+            if start:
+                lines.append(f"- **{title}** — {start}")
+            else:
+                lines.append(f"- **{title}**")
+        header = f"You have {count} event{'s' if count != 1 else ''} coming up:"
+        return header + "\n" + "\n".join(lines)
+
+    # KB/text content (e.g. Your Story)
+    content = tool_result.get("content")
+    if isinstance(content, str):
+        if not content.strip():
+            return "That page is currently empty."
+        # Return the content directly — it's what the user asked for
+        if len(content) <= 2000:
+            return content
+        return content[:2000] + "\n\n*(truncated)*"
+
+    return None
+
+
 def _format_health_report(tool_result: dict[str, Any]) -> str:
     """Format a cairn_health_report tool result without calling an LLM.
 
@@ -341,7 +378,7 @@ class CairnAtomicBridge:
         # Step 5b: Generate verification directive for response shaping
         directive = None
         try:
-            from trcore.atomic_ops.verifiers.directives import verification_directive
+            from cairn.atomic_ops.verifiers.directives import verification_directive
 
             directive = verification_directive(verification.results)
         except Exception:
@@ -627,6 +664,17 @@ class CairnAtomicBridge:
                 )
                 if not is_valid:
                     logger.warning("Hallucination detected: %s", reason)
+
+                    # Fall back to a plain data summary instead of asking
+                    # the user to rephrase — the tool worked, the LLM just
+                    # misinterpreted the result.
+                    fallback = _format_tool_result_fallback(
+                        tool_result, ctx.user_input
+                    )
+                    if fallback:
+                        rg.track_response(fallback)
+                        return fallback
+
                     domain = ctx.classification.domain or ""
                     action_hint = ctx.classification.action_hint or "view"
 

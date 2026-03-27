@@ -139,7 +139,7 @@ class TestListAgents:
         assert agents == []
 
     def test_returns_created_agent(self, manager, tmp_path) -> None:
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "My Agent", "a purpose")
 
         agents = manager.list_agents("alice")
@@ -151,7 +151,7 @@ class TestListAgents:
         assert agents[0]["purpose"] == "a purpose"
 
     def test_busy_is_false_when_no_process(self, manager, tmp_path) -> None:
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             manager.create_agent("alice", "Bot", "")
 
         agents = manager.list_agents("alice")
@@ -161,7 +161,7 @@ class TestListAgents:
     def test_busy_reflects_in_memory_process_state(self, manager, tmp_path) -> None:
         from cairn.services.cc_manager import AgentProcess
 
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         ap = AgentProcess(agent_id=agent["id"], busy=True)
@@ -172,7 +172,7 @@ class TestListAgents:
         assert agents[0]["busy"] is True
 
     def test_does_not_return_agents_for_other_user(self, manager, tmp_path) -> None:
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             manager.create_agent("alice", "Alice Bot", "")
 
         agents = manager.list_agents("bob")
@@ -180,7 +180,7 @@ class TestListAgents:
         assert agents == []
 
     def test_returns_multiple_agents_ordered_by_creation(self, manager, tmp_path) -> None:
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             manager.create_agent("alice", "First", "")
             manager.create_agent("alice", "Second", "")
 
@@ -200,40 +200,40 @@ class TestCreateAgent:
     """create_agent inserts a row, creates workspace, returns agent dict."""
 
     def test_returns_agent_dict_with_expected_keys(self, manager, tmp_path) -> None:
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "My Bot", "doing stuff")
 
         assert set(agent.keys()) == {"id", "name", "slug", "purpose", "cwd"}
 
     def test_slug_derived_from_name(self, manager, tmp_path) -> None:
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Cool Bot", "")
 
         assert agent["slug"] == "cool-bot"
 
     def test_purpose_stored_correctly(self, manager, tmp_path) -> None:
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "help with code")
 
         assert agent["purpose"] == "help with code"
 
     def test_cwd_contains_slug(self, manager, tmp_path) -> None:
         root = tmp_path / "agents"
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", root):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", root):
             agent = manager.create_agent("alice", "Code Bot", "")
 
         assert "code-bot" in agent["cwd"]
 
     def test_workspace_directory_created_on_disk(self, manager, tmp_path) -> None:
         root = tmp_path / "agents"
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", root):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", root):
             manager.create_agent("alice", "Dir Bot", "")
 
         assert (root / "dir-bot").is_dir()
 
     def test_workspace_contains_claude_md(self, manager, tmp_path) -> None:
         root = tmp_path / "agents"
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", root):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", root):
             manager.create_agent("alice", "Doc Bot", "for docs")
 
         assert (root / "doc-bot" / "CLAUDE.md").exists()
@@ -241,7 +241,7 @@ class TestCreateAgent:
     def test_raises_rpc_error_on_duplicate_slug(self, manager, tmp_path) -> None:
         from cairn.rpc_handlers import RpcError
 
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             manager.create_agent("alice", "My Bot", "")
 
             with pytest.raises(RpcError) as exc_info:
@@ -260,7 +260,7 @@ class TestCreateAgent:
         assert "Invalid" in exc_info.value.message
 
     def test_id_is_unique_hex_string(self, manager, tmp_path) -> None:
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             a1 = manager.create_agent("alice", "Bot One", "")
             a2 = manager.create_agent("alice", "Bot Two", "")
 
@@ -277,7 +277,7 @@ class TestDeleteAgent:
     """delete_agent removes the DB row and returns {ok: True}."""
 
     def test_returns_ok_true(self, manager, tmp_path) -> None:
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         result = manager.delete_agent(agent["id"])
@@ -285,7 +285,7 @@ class TestDeleteAgent:
         assert result == {"ok": True}
 
     def test_agent_no_longer_in_list_after_delete(self, manager, tmp_path) -> None:
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         manager.delete_agent(agent["id"])
@@ -303,7 +303,7 @@ class TestDeleteAgent:
     def test_terminates_running_process(self, manager, tmp_path) -> None:
         from cairn.services.cc_manager import AgentProcess
 
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         mock_proc = MagicMock()
@@ -318,7 +318,7 @@ class TestDeleteAgent:
     def test_does_not_error_when_process_already_exited(self, manager, tmp_path) -> None:
         from cairn.services.cc_manager import AgentProcess
 
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         mock_proc = MagicMock()
@@ -350,7 +350,7 @@ class TestPollEvents:
     def test_returns_empty_when_process_has_no_events(self, manager, tmp_path) -> None:
         from cairn.services.cc_manager import AgentProcess
 
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         ap = AgentProcess(agent_id=agent["id"])
@@ -364,7 +364,7 @@ class TestPollEvents:
     def test_returns_buffered_events(self, manager, tmp_path) -> None:
         from cairn.services.cc_manager import AgentProcess
 
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         ap = AgentProcess(agent_id=agent["id"])
@@ -384,7 +384,7 @@ class TestPollEvents:
     def test_since_parameter_slices_events(self, manager, tmp_path) -> None:
         from cairn.services.cc_manager import AgentProcess
 
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         ap = AgentProcess(agent_id=agent["id"])
@@ -404,7 +404,7 @@ class TestPollEvents:
     def test_busy_reflects_process_state(self, manager, tmp_path) -> None:
         from cairn.services.cc_manager import AgentProcess
 
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         ap = AgentProcess(agent_id=agent["id"], busy=True)
@@ -424,7 +424,7 @@ class TestGetHistory:
     """get_history returns persisted messages in chronological order."""
 
     def test_returns_empty_list_when_no_history(self, manager, tmp_path) -> None:
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         history = manager.get_history(agent["id"])
@@ -437,7 +437,7 @@ class TestGetHistory:
         assert history == []
 
     def test_returns_messages_in_chronological_order(self, manager, tmp_path) -> None:
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         # Persist messages directly via the internal helper
@@ -456,7 +456,7 @@ class TestGetHistory:
         assert history[2]["content"] == "second message"
 
     def test_each_message_has_required_keys(self, manager, tmp_path) -> None:
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         manager._persist_history(agent["id"], "user", "hello")
@@ -466,7 +466,7 @@ class TestGetHistory:
         assert set(history[0].keys()) == {"role", "content", "created_at"}
 
     def test_limit_caps_number_of_returned_messages(self, manager, tmp_path) -> None:
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         for i in range(10):
@@ -477,7 +477,7 @@ class TestGetHistory:
         assert len(history) == 3
 
     def test_limit_returns_most_recent_messages(self, manager, tmp_path) -> None:
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         for i in range(5):
@@ -511,7 +511,7 @@ class TestSendMessage:
         from cairn.rpc_handlers import RpcError
         from cairn.services.cc_manager import AgentProcess
 
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         ap = AgentProcess(agent_id=agent["id"], busy=True)
@@ -525,7 +525,7 @@ class TestSendMessage:
 
     def test_accepted_response_structure(self, manager, tmp_path) -> None:
         """Successful send returns {agent_id, status: accepted}."""
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         mock_proc = MagicMock()
@@ -545,7 +545,7 @@ class TestSendMessage:
     def test_spawn_failure_raises_rpc_error(self, manager, tmp_path) -> None:
         from cairn.rpc_handlers import RpcError
 
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         with patch("asyncio.create_subprocess_exec", side_effect=FileNotFoundError("no claude")):
@@ -556,7 +556,7 @@ class TestSendMessage:
         assert "spawn" in exc_info.value.message.lower()
 
     def test_user_message_recorded_in_events(self, manager, tmp_path) -> None:
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         mock_proc = MagicMock()
@@ -588,7 +588,7 @@ class TestStopSession:
     def test_returns_ok_when_process_already_exited(self, manager, tmp_path) -> None:
         from cairn.services.cc_manager import AgentProcess
 
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         mock_proc = MagicMock()
@@ -604,7 +604,7 @@ class TestStopSession:
     def test_terminates_running_process(self, manager, tmp_path) -> None:
         from cairn.services.cc_manager import AgentProcess
 
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         mock_proc = MagicMock()
@@ -625,7 +625,7 @@ class TestStopSession:
     def test_sets_busy_false_after_stop(self, manager, tmp_path) -> None:
         from cairn.services.cc_manager import AgentProcess
 
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         mock_proc = MagicMock()
@@ -645,7 +645,7 @@ class TestStopSession:
     def test_appends_done_event_after_stop(self, manager, tmp_path) -> None:
         from cairn.services.cc_manager import AgentProcess
 
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         mock_proc = MagicMock()
@@ -665,7 +665,7 @@ class TestStopSession:
     def test_kills_process_after_timeout(self, manager, tmp_path) -> None:
         from cairn.services.cc_manager import AgentProcess
 
-        with patch("trcore.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
+        with patch("cairn.cc_manager.WORKSPACE_ROOT", tmp_path / "agents"):
             agent = manager.create_agent("alice", "Bot", "")
 
         mock_proc = MagicMock()

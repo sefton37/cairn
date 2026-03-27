@@ -11,7 +11,7 @@ import os
 from typing import Any
 
 from cairn.db import Database
-from trcore.cc_manager import CCManager
+from cairn.cc_manager import CCManager
 
 _manager: CCManager | None = None
 

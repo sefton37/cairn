@@ -8,10 +8,7 @@ from __future__ import annotations
 import sys
 from typing import Any
 
-# RpcError lives in trcore so it can be used by trcore.cc_manager without
-# a reverse dependency on Cairn. Re-exported here so all Cairn code continues
-# to import from cairn.rpc.types as before.
-from trcore.errors import RpcError
+from cairn.errors import RpcError
 
 # Type alias for JSON-serializable dict
 JSON = dict[str, Any]

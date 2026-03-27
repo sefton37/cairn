@@ -281,7 +281,7 @@ class SafetyVerifier(BaseVerifier):
         """
         try:
             from cairn.providers.factory import create_provider
-            from trcore.providers.quick_judge import SAFETY_JUDGE_SYSTEM, quick_judge
+            from cairn.providers.quick_judge import SAFETY_JUDGE_SYSTEM, quick_judge
 
             provider = create_provider()
             is_safe = quick_judge(provider, SAFETY_JUDGE_SYSTEM, request)

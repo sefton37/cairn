@@ -96,7 +96,7 @@ class IntentVerifier(BaseVerifier):
 
         # Fast pre-check: is the intent clear enough to proceed?
         try:
-            from trcore.providers.quick_judge import INTENT_JUDGE_SYSTEM, quick_judge
+            from cairn.providers.quick_judge import INTENT_JUDGE_SYSTEM, quick_judge
 
             from cairn.providers.factory import create_provider
 
