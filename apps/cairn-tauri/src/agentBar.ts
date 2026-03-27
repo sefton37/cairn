@@ -26,7 +26,7 @@ const CORE_AGENTS: AgentEntry[] = [
   { id: 'play', label: 'The Play', icon: '\u{1F3AD}', description: 'Life organization' },
   { id: 'cairn', label: 'CAIRN', icon: '\u{1F9ED}', description: 'Attention minder' },
   { id: 'reos', label: 'ReOS', icon: '\u{1F5A5}\uFE0F', description: 'System control' },
-  { id: 'riva', label: 'RIVA', icon: '\u{1F4CB}', description: 'Agent orchestrator' },
+  { id: 'riva', label: 'RIVA', icon: '\u{1F4CB}', description: 'Project management' },
   { id: 'copper', label: 'Copper', icon: '\u{1F310}', description: 'LAN Ollama coordinator' },
 ];
 
