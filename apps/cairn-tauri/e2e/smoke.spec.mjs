@@ -12,7 +12,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { getMockScript } from './tauri-mock.js';
+import { getMockScript } from './tauri-mock.mjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
