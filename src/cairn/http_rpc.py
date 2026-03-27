@@ -133,6 +133,7 @@ from cairn.rpc_handlers.memory import (
     handle_memory_search,
     handle_memory_stats,
 )
+from cairn.rpc_handlers.memories import handle_memories_list
 from cairn.rpc_handlers.personas import handle_persona_upsert, handle_personas_list
 from cairn.rpc_handlers.play import (
     handle_play_acts_assign_repo,
@@ -371,6 +372,8 @@ _METHODS: dict[str, tuple[Callable[..., Any], bool]] = {
     "thunderbird/decline": (handle_thunderbird_decline, True),
     "cairn/attention": (handle_cairn_attention, True),
     "cairn/attention/reorder": (handle_cairn_attention_reorder, True),
+    # lifecycle memories
+    "lifecycle/memories/list": (handle_memories_list, True),
     # personas
     "personas/list": (handle_personas_list, True),
     "personas/upsert": (handle_persona_upsert, True),
@@ -647,6 +650,29 @@ async def rpc_dispatch(
     Accepts a single JSON-RPC request object (batch not supported — the PWA
     client is our own code and we keep the protocol surface minimal).
     """
+    try:
+        body = await request.json()
+    except Exception:
+        return _build_rpc_error(None, -32700, "Parse error: invalid JSON")
+
+    if not isinstance(body, dict):
+        return _build_rpc_error(None, -32600, "Invalid Request: expected a JSON object")
+
+    db = get_db()
+    return await _dispatch(db, body)
+
+
+@router.post("/rpc/dev")
+async def rpc_dev_dispatch(request: Request) -> dict[str, Any]:
+    """Dev-only JSON-RPC endpoint — no auth required.
+
+    Only accepts requests from localhost. Used by Playwright e2e tests
+    to exercise RPC handlers against real data without PAM authentication.
+    """
+    client = request.client
+    if client is None or client.host not in ("127.0.0.1", "::1", "localhost"):
+        return _build_rpc_error(None, -32002, "Dev endpoint only available from localhost")
+
     try:
         body = await request.json()
     except Exception:
