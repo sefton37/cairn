@@ -424,21 +424,15 @@ test.describe('Group 4: Chat Interface', () => {
     // Send via Enter key
     await chatInput.press('Enter');
 
-    // Verify the user message appears in the chat history.
-    // NOTE: The UI uses cairn/chat_async for streaming responses. The mock backend
-    // starts the async flow but the streaming renderer throws
-    // "Cannot read properties of undefined (reading 'matchAll')" — a real bug
-    // in cairnView.ts that prevents the assistant response from rendering.
-    // Until that bug is fixed, we only verify the user message and the
-    // "Thinking..." indicator, which confirm the async flow started correctly.
+    // Verify the full async chat round-trip: user message → thinking → response
     const chatMessages = page.locator('.chat-messages');
     await expect(chatMessages).toBeVisible({ timeout: LOAD_TIMEOUT });
 
     // User message should appear immediately
     await expect(chatMessages).toContainText('What should I focus on today?', { timeout: LOAD_TIMEOUT });
 
-    // "Thinking..." indicator confirms the async chat flow started
-    await expect(chatMessages).toContainText('Thinking', { timeout: LOAD_TIMEOUT });
+    // Wait for the assistant response to render (mock resolves quickly)
+    await expect(chatMessages).toContainText('recommend focusing', { timeout: 10000 });
 
     await page.screenshot({
       path: path.join(SCREENSHOT_DIR, 'g4-01-chat-response.png'),
@@ -542,7 +536,7 @@ test.describe('Group 4: Chat Interface', () => {
     }, asyncResult.chat_id);
 
     expect(statusResult.status).toBe('complete');
-    expect(statusResult.result.response).toContain('recommend focusing');
+    expect(statusResult.result.answer).toContain('recommend focusing');
     expect(statusResult.result.conversation_id).toMatch(/^mock-conv-/);
   });
 });

@@ -835,13 +835,14 @@ function getMockScript() {
         window.__mockPendingChats[chatId] = {
           status: 'complete',
           result: {
-            response: responseText,
+            answer: responseText,
             conversation_id: STATE.conversations.active.conversation_id,
             message_id: 'msg-' + nextId(),
             user_message_id: 'msg-user-' + nextId(),
             thinking_steps: [],
             tool_calls: [],
             message_type: 'response',
+            pending_approval_id: null,
           },
         };
         return makeResult({ chat_id: chatId, status: 'processing' });
