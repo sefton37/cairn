@@ -792,15 +792,17 @@ export function createPlayOverlay(onClose: () => void): {
 
           const sceneLabel = el('span');
           sceneLabel.textContent = ` ${scene.title}`;
-          sceneLabel.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+          sceneLabel.title = scene.title;  // full name on hover
+          sceneLabel.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;';
           sceneLeft.appendChild(sceneLabel);
 
-          // Add stage badge
+          // Stage badge — placed OUTSIDE sceneLeft so it doesn't compress the name
           if (scene.stage && scene.stage !== 'planning') {
             const stageBadge = el('span');
             stageBadge.className = `scene-stage scene-stage-${scene.stage}`;
             stageBadge.textContent = scene.stage.replace('_', ' ');
-            sceneLeft.appendChild(stageBadge);
+            stageBadge.style.cssText = 'flex-shrink:0;font-size:9px;margin-left:4px;';
+            sceneItem.insertBefore(stageBadge, sceneItem.querySelector('button'));
           }
 
           // Delete button (hover-reveal)
@@ -992,8 +994,8 @@ export function createPlayOverlay(onClose: () => void): {
         repoStatus.textContent = `Code Mode ready: ${currentAct.repo_path}`;
         repoStatus.style.color = '#22c55e';
       } else {
-        repoStatus.textContent = 'No repository set. Required for Code Mode.';
-        repoStatus.style.color = '#f59e0b';
+        repoStatus.textContent = 'No repository linked';
+        repoStatus.style.color = 'rgba(255, 255, 255, 0.3)';
       }
 
       repoRow.appendChild(browseBtn);

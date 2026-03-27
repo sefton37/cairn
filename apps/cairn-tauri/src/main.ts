@@ -157,8 +157,9 @@ function buildUi() {
     }
   }
 
-  // Poll context every 30s
+  // Poll context every 30s — only when CAIRN view is active
   setInterval(() => {
+    if (currentAgentView !== 'cairn') return;
     const now = Date.now();
     if (now - lastContextMeterUpdate > 30000) {
       lastContextMeterUpdate = now;
@@ -487,14 +488,19 @@ function buildUi() {
   document.addEventListener('keydown', updateActivityTime);
   document.addEventListener('click', updateActivityTime);
 
-  // Start adaptive polling
+  // Start adaptive polling — only when CAIRN view is active
   function scheduleNextPoll(): void {
     const isIdle = Date.now() - lastActivityTime > IDLE_THRESHOLD;
     const interval = isIdle ? IDLE_POLL_INTERVAL : ACTIVE_POLL_INTERVAL;
 
     setTimeout(() => {
-      void refreshAttentionItems().then(scheduleNextPoll);
-    }, interval);
+      if (currentAgentView === 'cairn') {
+        void refreshAttentionItems().then(scheduleNextPoll);
+      } else {
+        // Not on CAIRN view — check again later at idle rate
+        scheduleNextPoll();
+      }
+    }, currentAgentView === 'cairn' ? interval : IDLE_POLL_INTERVAL);
   }
 
   // Start polling after a small delay to avoid duplicate initial fetch
@@ -619,6 +625,11 @@ function buildUi() {
       viewEl.style.display = viewId === id ? 'flex' : 'none';
     }
     currentAgentView = id;
+    // Refresh attention and context when returning to CAIRN
+    if (id === 'cairn') {
+      void refreshAttentionItems();
+      void updateNavContextMeter();
+    }
     // Trigger Play data load when switching to it
     if (id === 'play') {
       playOverlay.open();
