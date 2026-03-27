@@ -23,8 +23,8 @@ class Database:
         if db_path == ":memory:":
             self.db_path = ":memory:"
         elif db_path is None:
-            # Check env vars at call time to support test overrides
-            _env = os.environ.get("TALKINGROCK_DATA_DIR") or os.environ.get("REOS_DATA_DIR")
+            # Check env var at call time to support test overrides
+            _env = os.environ.get("TALKINGROCK_DATA_DIR")
             base = Path(_env) if _env else settings.data_dir
             self.db_path = base / "talkingrock.db"
         elif isinstance(db_path, str):

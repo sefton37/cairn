@@ -2126,6 +2126,6 @@ def get_cairn_store() -> CairnStore:
     from cairn.settings import settings
 
     # Check env vars at call time to support test overrides
-    _env = os.environ.get("TALKINGROCK_DATA_DIR") or os.environ.get("REOS_DATA_DIR")
+    _env = os.environ.get("TALKINGROCK_DATA_DIR")
     base = Path(_env) if _env else settings.data_dir
     return CairnStore(base / "talkingrock.db")

@@ -65,7 +65,7 @@ SCHEMA_VERSION = 19
 def _play_db_path() -> Path:
     """Get the path to the play database."""
     # Check env vars at call time to support test overrides; settings.data_dir is fallback
-    _env = os.environ.get("TALKINGROCK_DATA_DIR") or os.environ.get("REOS_DATA_DIR")
+    _env = os.environ.get("TALKINGROCK_DATA_DIR")
     base = Path(_env) if _env else settings.data_dir
     return base / "talkingrock.db"
 
@@ -1955,7 +1955,7 @@ def _migrate_calendar_data_from_cairn(conn: sqlite3.Connection) -> None:
     CAIRN store into play.db for consolidation.
     """
     # Check env vars at call time to support test overrides; settings.data_dir is fallback
-    _env = os.environ.get("TALKINGROCK_DATA_DIR") or os.environ.get("REOS_DATA_DIR")
+    _env = os.environ.get("TALKINGROCK_DATA_DIR")
     base = Path(_env) if _env else settings.data_dir
     cairn_db_path = base / "play" / ".cairn" / "cairn.db"
 
@@ -2045,7 +2045,7 @@ def _migrate_from_json(conn: sqlite3.Connection) -> None:
     This handles fresh JSON imports into the v4 schema.
     """
     # Check env vars at call time to support test overrides; settings.data_dir is fallback
-    _env = os.environ.get("TALKINGROCK_DATA_DIR") or os.environ.get("REOS_DATA_DIR")
+    _env = os.environ.get("TALKINGROCK_DATA_DIR")
     base = Path(_env) if _env else settings.data_dir
     play_root = base / "play"
     acts_json = play_root / "acts.json"

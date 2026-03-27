@@ -187,7 +187,7 @@ def play_root() -> Path:
     CryptoStorage context (if active) provides encryption/decryption for file
     contents but does NOT change the storage location.
     """
-    env_dir = os.environ.get("TALKINGROCK_DATA_DIR") or os.environ.get("REOS_DATA_DIR")
+    env_dir = os.environ.get("TALKINGROCK_DATA_DIR")
     base = Path(env_dir) if env_dir else settings.data_dir
     return base / "play"
 

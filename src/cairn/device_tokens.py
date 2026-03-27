@@ -159,7 +159,7 @@ _store_lock = threading.Lock()
 
 def _resolve_data_dir() -> str:
     """Resolve the data directory using the same logic as db.py."""
-    env = os.environ.get("TALKINGROCK_DATA_DIR") or os.environ.get("REOS_DATA_DIR")
+    env = os.environ.get("TALKINGROCK_DATA_DIR")
     if env:
         return env
     # Fall back to the settings object (same as db.py)

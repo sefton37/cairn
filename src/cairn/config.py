@@ -56,7 +56,7 @@ class SecurityLimits:
     MAX_PACKAGE_NAME_LEN: int = 256
     MAX_COMMAND_LEN: int = _env_int(
         "TALKINGROCK_MAX_COMMAND_LEN",
-        _env_int("REOS_MAX_COMMAND_LEN", 4096, min_val=1024, max_val=65536),
+        4096,
         min_val=1024,
         max_val=65536,
     )
@@ -64,7 +64,7 @@ class SecurityLimits:
     # Sudo escalation limit (per session)
     MAX_SUDO_ESCALATIONS: int = _env_int(
         "TALKINGROCK_MAX_SUDO_ESCALATIONS",
-        _env_int("REOS_MAX_SUDO_ESCALATIONS", 3, min_val=1, max_val=20),
+        3,
         min_val=1,
         max_val=20,
     )
@@ -137,7 +137,7 @@ class Timeouts:
     # Code execution wall-clock limit
     CODE_EXECUTION: int = _env_int(
         "TALKINGROCK_CODE_EXECUTION_TIMEOUT",
-        _env_int("REOS_CODE_EXECUTION_TIMEOUT", 300, min_val=60),
+        300,
         min_val=60,
     )
 
@@ -169,7 +169,7 @@ class ExecutionBudgets:
     # Code mode iteration limits
     MAX_ITERATIONS: int = _env_int(
         "TALKINGROCK_MAX_ITERATIONS",
-        _env_int("REOS_MAX_ITERATIONS", 10, min_val=3),
+        10,
         min_val=3,
     )
 
