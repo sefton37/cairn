@@ -760,7 +760,6 @@ export function BlockEditor({
   kernelRequest,
   onSaveStatusChange,
 }: BlockEditorProps) {
-  console.log(`[BlockEditor] RENDER: actId=${actId}`);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [initialContent, setInitialContent] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -793,7 +792,7 @@ export function BlockEditor({
     // Prevent StrictMode double-execution for the same actId
     const loadKey = `${actId}-${pageId}-${sceneId ?? ''}`;
     if (loadInitiatedRef.current === loadKey) {
-      void kernelRequest('debug/log', { msg: `LOAD SKIPPED: already initiated for ${loadKey}` }).catch(() => {});
+      console.debug('[BlockEditor]', `LOAD SKIPPED: already initiated for ${loadKey}`);
       return;
     }
     loadInitiatedRef.current = loadKey;
@@ -809,8 +808,8 @@ export function BlockEditor({
       // If no pageId, try to load the Act's kb.md content
       if (!pageId) {
         try {
-          console.log(`[BlockEditor] ========== LOADING ==========`);
-          console.log(`[BlockEditor] Loading kb.md for act: "${actId}", scene: "${sceneId ?? 'none'}"`);
+          console.debug('[BlockEditor]', `========== LOADING ==========`);
+          console.debug('[BlockEditor]', `Loading kb.md for act: "${actId}", scene: "${sceneId ?? 'none'}"`);
           const result = (await kernelRequest('play/kb/read', {
             act_id: actId,
             scene_id: sceneId ?? null,
@@ -818,35 +817,24 @@ export function BlockEditor({
           })) as { text: string };
 
           const markdown = result.text || '';
-          // Send diagnostic to backend so we can see it in terminal
-          void kernelRequest('debug/log', {
-            msg: `LOADED MARKDOWN: ${markdown.length} chars`
-          }).catch(() => {});
-          void kernelRequest('debug/log', {
-            msg: `FIRST 300 CHARS: ${markdown.substring(0, 300).replace(/\n/g, '\\n')}`
-          }).catch(() => {});
-          void kernelRequest('debug/log', {
-            msg: `LINE COUNT: ${markdown.split('\n').length}, empty lines: ${markdown.split('\n').filter(l => !l.trim()).length}`
-          }).catch(() => {});
+          console.debug('[BlockEditor]', `LOADED MARKDOWN: ${markdown.length} chars`);
+          console.debug('[BlockEditor]', `FIRST 300 CHARS: ${markdown.substring(0, 300).replace(/\n/g, '\\n')}`);
+          console.debug('[BlockEditor]', `LINE COUNT: ${markdown.split('\n').length}, empty lines: ${markdown.split('\n').filter(l => !l.trim()).length}`);
 
           // Track loaded content length for safety checks
           loadedContentLengthRef.current = markdown.length;
           const content = markdownToTiptap(markdown);
           // Log parsed content structure
           const contentNodes = (content.content as Array<unknown>)?.length || 0;
-          void kernelRequest('debug/log', {
-            msg: `PARSED TO: ${contentNodes} TipTap nodes`
-          }).catch(() => {});
+          console.debug('[BlockEditor]', `PARSED TO: ${contentNodes} TipTap nodes`);
 
           // Log first 3 nodes in detail
           const nodes = (content.content as Array<Record<string, unknown>>) || [];
           for (let i = 0; i < Math.min(3, nodes.length); i++) {
-            void kernelRequest('debug/log', {
-              msg: `NODE[${i}]: ${JSON.stringify(nodes[i]).substring(0, 200)}`
-            }).catch(() => {});
+            console.debug('[BlockEditor]', `NODE[${i}]: ${JSON.stringify(nodes[i]).substring(0, 200)}`);
           }
 
-          console.log(`[BlockEditor] Parsed to TipTap, content nodes: ${JSON.stringify(content).substring(0, 300)}`);
+          console.debug('[BlockEditor]', `Parsed to TipTap, content nodes: ${JSON.stringify(content).substring(0, 300)}`);
           setInitialContent(content);
         } catch (e) {
           // Fail gracefully - just show empty editor
@@ -883,7 +871,7 @@ export function BlockEditor({
     hasLoadedContentRef.current = false;
     // Reset loaded content length
     loadedContentLengthRef.current = 0;
-    console.log(`[BlockEditor] LOAD EFFECT START: actId=${actId}, reset hasLoaded=false, loadedLen=0`);
+    console.debug('[BlockEditor]', `LOAD EFFECT START: actId=${actId}, reset hasLoaded=false, loadedLen=0`);
 
     // Timeout to prevent infinite loading - fail gracefully after 5s
     const timeout = setTimeout(() => {
@@ -1178,15 +1166,11 @@ export function BlockEditor({
     if (editor && initialContent) {
       const contentArray = (initialContent.content as Array<Record<string, unknown>>) || [];
       const contentNodes = contentArray.length;
-      void kernelRequest('debug/log', {
-        msg: `CONTENT EFFECT: actId=${actId}, nodes=${contentNodes}, loadedLen=${loadedContentLengthRef.current}`
-      }).catch(() => {});
+      console.debug('[BlockEditor]', `CONTENT EFFECT: actId=${actId}, nodes=${contentNodes}, loadedLen=${loadedContentLengthRef.current}`);
 
       // Log first 3 nodes for debugging
       for (let i = 0; i < Math.min(3, contentArray.length); i++) {
-        void kernelRequest('debug/log', {
-          msg: `NODE[${i}]: ${JSON.stringify(contentArray[i]).substring(0, 300)}`
-        }).catch(() => {});
+        console.debug('[BlockEditor]', `NODE[${i}]: ${JSON.stringify(contentArray[i]).substring(0, 300)}`);
       }
 
       // Set the content
@@ -1197,24 +1181,18 @@ export function BlockEditor({
         success = editor.commands.setContent(initialContent);
       } catch (e) {
         setContentError = String(e);
-        void kernelRequest('debug/log', {
-          msg: `setContent THREW: ${setContentError}`
-        }).catch(() => {});
+        console.debug('[BlockEditor]', `setContent THREW: ${setContentError}`);
       }
 
       // Check what the editor actually has now
       const actualJson = editor.getJSON();
       const actualNodes = (actualJson.content as Array<unknown>)?.length || 0;
       const actualText = editor.getText();
-      void kernelRequest('debug/log', {
-        msg: `AFTER setContent: success=${success}, error=${setContentError}, actualNodes=${actualNodes}, textLen=${actualText.length}`
-      }).catch(() => {});
+      console.debug('[BlockEditor]', `AFTER setContent: success=${success}, error=${setContentError}, actualNodes=${actualNodes}, textLen=${actualText.length}`);
 
       // If content failed to load, do progressive testing to find the problem
-      if (actualText.length === 0 && contentNodes > 0) {
-        void kernelRequest('debug/log', {
-          msg: `CONTENT FAILED - starting progressive diagnostics`
-        }).catch(() => {});
+      if (actualText.length === 0 && contentNodes > 0 && import.meta.env.DEV) {
+        console.debug('[BlockEditor]', `CONTENT FAILED - starting progressive diagnostics`);
 
         // Helper to test setting content
         const testContent = (nodes: Array<Record<string, unknown>>, label: string): boolean => {
@@ -1222,14 +1200,10 @@ export function BlockEditor({
           try {
             editor.commands.setContent(doc);
             const text = editor.getText();
-            void kernelRequest('debug/log', {
-              msg: `${label}: textLen=${text.length}`
-            }).catch(() => {});
+            console.debug('[BlockEditor]', `${label}: textLen=${text.length}`);
             return text.length > 0;
           } catch (e) {
-            void kernelRequest('debug/log', {
-              msg: `${label}: THREW ${e}`
-            }).catch(() => {});
+            console.debug('[BlockEditor]', `${label}: THREW ${e}`);
             return false;
           }
         };
@@ -1242,15 +1216,11 @@ export function BlockEditor({
           if (testContent(contentArray.slice(0, size), `TEST ${size} nodes`)) {
             lastWorking = size;
           } else {
-            void kernelRequest('debug/log', {
-              msg: `BREAKS at ${size} nodes (last working: ${lastWorking})`
-            }).catch(() => {});
+            console.debug('[BlockEditor]', `BREAKS at ${size} nodes (last working: ${lastWorking})`);
             // Binary search to find exact problematic node
             for (let i = lastWorking; i < size && i < contentNodes; i++) {
               if (!testContent(contentArray.slice(0, i + 1), `TEST ${i + 1} nodes`)) {
-                void kernelRequest('debug/log', {
-                  msg: `BAD NODE[${i}]: ${JSON.stringify(contentArray[i]).substring(0, 500)}`
-                }).catch(() => {});
+                console.debug('[BlockEditor]', `BAD NODE[${i}]: ${JSON.stringify(contentArray[i]).substring(0, 500)}`);
                 break;
               }
             }
@@ -1260,9 +1230,7 @@ export function BlockEditor({
 
         // If small content works, set it as fallback
         if (lastWorking > 0) {
-          void kernelRequest('debug/log', {
-            msg: `FALLBACK: Setting ${lastWorking} nodes that worked`
-          }).catch(() => {});
+          console.debug('[BlockEditor]', `FALLBACK: Setting ${lastWorking} nodes that worked`);
           const fallbackDoc = { type: 'doc', content: contentArray.slice(0, lastWorking) };
           editor.commands.setContent(fallbackDoc);
         }
@@ -1274,9 +1242,7 @@ export function BlockEditor({
       // NOW we can allow saves - content has been loaded (even if partially)
       hasLoadedContentRef.current = true;
 
-      void kernelRequest('debug/log', {
-        msg: `CONTENT LOAD COMPLETE: finalTextLen=${editor.getText().length}`
-      }).catch(() => {});
+      console.debug('[BlockEditor]', `CONTENT LOAD COMPLETE: finalTextLen=${editor.getText().length}`);
     }
   }, [editor, initialContent, actId, kernelRequest]);
 

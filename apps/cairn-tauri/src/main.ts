@@ -149,7 +149,11 @@ function buildUi() {
         (valueEl as HTMLElement).style.color = color;
       }
     } catch {
-      // Silently fail - context stats may not be available
+      // Show fallback instead of permanent "Loading..."
+      const valueEl = contextUsageLabel.querySelector('.context-usage-value');
+      if (valueEl && valueEl.textContent === 'Loading...') {
+        valueEl.textContent = '—';
+      }
     }
   }
 
