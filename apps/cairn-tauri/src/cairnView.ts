@@ -1264,6 +1264,7 @@ export function createCairnView(
    * Handles markdown-style ``` code blocks.
    */
   function renderContentWithCodeBlocks(content: string): string {
+    if (!content) return '';
     // Match code blocks: ```language\ncode\n```
     const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
     let result = '';
