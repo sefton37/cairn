@@ -281,13 +281,15 @@ def handle_documents_delete(
         from cairn import play_db
         # Find blocks with this source_document_id
         conn = play_db._get_connection()
+        # Properties for string values are stored without JSON encoding
+        # (see blocks_db.create_block: str values are inserted as-is).
         cursor = conn.execute(
             """
             SELECT b.id FROM blocks b
             JOIN block_properties bp ON b.id = bp.block_id
             WHERE bp.key = 'source_document_id' AND bp.value = ?
             """,
-            (f'"{document_id}"',),  # JSON encoded string
+            (document_id,),
         )
         block_ids = [row["id"] for row in cursor]
 
@@ -342,6 +344,8 @@ def handle_documents_get_chunks(
     try:
         from cairn import play_db
         conn = play_db._get_connection()
+        # Properties for string values are stored without JSON encoding
+        # (see blocks_db.create_block: str values are inserted as-is).
         cursor = conn.execute(
             """
             SELECT b.id, b.created_at
@@ -350,7 +354,7 @@ def handle_documents_get_chunks(
             WHERE bp.key = 'source_document_id' AND bp.value = ?
             ORDER BY b.position
             """,
-            (f'"{document_id}"',),
+            (document_id,),
         )
         block_rows = list(cursor)
     except Exception as exc:

@@ -81,6 +81,9 @@ def _get_connection() -> sqlite3.Connection:
         _local.conn.execute("PRAGMA foreign_keys = ON")
         # WAL mode for better concurrent access
         _local.conn.execute("PRAGMA journal_mode = WAL")
+        # Wait up to 5 seconds when the database is locked (e.g. during
+        # CairnStore._init_schema which holds a write lock briefly on startup).
+        _local.conn.execute("PRAGMA busy_timeout = 5000")
     return _local.conn
 
 
