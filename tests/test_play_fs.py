@@ -229,58 +229,23 @@ class TestEnsurePlaySkeleton:
         assert play_root().exists()
         assert (play_root() / "acts").exists()
 
-    def test_creates_me_md(self, temp_data_dir: Path) -> None:
-        """Should create me.md file."""
-        from cairn.play_fs import ensure_play_skeleton, _me_path
+    def test_creates_directory_structure(self, temp_data_dir: Path) -> None:
+        """Should create play directory structure."""
+        from cairn.play_fs import ensure_play_skeleton, play_root
 
         ensure_play_skeleton()
 
-        me_path = _me_path()
-        assert me_path.exists()
-        content = me_path.read_text()
-        assert "# Your Story" in content
-
-    def test_creates_acts_json(self, temp_data_dir: Path) -> None:
-        """Should create acts.json file."""
-        from cairn.play_fs import ensure_play_skeleton, _acts_path
-
-        ensure_play_skeleton()
-
-        acts_path = _acts_path()
-        assert acts_path.exists()
+        root = play_root()
+        assert root.exists()
+        assert (root / "acts").exists()
 
     def test_idempotent(self, temp_data_dir: Path) -> None:
         """Should be safe to call multiple times."""
-        from cairn.play_fs import ensure_play_skeleton, _me_path
+        from cairn.play_fs import ensure_play_skeleton, play_root
 
         ensure_play_skeleton()
-        content1 = _me_path().read_text()
-
-        ensure_play_skeleton()
-        content2 = _me_path().read_text()
-
-        assert content1 == content2
-
-
-class TestMeMarkdown:
-    """Test me.md read/write functions."""
-
-    def test_read_me_markdown(self, initialized_fs: Path) -> None:
-        """Should read me.md content."""
-        from cairn.play_fs import read_me_markdown
-
-        content = read_me_markdown()
-        assert "# Your Story" in content
-
-    def test_write_me_markdown(self, initialized_fs: Path) -> None:
-        """Should write me.md content."""
-        from cairn.play_fs import write_me_markdown, read_me_markdown
-
-        write_me_markdown("# Custom Content\n\nMy notes.")
-
-        content = read_me_markdown()
-        assert "# Custom Content" in content
-        assert "My notes." in content
+        ensure_play_skeleton()  # Should not raise
+        assert play_root().exists()
 
 
 # =============================================================================

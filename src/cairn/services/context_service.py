@@ -204,7 +204,7 @@ class ContextService:
         Returns:
             Tuple of (system_prompt, play_context, learned_kb, system_state, codebase_context)
         """
-        from ..play_fs import read_me_markdown as play_read_me_markdown, list_acts as play_list_acts
+        from ..play_fs import kb_read as play_kb_read, list_acts as play_list_acts
         from ..knowledge_store import KnowledgeStore
 
         # System prompt (approximate)
@@ -216,7 +216,7 @@ class ContextService:
         # Play context
         play_context = ""
         try:
-            play_context = play_read_me_markdown()
+            play_context = play_kb_read(act_id="your-story", path="kb.md")
         except Exception as e:
             logger.warning("Failed to read Play context: %s", e)
 

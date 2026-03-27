@@ -619,13 +619,12 @@ function buildUi() {
     if (id === 'play') {
       playOverlay.open();
     }
-    // ReOS dashboard polling and terminal lifecycle
+    // ReOS dashboard polling lifecycle — terminal stays alive across view switches
     if (id === 'reos') {
       reosView.startPolling();
       reosView.startTerminal();
     } else {
       reosView.stopPolling();
-      reosView.stopTerminal();
     }
     // Copper dashboard polling lifecycle
     if (id === 'copper') {
@@ -787,10 +786,7 @@ function buildUi() {
       // Wait for attention items to finish loading (avoids DB lock contention)
       await attentionLoaded;
 
-      // Auto-greeting: Cairn reviews calendar via normal pipeline
-      void handleCairnMessage(
-        'What do I have coming up on my calendar today and this week?'
-      );
+      // No auto-greeting on startup
     } catch (e) {
       showJsonInInspector('Startup error', { error: String(e) });
     }

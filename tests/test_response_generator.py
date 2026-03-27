@@ -113,6 +113,14 @@ class TestHallucinationDetection:
         )
         assert is_valid is True
 
+    def test_allow_natural_language_with_am_pm_substrings(self, rg: ResponseGenerator) -> None:
+        """Responses containing 'am' or 'pm' as word parts should not be rejected."""
+        is_valid, reason = rg.verify_no_hallucination(
+            response="I am happy to help. You don't have any upcoming events.",
+            tool_result={"count": 0, "events": []},
+        )
+        assert is_valid is True
+
     def test_llm_grounding_check(self, rg: ResponseGenerator, mock_llm: MagicMock) -> None:
         mock_llm.chat_json.return_value = '{"is_grounded": true, "reason": ""}'
         is_valid, reason = rg.verify_no_hallucination(

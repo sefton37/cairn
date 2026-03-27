@@ -252,16 +252,8 @@ def ensure_play_skeleton() -> None:
     root.mkdir(parents=True, exist_ok=True)
     (root / "acts").mkdir(parents=True, exist_ok=True)
 
-    me = _me_path()
-    if not me.exists():
-        _write_text(me, _YOUR_STORY_DEFAULT)
-
-    acts = _acts_path()
-    if not acts.exists():
-        _write_text(
-            acts,
-            json.dumps({"acts": []}, ensure_ascii=False, indent=2) + "\n",
-        )
+    # Legacy: me.md and acts.json are no longer sources of truth
+    # (SQLite is truth), but we keep the directories for filesystem backup.
 
 
 def _ensure_stage_direction_scene(act_id: str) -> None:
@@ -749,41 +741,103 @@ def kb_list_files(*, act_id: str, scene_id: str | None = None) -> list[str]:
     return sorted(set(files))
 
 
-def kb_read(*, act_id: str, scene_id: str | None = None, path: str = "kb.md") -> str:
-    import sys
-
-    print(f"[kb_read] ========== READING ==========", file=sys.stderr, flush=True)
-    print(
-        f"[kb_read] act_id={act_id}, scene_id={scene_id}, path={path}", file=sys.stderr, flush=True
-    )
-    ensure_play_skeleton()
-    kb_root = _kb_root_for(act_id=act_id, scene_id=scene_id)
-    print(f"[kb_read] kb_root={kb_root}", file=sys.stderr, flush=True)
-    kb_root.mkdir(parents=True, exist_ok=True)
-    target = _resolve_kb_file(kb_root=kb_root, rel_path=path)
-    print(f"[kb_read] target={target}, exists={target.exists()}", file=sys.stderr, flush=True)
-    if not target.exists():
-        if Path(path).as_posix() == "kb.md":
-            # Use special welcome content for Your Story
-            if act_id == YOUR_STORY_ACT_ID and scene_id is None:
-                _write_text(target, _YOUR_STORY_DEFAULT)
-            else:
-                _write_text(target, "# KB\n\n")
-        else:
-            raise FileNotFoundError(path)
-    content = _read_text(target)
-    print(
-        f"[kb_read] Read {len(content)} chars, first 100: {content[:100]!r}",
-        file=sys.stderr,
-        flush=True,
-    )
-    return content
-
-
 def _sha256_text(text: str) -> str:
     import hashlib
 
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _get_or_create_kb_page(act_id: str, scene_id: str | None = None) -> str:
+    """Get or create the root KB page for an act/scene in SQLite.
+
+    Returns the page_id.
+    """
+    from . import play_db
+
+    title = "KB" if scene_id else "Knowledge Base"
+    pages = play_db.list_pages(act_id=act_id, parent_page_id=None)
+    # Find existing KB page (first root page)
+    for page in pages:
+        if page.get("system_page_role") != "memories":
+            return page["page_id"]
+
+    # Create one
+    page = play_db.create_page(act_id=act_id, title=title)
+    return page["page_id"]
+
+
+def _kb_read_sqlite(act_id: str, scene_id: str | None = None) -> str:
+    """Read KB content from SQLite blocks, rendered as markdown."""
+    from .play.blocks_db import get_page_blocks
+    from .play.markdown_renderer import render_markdown
+
+    try:
+        page_id = _get_or_create_kb_page(act_id, scene_id)
+        blocks = get_page_blocks(page_id, recursive=True)
+        if not blocks:
+            return ""
+        return render_markdown(blocks)
+    except Exception:
+        return ""
+
+
+def _kb_write_sqlite(act_id: str, text: str, scene_id: str | None = None) -> None:
+    """Write KB content to SQLite blocks by parsing markdown."""
+    from .play.blocks_db import create_block, delete_block, get_page_blocks
+    from .play.markdown_parser import parse_markdown
+
+    page_id = _get_or_create_kb_page(act_id, scene_id)
+
+    # Delete existing blocks for this page
+    existing = get_page_blocks(page_id, recursive=False)
+    for block in existing:
+        delete_block(block.id, recursive=True)
+
+    # Parse markdown into block data and create blocks
+    if text.strip():
+        block_datas = parse_markdown(text, act_id=act_id, page_id=page_id)
+        for bd in block_datas:
+            create_block(
+                type=bd["type"],
+                act_id=act_id,
+                page_id=page_id,
+                position=bd.get("position", 0),
+                rich_text=bd.get("rich_text"),
+                properties=bd.get("properties"),
+            )
+
+
+def kb_read(*, act_id: str, scene_id: str | None = None, path: str = "kb.md") -> str:
+    """Read KB content. SQLite is the source of truth; falls back to filesystem for migration."""
+    # Try SQLite first
+    content = _kb_read_sqlite(act_id, scene_id)
+    if content:
+        return content
+
+    # Fallback: read from filesystem and migrate to SQLite
+    ensure_play_skeleton()
+    kb_root = _kb_root_for(act_id=act_id, scene_id=scene_id)
+    kb_root.mkdir(parents=True, exist_ok=True)
+    target = _resolve_kb_file(kb_root=kb_root, rel_path=path)
+
+    if not target.exists():
+        if Path(path).as_posix() != "kb.md":
+            raise FileNotFoundError(path)
+        if act_id == YOUR_STORY_ACT_ID and scene_id is None:
+            return _YOUR_STORY_DEFAULT
+        return "# KB\n\n"
+
+    content = _read_text(target)
+
+    # Migrate filesystem content to SQLite for future reads
+    if content.strip():
+        try:
+            _kb_write_sqlite(act_id, content, scene_id)
+            logger.info("Migrated KB %s to SQLite (%d chars)", act_id, len(content))
+        except Exception as exc:
+            logger.warning("KB migration failed for %s: %s", act_id, exc)
+
+    return content
 
 
 def kb_write_preview(
@@ -794,33 +848,13 @@ def kb_write_preview(
     text: str,
     _debug_source: str | None = None,
 ) -> dict[str, Any]:
-    import sys
-
-    print(
-        f"[kb_write_preview] ========== PREVIEW (source={_debug_source}) ==========",
-        file=sys.stderr,
-        flush=True,
-    )
-    print(
-        f"[kb_write_preview] act_id={act_id}, path={path}, text_len={len(text)}",
-        file=sys.stderr,
-        flush=True,
-    )
-    ensure_play_skeleton()
-    kb_root = _kb_root_for(act_id=act_id, scene_id=scene_id)
-    kb_root.mkdir(parents=True, exist_ok=True)
-    target = _resolve_kb_file(kb_root=kb_root, rel_path=path)
-    print(f"[kb_write_preview] target={target}", file=sys.stderr, flush=True)
-
-    exists = target.exists() and target.is_file()
-    current = _read_text(target) if exists else ""
+    """Preview a KB write. Returns current SHA and diff for conflict detection."""
+    try:
+        current = kb_read(act_id=act_id, scene_id=scene_id, path=path)
+    except FileNotFoundError:
+        current = ""
     current_sha = _sha256_text(current)
     new_sha = _sha256_text(text)
-    print(
-        f"[kb_write_preview] exists={exists}, current_len={len(current)}, current_sha={current_sha[:16]}..., new_sha={new_sha[:16]}...",
-        file=sys.stderr,
-        flush=True,
-    )
 
     diff_lines = difflib.unified_diff(
         current.splitlines(keepends=True),
@@ -832,7 +866,7 @@ def kb_write_preview(
     diff = "\n".join(diff_lines)
 
     return {
-        "exists": exists,
+        "exists": bool(current),
         "sha256_current": current_sha,
         "sha256_new": new_sha,
         "diff": diff,
@@ -848,47 +882,31 @@ def kb_write_apply(
     expected_sha256_current: str,
     _debug_source: str | None = None,
 ) -> dict[str, Any]:
-    import sys
-
-    print(
-        f"[kb_write_apply] ========== APPLY (source={_debug_source}) ==========",
-        file=sys.stderr,
-        flush=True,
-    )
-    print(
-        f"[kb_write_apply] act_id={act_id}, path={path}, text_len={len(text)}, expected_sha={expected_sha256_current[:16]}...",
-        file=sys.stderr,
-        flush=True,
-    )
-    ensure_play_skeleton()
-    kb_root = _kb_root_for(act_id=act_id, scene_id=scene_id)
-    kb_root.mkdir(parents=True, exist_ok=True)
-    target = _resolve_kb_file(kb_root=kb_root, rel_path=path)
-    print(f"[kb_write_apply] target={target}", file=sys.stderr, flush=True)
-
-    exists = target.exists() and target.is_file()
-    current = _read_text(target) if exists else ""
+    """Apply a KB write. SQLite is the target; filesystem kept as backup."""
+    # Conflict check against current state
+    try:
+        current = kb_read(act_id=act_id, scene_id=scene_id, path=path)
+    except FileNotFoundError:
+        current = ""
     current_sha = _sha256_text(current)
-    print(
-        f"[kb_write_apply] current_sha={current_sha[:16]}..., match={current_sha == expected_sha256_current}",
-        file=sys.stderr,
-        flush=True,
-    )
+
     if current_sha != expected_sha256_current:
-        print(
-            f"[kb_write_apply] CONFLICT! current_sha={current_sha}, expected={expected_sha256_current}",
-            file=sys.stderr,
-            flush=True,
-        )
         raise ValueError("conflict: file changed since preview")
 
-    target.parent.mkdir(parents=True, exist_ok=True)
-    _write_text(target, text)
-    print(
-        f"[kb_write_apply] SUCCESS - wrote {len(text)} chars to {target}",
-        file=sys.stderr,
-        flush=True,
-    )
+    # Write to SQLite (source of truth)
+    _kb_write_sqlite(act_id, text, scene_id)
+
+    # Also write to filesystem as backup
+    try:
+        ensure_play_skeleton()
+        kb_root = _kb_root_for(act_id=act_id, scene_id=scene_id)
+        kb_root.mkdir(parents=True, exist_ok=True)
+        target = _resolve_kb_file(kb_root=kb_root, rel_path=path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _write_text(target, text)
+    except Exception:
+        logger.warning("Filesystem backup failed for %s", act_id)
+
     after_sha = _sha256_text(text)
     return {"ok": True, "sha256_current": after_sha}
 

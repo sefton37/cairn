@@ -7,8 +7,11 @@
  *   Right:  Chat — conversational interface with RIVA
  */
 
+import { open as openFolderDialog } from '@tauri-apps/plugin-dialog';
 import { el, escapeHtml } from './dom';
 import { kernelRequest, KernelError } from './kernel';
+
+const PROJECTS_ROOT_KEY = 'riva_projects_root';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -16,6 +19,13 @@ interface RivaStatus {
   status: string;
   uptime_seconds: number;
   version: string;
+}
+
+interface ScannedProject {
+  name: string;
+  path: string;
+  is_git: boolean;
+  language?: string;
 }
 
 interface PlayAct {
@@ -54,7 +64,6 @@ interface PmIssue {
   branch: string | null;
   acceptance_criteria: string | null;
   notes: string | null;
-  riva_contract_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -743,7 +752,6 @@ function buildIssueDetailCard(
     editable: true, onChange: (v) => markDirty('branch', v),
   }));
   fields.appendChild(buildFieldRow('Forgejo', issue.forgejo_link));
-  fields.appendChild(buildFieldRow('Contract', issue.riva_contract_id));
   fields.appendChild(buildFieldRow('Acceptance', issue.acceptance_criteria, {
     editable: true, type: 'textarea', onChange: (v) => markDirty('acceptance_criteria', v),
   }));
@@ -805,7 +813,37 @@ function createProjectsPane(
     overflow: hidden;
   `;
 
-  pane.appendChild(createPaneHeader('Projects'));
+  // Gear icon to set projects root folder
+  const gearBtn = el('button');
+  gearBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+  gearBtn.title = localStorage.getItem(PROJECTS_ROOT_KEY) || 'Set projects folder';
+  gearBtn.style.cssText = `
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.4);
+    cursor: pointer;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+    transition: color 0.15s;
+  `;
+  gearBtn.addEventListener('mouseenter', () => { gearBtn.style.color = 'rgba(255, 255, 255, 0.8)'; });
+  gearBtn.addEventListener('mouseleave', () => { gearBtn.style.color = 'rgba(255, 255, 255, 0.4)'; });
+  gearBtn.addEventListener('click', async () => {
+    const selected = await openFolderDialog({
+      directory: true,
+      multiple: false,
+      title: 'Select Projects Root Folder',
+      defaultPath: localStorage.getItem(PROJECTS_ROOT_KEY) || undefined,
+    });
+    if (selected && typeof selected === 'string') {
+      localStorage.setItem(PROJECTS_ROOT_KEY, selected);
+      gearBtn.title = selected;
+      refresh();
+    }
+  });
+
+  pane.appendChild(createPaneHeader('Projects', gearBtn));
 
   const listContainer = el('div');
   listContainer.style.cssText = `
@@ -815,7 +853,7 @@ function createProjectsPane(
   `;
   pane.appendChild(listContainer);
 
-  // Dashboard summary bar
+  // Summary bar
   const summaryBar = el('div');
   summaryBar.style.cssText = `
     padding: 10px 14px;
@@ -826,76 +864,101 @@ function createProjectsPane(
   `;
   pane.appendChild(summaryBar);
 
-  async function refresh(): Promise<void> {
-    try {
-      const [epicsResult, dashResult] = await Promise.all([
-        kernelRequest('riva/pm/epics/list', {}) as Promise<{ epics: PmEpic[] }>,
-        kernelRequest('riva/pm/dashboard', {}) as Promise<PmDashboard>,
-      ]);
+  let selectedProjectPath: string | null = null;
 
-      renderEpicList(epicsResult.epics);
-      renderSummary(dashResult);
+  async function refresh(): Promise<void> {
+    const root = localStorage.getItem(PROJECTS_ROOT_KEY);
+    if (!root) {
+      listContainer.innerHTML = '';
+      listContainer.appendChild(
+        createEmptyState('Click the gear icon to set your projects folder')
+      );
+      summaryBar.textContent = '';
+      return;
+    }
+
+    try {
+      const result = await kernelRequest('riva/projects/scan', { root }) as {
+        projects: ScannedProject[];
+        root: string;
+      };
+      renderProjectList(result.projects);
+      summaryBar.textContent = `${result.projects.length} projects \u00B7 ${root}`;
     } catch {
       listContainer.innerHTML = '';
-      listContainer.appendChild(createEmptyState('RIVA service offline'));
+      listContainer.appendChild(createEmptyState('Could not scan projects folder'));
       summaryBar.textContent = '';
     }
   }
 
-  function renderEpicList(epics: PmEpic[]): void {
+  function langColor(lang: string | undefined): string {
+    switch (lang) {
+      case 'Python': return '#3572A5';
+      case 'Rust': return '#DEA584';
+      case 'Node': return '#f1e05a';
+      case 'Go': return '#00ADD8';
+      case 'Java': return '#b07219';
+      case 'Ruby': return '#701516';
+      case 'Elixir': return '#6e4a7e';
+      case 'C/C++': return '#555555';
+      default: return 'rgba(255, 255, 255, 0.2)';
+    }
+  }
+
+  function renderProjectList(projects: ScannedProject[]): void {
     listContainer.innerHTML = '';
 
-    if (epics.length === 0) {
-      listContainer.appendChild(createEmptyState('No epics yet'));
+    if (projects.length === 0) {
+      listContainer.appendChild(createEmptyState('No project folders found'));
       return;
     }
 
-    for (const epic of epics) {
-      const row = el('div');
-      const isSelected = selectedEpicId === epic.id;
-      row.style.cssText = `
+    for (const proj of projects) {
+      const card = el('div');
+      const isSelected = selectedProjectPath === proj.path;
+      card.style.cssText = `
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 8px 14px;
+        gap: 10px;
+        padding: 10px 14px;
         cursor: pointer;
         transition: background 0.15s;
         background: ${isSelected ? 'rgba(59, 130, 246, 0.12)' : 'transparent'};
         border-left: 3px solid ${isSelected ? '#3b82f6' : 'transparent'};
       `;
 
-      row.addEventListener('mouseenter', () => {
-        if (!isSelected) row.style.background = 'rgba(255, 255, 255, 0.04)';
+      card.addEventListener('mouseenter', () => {
+        if (!isSelected) card.style.background = 'rgba(255, 255, 255, 0.04)';
       });
-      row.addEventListener('mouseleave', () => {
-        if (!isSelected) row.style.background = 'transparent';
+      card.addEventListener('mouseleave', () => {
+        if (!isSelected) card.style.background = 'transparent';
       });
-      row.addEventListener('click', () => {
-        selectedEpicId = epic.id;
-        onSelectEpic(selectedEpicId);
-        onOpenEpic(epic.id);
+      card.addEventListener('click', () => {
+        selectedProjectPath = proj.path;
+        onSelectEpic(null);
+        onOpenEpic(proj.path);
         refresh();
       });
 
-      // Act color dot (shows which life narrative this belongs to)
-      const actDot = el('div');
-      actDot.style.cssText = `
+      // Language dot
+      const dot = el('div');
+      dot.style.cssText = `
         width: 10px;
         height: 10px;
         border-radius: 50%;
-        background: ${getActColor(epic.act_id)};
+        background: ${langColor(proj.language)};
         flex-shrink: 0;
         border: 1px solid rgba(255, 255, 255, 0.1);
       `;
-      actDot.title = getActTitle(epic.act_id);
-      row.appendChild(actDot);
+      dot.title = proj.language || 'Unknown';
+      card.appendChild(dot);
 
-      // Name + Act title
+      // Name + path info
       const info = el('div');
       info.style.cssText = 'flex: 1; min-width: 0;';
 
       const nameEl = el('div');
-      nameEl.textContent = epic.name;
+      nameEl.textContent = proj.name;
       nameEl.style.cssText = `
         font-size: 13px;
         color: rgba(255, 255, 255, 0.85);
@@ -905,40 +968,36 @@ function createProjectsPane(
       `;
       info.appendChild(nameEl);
 
-      const subtitleEl = el('div');
-      const actTitle = getActTitle(epic.act_id);
-      subtitleEl.textContent = epic.project ? `${actTitle} \u00B7 ${epic.project}` : actTitle;
-      subtitleEl.style.cssText = `
+      const metaEl = el('div');
+      const parts: string[] = [];
+      if (proj.language) parts.push(proj.language);
+      if (proj.is_git) parts.push('git');
+      metaEl.textContent = parts.join(' \u00B7 ') || 'folder';
+      metaEl.style.cssText = `
         font-size: 11px;
         color: rgba(255, 255, 255, 0.35);
         margin-top: 1px;
       `;
-      info.appendChild(subtitleEl);
+      info.appendChild(metaEl);
 
-      row.appendChild(info);
+      card.appendChild(info);
 
-      // Status badge
-      const badge = el('div');
-      badge.textContent = epic.status;
-      badge.style.cssText = `
-        font-size: 10px;
-        padding: 2px 6px;
-        border-radius: 4px;
-        color: ${statusColor(epic.status)};
-        background: ${statusColor(epic.status)}15;
-        flex-shrink: 0;
-      `;
-      row.appendChild(badge);
+      // Git badge
+      if (proj.is_git) {
+        const gitBadge = el('div');
+        gitBadge.textContent = '\u2022';
+        gitBadge.title = 'Git repository';
+        gitBadge.style.cssText = `
+          font-size: 18px;
+          color: #4ade80;
+          flex-shrink: 0;
+          line-height: 1;
+        `;
+        card.appendChild(gitBadge);
+      }
 
-      listContainer.appendChild(row);
+      listContainer.appendChild(card);
     }
-  }
-
-  function renderSummary(dash: PmDashboard): void {
-    const totalIssues = Object.values(dash.issues).reduce((a, b) => a + b, 0);
-    const inProgress = dash.issues['In Progress'] || 0;
-    const cycle = dash.active_cycle?.name || 'No active cycle';
-    summaryBar.textContent = `${totalIssues} issues \u00B7 ${inProgress} active \u00B7 ${cycle}`;
   }
 
   return { pane, refresh };

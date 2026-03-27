@@ -1105,7 +1105,8 @@ class ChatAgent:
 
         # 2. The Play - Always in context (user's story)
         try:
-            me = play_read_me_markdown().strip()
+            from .play_fs import kb_read as _kb_read
+            me = _kb_read(act_id="your-story", path="kb.md").strip()
             if me:
                 cap = 2000
                 if len(me) > cap:

@@ -253,13 +253,14 @@ class ResponseGenerator:
             if term in response_lower:
                 return False, f"Response mentions wrong platform: '{term}'"
 
-        # Empty calendar check
+        # Empty calendar check — only reject if the response fabricates specific events.
+        # Phrases like "nothing scheduled for today" are valid negations, so we check
+        # for patterns that unambiguously claim a specific event exists.
         if tool_result and tool_result.get("count") == 0:
-            event_indicators = [
-                "meeting with",
-                "appointment at",
-                "event at",
-                "scheduled for",
+            fabrication_patterns = [
+                "meeting with ",
+                "appointment at ",
+                "event at ",
                 "at 10:",
                 "at 11:",
                 "at 12:",
@@ -268,12 +269,10 @@ class ResponseGenerator:
                 "at 3:",
                 "at 4:",
                 "at 5:",
-                "am",
-                "pm",
             ]
-            for indicator in event_indicators:
-                if indicator in response_lower:
-                    return False, "Response mentions events but data shows count=0"
+            for pattern in fabrication_patterns:
+                if pattern in response_lower:
+                    return False, "Response fabricates specific events but data shows count=0"
 
         # Empty events list check
         if (
@@ -281,7 +280,7 @@ class ResponseGenerator:
             and isinstance(tool_result.get("events"), list)
             and len(tool_result.get("events", [])) == 0
         ):
-            if any(w in response_lower for w in ["first event", "next meeting", "you have a"]):
+            if any(w in response_lower for w in ["first event", "next meeting", "you have a meeting", "you have an event", "you have an appointment"]):
                 return False, "Response claims events exist but events list is empty"
 
         # LLM verification for complex cases

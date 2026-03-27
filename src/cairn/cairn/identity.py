@@ -91,9 +91,9 @@ def build_identity_model(
     """
     play_fs.ensure_play_skeleton()
 
-    # 1. Read core identity from me.md
-    core = play_fs.read_me_markdown()
-    logger.debug("Read core identity from me.md: %d chars", len(core))
+    # 1. Read core identity from Your Story's KB page (SQLite is truth)
+    core = play_fs.kb_read(act_id="your-story", path="kb.md")
+    logger.debug("Read core identity: %d chars", len(core))
 
     facets: list[IdentityFacet] = []
 
@@ -131,6 +131,28 @@ def build_identity_model(
         kb_facets = _extract_kb_facets(max_facets - len(facets))
         facets.extend(kb_facets)
         logger.debug("Added %d KB facets", len(kb_facets))
+
+    # 5b. Include approved memories as identity facets
+    try:
+        from cairn.services.memory_service import MemoryService
+
+        mem_svc = MemoryService()
+        approved = mem_svc.list_memories(status="approved")
+        for mem in approved:
+            weight = 2.5 if mem.is_your_story else 1.5
+            # Reinforced memories get higher weight
+            if mem.signal_count > 1:
+                weight += min(mem.signal_count * 0.5, 2.0)
+            facet = IdentityFacet(
+                name="memory",
+                source=f"memory:{mem.id}",
+                content=mem.narrative,
+                weight=weight,
+            )
+            facets.append(facet)
+        logger.debug("Added %d memory facets", len(approved))
+    except Exception as e:
+        logger.warning("Failed to load memory facets: %s", e)
 
     # Limit facets
     if len(facets) > max_facets:

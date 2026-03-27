@@ -71,7 +71,8 @@ def handle_context_stats(
     # Get play context
     play_context = ""
     try:
-        play_context = play_read_me_markdown()
+        from cairn.play_fs import kb_read
+        play_context = kb_read(act_id="your-story", path="kb.md")
     except Exception as e:
         logger.debug("Failed to get play context for context stats: %s", e)
 

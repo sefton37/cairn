@@ -103,13 +103,22 @@ def _sha256_text(text: str) -> str:
 
 
 def handle_play_me_read(_db: Database) -> dict[str, Any]:
-    """Read me.md content."""
-    return {"markdown": play_read_me_markdown()}
+    """Read Your Story content (SQLite is truth, me.md is legacy)."""
+    from cairn.play_fs import kb_read
+
+    return {"markdown": kb_read(act_id="your-story", path="kb.md")}
 
 
 def handle_play_me_write(_db: Database, *, text: str) -> dict[str, Any]:
-    """Write me.md content."""
-    play_write_me_markdown(text)
+    """Write Your Story content (SQLite is truth)."""
+    from cairn.play_fs import kb_read, kb_write_apply, _sha256_text
+
+    current = kb_read(act_id="your-story", path="kb.md")
+    current_sha = _sha256_text(current)
+    kb_write_apply(
+        act_id="your-story", path="kb.md",
+        text=text, expected_sha256_current=current_sha,
+    )
     return {"ok": True}
 
 

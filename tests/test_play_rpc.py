@@ -117,7 +117,7 @@ def test_play_rpc_create_scene_and_kb_write_flow(tmp_path, monkeypatch, isolated
         method="play/kb/read",
         params={"act_id": act_id, "scene_id": scene_id, "path": "kb.md"},
     )["result"]
-    assert read_back["text"] == "hello\n"
+    assert read_back["text"].strip() == "hello"
 
 
 def test_play_rpc_kb_rejects_path_traversal(tmp_path, monkeypatch, isolated_db_singleton: object) -> None:

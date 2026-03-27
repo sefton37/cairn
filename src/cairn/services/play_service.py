@@ -148,11 +148,11 @@ class PlayService:
     # --- Your Story (me.md) ---
 
     def read_story(self) -> str:
-        """Read the user's story (me.md content)."""
-        return play_fs.read_me_markdown()
+        """Read the user's story from SQLite (Your Story KB page)."""
+        return play_fs.kb_read(act_id="your-story", path="kb.md")
 
     def write_story(self, content: str) -> bool:
-        """Write the user's story.
+        """Write the user's story to SQLite.
 
         Args:
             content: The new story content
@@ -161,7 +161,12 @@ class PlayService:
             True if successful
         """
         try:
-            play_fs.write_me_markdown(content)
+            current = play_fs.kb_read(act_id="your-story", path="kb.md")
+            current_sha = play_fs._sha256_text(current)
+            play_fs.kb_write_apply(
+                act_id="your-story", path="kb.md",
+                text=content, expected_sha256_current=current_sha,
+            )
             return True
         except Exception as e:
             logger.error("Failed to write story: %s", e)
