@@ -9,16 +9,16 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..db import Database
 from ..context_meter import (
-    calculate_context_stats,
-    estimate_tokens,
-    ContextStats,
-    ContextSource,
     MODEL_CONTEXT_LIMITS,
     RESERVED_TOKENS,
+    ContextSource,
+    ContextStats,
+    calculate_context_stats,
+    estimate_tokens,
 )
-from ..context_sources import VALID_SOURCE_NAMES, DISABLEABLE_SOURCES
+from ..context_sources import DISABLEABLE_SOURCES, VALID_SOURCE_NAMES
+from ..db import Database
 
 logger = logging.getLogger(__name__)
 
@@ -204,8 +204,8 @@ class ContextService:
         Returns:
             Tuple of (system_prompt, play_context, learned_kb, system_state, codebase_context)
         """
-        from ..play_fs import kb_read as play_kb_read, list_acts as play_list_acts
-        from ..knowledge_store import KnowledgeStore
+        from ..play_fs import kb_read as play_kb_read
+        from ..play_fs import list_acts as play_list_acts
 
         # System prompt (approximate)
         system_prompt = (
@@ -223,9 +223,10 @@ class ContextService:
         # Learned knowledge
         learned_kb = ""
         try:
+            from .memory_service import MemoryService
             _, active_act_id = play_list_acts()
-            store = KnowledgeStore()
-            learned_kb = store.get_learned_markdown(active_act_id)
+            mem_service = MemoryService()
+            learned_kb = mem_service.get_learned_markdown_from_db(active_act_id)
         except Exception as e:
             logger.warning("Failed to get learned knowledge: %s", e)
 
@@ -246,7 +247,7 @@ class ContextService:
     # --- Archive Access ---
 
     def list_archives(self, act_id: str | None = None) -> list[dict[str, Any]]:
-        """List conversation archives.
+        """List conversation archives from archive_metadata table.
 
         Args:
             act_id: Filter by act (None for play level)
@@ -254,38 +255,87 @@ class ContextService:
         Returns:
             List of archive metadata dicts
         """
-        from ..knowledge_store import KnowledgeStore
+        from ..play_db import _get_connection
 
-        store = KnowledgeStore()
-        archives = store.list_archives(act_id)
+        conn = _get_connection()
+        if act_id is not None:
+            cursor = conn.execute(
+                """SELECT archive_id, act_id, conversation_id, linking_reason,
+                          topics, sentiment, created_at
+                   FROM archive_metadata
+                   WHERE act_id = ?
+                   ORDER BY created_at DESC""",
+                (act_id,),
+            )
+        else:
+            cursor = conn.execute(
+                """SELECT archive_id, act_id, conversation_id, linking_reason,
+                          topics, sentiment, created_at
+                   FROM archive_metadata
+                   ORDER BY created_at DESC"""
+            )
 
-        return [
-            {
-                "archive_id": a.archive_id,
-                "title": a.title,
-                "created_at": a.created_at,
-                "archived_at": a.archived_at,
-                "message_count": a.message_count,
-                "summary": a.summary,
-            }
-            for a in archives
-        ]
+        results = []
+        for row in cursor.fetchall():
+            msg_count = 0
+            if row["conversation_id"]:
+                cur2 = conn.execute(
+                    "SELECT COUNT(*) as cnt FROM messages WHERE conversation_id = ?",
+                    (row["conversation_id"],),
+                )
+                cnt_row = cur2.fetchone()
+                if cnt_row:
+                    msg_count = cnt_row["cnt"]
+
+            results.append({
+                "archive_id": row["archive_id"],
+                "act_id": row["act_id"],
+                "title": row["archive_id"],
+                "created_at": row["created_at"],
+                "archived_at": row["created_at"],
+                "message_count": msg_count,
+                "summary": row["linking_reason"] or "",
+            })
+        return results
 
     def get_archive(self, archive_id: str, act_id: str | None = None) -> dict[str, Any] | None:
-        """Get a specific archive with messages.
+        """Get a specific archive with messages from DB.
 
         Returns:
             Archive dict with messages, or None if not found
         """
-        from ..knowledge_store import KnowledgeStore
+        from ..play_db import _get_connection
 
-        store = KnowledgeStore()
-        archive = store.get_archive(archive_id, act_id)
-
-        if archive is None:
+        conn = _get_connection()
+        cursor = conn.execute(
+            "SELECT * FROM archive_metadata WHERE archive_id = ?",
+            (archive_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
             return None
 
-        return archive.to_dict()
+        messages: list[dict[str, Any]] = []
+        if row["conversation_id"]:
+            cur2 = conn.execute(
+                "SELECT role, content, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at",
+                (row["conversation_id"],),
+            )
+            messages = [
+                {"role": r["role"], "content": r["content"], "created_at": r["created_at"]}
+                for r in cur2.fetchall()
+            ]
+
+        return {
+            "archive_id": archive_id,
+            "act_id": row["act_id"],
+            "title": archive_id,
+            "created_at": row["created_at"],
+            "archived_at": row["created_at"],
+            "message_count": len(messages),
+            "messages": messages,
+            "summary": row["linking_reason"] or "",
+        }
 
     def search_archives(
         self,
@@ -293,35 +343,71 @@ class ContextService:
         act_id: str | None = None,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        """Search archives by content.
+        """Search archives by content via messages FTS.
 
         Returns:
             List of matching archive metadata
         """
-        from ..knowledge_store import KnowledgeStore
+        from ..play_db import _get_connection
 
-        store = KnowledgeStore()
-        archives = store.search_archives(query, act_id, limit)
+        conn = _get_connection()
+        query_lower = f"%{query.lower()}%"
 
-        return [
-            {
-                "archive_id": a.archive_id,
-                "title": a.title,
-                "created_at": a.created_at,
-                "archived_at": a.archived_at,
-                "message_count": a.message_count,
-                "summary": a.summary,
-            }
-            for a in archives
-        ]
+        # Find conversation_ids with matching messages
+        cur = conn.execute(
+            "SELECT DISTINCT conversation_id FROM messages WHERE LOWER(content) LIKE ? LIMIT ?",
+            (query_lower, limit),
+        )
+        matching_conv_ids = {row["conversation_id"] for row in cur.fetchall()}
+
+        if not matching_conv_ids:
+            return []
+
+        placeholders = ",".join("?" * len(matching_conv_ids))
+        params: list[Any] = list(matching_conv_ids)
+
+        if act_id is not None:
+            cur2 = conn.execute(
+                f"SELECT archive_id, act_id, conversation_id, linking_reason, created_at "
+                f"FROM archive_metadata WHERE conversation_id IN ({placeholders}) AND act_id = ?",
+                params + [act_id],
+            )
+        else:
+            cur2 = conn.execute(
+                f"SELECT archive_id, act_id, conversation_id, linking_reason, created_at "
+                f"FROM archive_metadata WHERE conversation_id IN ({placeholders})",
+                params,
+            )
+
+        results = []
+        for row in cur2.fetchall():
+            results.append({
+                "archive_id": row["archive_id"],
+                "act_id": row["act_id"],
+                "title": row["archive_id"],
+                "created_at": row["created_at"],
+                "archived_at": row["created_at"],
+                "message_count": 0,
+                "summary": row["linking_reason"] or "",
+            })
+        return results
 
     def delete_archive(self, archive_id: str, act_id: str | None = None) -> bool:
-        """Delete an archive.
+        """Delete an archive from archive_metadata.
 
         Returns:
             True if deleted successfully
         """
-        from ..knowledge_store import KnowledgeStore
+        from ..play_db import _get_connection, _transaction
 
-        store = KnowledgeStore()
-        return store.delete_archive(archive_id, act_id)
+        conn = _get_connection()
+        cur = conn.execute(
+            "SELECT archive_id FROM archive_metadata WHERE archive_id = ?",
+            (archive_id,),
+        )
+        if not cur.fetchone():
+            return False
+
+        with _transaction() as txn:
+            txn.execute("DELETE FROM archive_metadata WHERE archive_id = ?", (archive_id,))
+        return True

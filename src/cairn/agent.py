@@ -1196,20 +1196,15 @@ class ChatAgent:
         return "\n\n".join(ctx_parts)
 
     def _get_learned_context(self) -> str:
-        """Get learned knowledge from previous compactions.
-
-        This injects facts, lessons, decisions, and preferences that the AI
-        has learned from past conversations with this user.
-        """
+        """Get learned knowledge from approved memories."""
         try:
-            from .knowledge_store import KnowledgeStore
+            from .services.memory_service import MemoryService
             from .play_fs import list_acts as play_list_acts
 
-            # Get active act
             acts, active_act_id = play_list_acts()
 
-            store = KnowledgeStore()
-            learned_md = store.get_learned_markdown(active_act_id)
+            service = MemoryService()
+            learned_md = service.get_learned_markdown_from_db(active_act_id)
 
             if learned_md.strip():
                 return (

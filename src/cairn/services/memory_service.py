@@ -108,7 +108,10 @@ def _new_id() -> str:
 
 
 VALID_MEMORY_TYPES: frozenset[str] = frozenset(
-    {"fact", "preference", "priority", "commitment", "relationship"}
+    {
+        "fact", "preference", "priority", "commitment", "relationship",
+        "lesson", "decision", "observation",
+    }
 )
 
 
@@ -267,6 +270,8 @@ class MemoryService:
         confidence: float = 0.0,
         destination_act_id: str | None = None,
         source: str = "compression",
+        memory_type: str | None = None,
+        status: str | None = None,
     ) -> Memory:
         """Store a memory with deduplication via signal strengthening.
 
@@ -285,6 +290,8 @@ class MemoryService:
             confidence: Extraction confidence score.
             destination_act_id: Target Act, or None for Your Story.
             source: How this memory was created ('compression' or 'turn_assessment').
+            memory_type: Optional type classification (fact, lesson, decision, etc.).
+            status: Override initial status ('approved' to skip review gate).
 
         Returns:
             The created or reinforced Memory.
@@ -310,7 +317,7 @@ class MemoryService:
                 merged_narrative=dedup.merged_narrative,
             )
 
-        return self._create_memory(
+        memory = self._create_memory(
             conversation_id=conversation_id,
             narrative=narrative,
             embedding=embedding,
@@ -319,6 +326,24 @@ class MemoryService:
             destination_act_id=destination_act_id,
             source=source,
         )
+
+        # Apply optional post-creation overrides
+        if memory_type is not None or status is not None:
+            with _transaction() as conn:
+                if memory_type is not None:
+                    conn.execute(
+                        "UPDATE memories SET memory_type = ? WHERE id = ?",
+                        (memory_type, memory.id),
+                    )
+                    memory.memory_type = memory_type
+                if status is not None:
+                    conn.execute(
+                        "UPDATE memories SET status = ? WHERE id = ?",
+                        (status, memory.id),
+                    )
+                    memory.status = status
+
+        return memory
 
     def _check_duplicate(
         self, narrative: str, embedding: bytes | None
@@ -585,6 +610,89 @@ class MemoryService:
                 )
         except Exception as e:
             logger.warning("Failed to link memory to conversation: %s", e)
+
+    # -------------------------------------------------------------------------
+    # Learned Knowledge Context
+    # -------------------------------------------------------------------------
+
+    def get_learned_markdown_from_db(self, act_id: str | None = None) -> str:
+        """Get learned knowledge as markdown from the memories table.
+
+        Queries approved memories, groups by memory_type, renders as markdown
+        with category headers (Facts, Lessons, Decisions, Preferences, Observations).
+
+        Args:
+            act_id: Filter to memories for this Act. If None, returns Your Story
+                    memories (destination_act_id IS NULL OR is_your_story = 1).
+
+        Returns:
+            Markdown string, or empty string if no approved memories.
+        """
+        conn = _get_connection()
+
+        if act_id is not None:
+            cursor = conn.execute(
+                """SELECT narrative, memory_type FROM memories
+                   WHERE status = 'approved' AND destination_act_id = ?
+                   ORDER BY created_at""",
+                (act_id,),
+            )
+        else:
+            cursor = conn.execute(
+                """SELECT narrative, memory_type FROM memories
+                   WHERE status = 'approved'
+                   AND (destination_act_id IS NULL OR is_your_story = 1)
+                   ORDER BY created_at"""
+            )
+
+        rows = cursor.fetchall()
+        if not rows:
+            return ""
+
+        # Group narratives by memory_type, defaulting to "observation"
+        sections: dict[str, list[str]] = {}
+        for row in rows:
+            mtype = row["memory_type"] or "observation"
+            sections.setdefault(mtype, []).append(row["narrative"])
+
+        # Render in canonical category order
+        category_titles = [
+            ("fact", "Facts"),
+            ("lesson", "Lessons"),
+            ("decision", "Decisions"),
+            ("preference", "Preferences"),
+            ("observation", "Observations"),
+            ("priority", "Priorities"),
+            ("commitment", "Commitments"),
+            ("relationship", "Relationships"),
+        ]
+
+        lines = ["# Learned Knowledge", ""]
+        rendered_any = False
+
+        # Render known categories in order
+        known_types = {k for k, _ in category_titles}
+        for mtype, title in category_titles:
+            if mtype in sections:
+                lines.append(f"## {title}")
+                for narrative in sections[mtype]:
+                    lines.append(f"- {narrative}")
+                lines.append("")
+                rendered_any = True
+
+        # Render any unknown types (future-proof)
+        for mtype, narratives in sections.items():
+            if mtype not in known_types:
+                lines.append(f"## {mtype.title()}")
+                for narrative in narratives:
+                    lines.append(f"- {narrative}")
+                lines.append("")
+                rendered_any = True
+
+        if not rendered_any:
+            return ""
+
+        return "\n".join(lines)
 
     # -------------------------------------------------------------------------
     # Review Gate

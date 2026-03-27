@@ -1,16 +1,17 @@
-"""Knowledge Service - Learned knowledge and archive management.
+"""Knowledge Service - Learned knowledge management via MemoryService.
 
-Provides unified interface for managing learned knowledge entries
-and conversation archives.
+Provides unified interface for managing learned knowledge entries.
+Archives are handled by ArchiveService.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
-from ..knowledge_store import KnowledgeStore, LearnedEntry, Archive
+from ..play_db import _get_connection
+from .memory_service import MemoryService
 
 logger = logging.getLogger(__name__)
 
@@ -33,16 +34,6 @@ class LearnedEntryInfo:
             "learned_at": self.learned_at,
             "source_archive_id": self.source_archive_id,
         }
-
-    @classmethod
-    def from_learned_entry(cls, entry: LearnedEntry) -> LearnedEntryInfo:
-        return cls(
-            entry_id=entry.entry_id,
-            category=entry.category,
-            content=entry.content,
-            learned_at=entry.learned_at,
-            source_archive_id=entry.source_archive_id,
-        )
 
 
 @dataclass
@@ -68,10 +59,10 @@ class KnowledgeStats:
 
 
 class KnowledgeService:
-    """Unified service for learned knowledge management."""
+    """Unified service for learned knowledge management backed by MemoryService."""
 
-    def __init__(self):
-        self._store = KnowledgeStore()
+    def __init__(self) -> None:
+        self._mem_service = MemoryService()
 
     def search(
         self,
@@ -89,16 +80,43 @@ class KnowledgeService:
         Returns:
             List of matching LearnedEntryInfo
         """
+        conn = _get_connection()
         query_lower = query.lower()
-        kb = self._store.load_learned(act_id)
+
+        if act_id is not None:
+            cursor = conn.execute(
+                """SELECT id, memory_type, narrative, created_at, source
+                   FROM memories
+                   WHERE status = 'approved'
+                   AND destination_act_id = ?
+                   AND LOWER(narrative) LIKE ?
+                   ORDER BY created_at DESC
+                   LIMIT ?""",
+                (act_id, f"%{query_lower}%", limit),
+            )
+        else:
+            cursor = conn.execute(
+                """SELECT id, memory_type, narrative, created_at, source
+                   FROM memories
+                   WHERE status = 'approved'
+                   AND (destination_act_id IS NULL OR is_your_story = 1)
+                   AND LOWER(narrative) LIKE ?
+                   ORDER BY created_at DESC
+                   LIMIT ?""",
+                (f"%{query_lower}%", limit),
+            )
 
         results = []
-        for entry in kb.entries:
-            if query_lower in entry.content.lower():
-                results.append(LearnedEntryInfo.from_learned_entry(entry))
-                if len(results) >= limit:
-                    break
-
+        for row in cursor.fetchall():
+            source = row["source"] or ""
+            source_archive_id = source.split(":")[-1] if source.startswith("archive_service:") else None
+            results.append(LearnedEntryInfo(
+                entry_id=row["id"],
+                category=row["memory_type"] or "observation",
+                content=row["narrative"],
+                learned_at=row["created_at"],
+                source_archive_id=source_archive_id,
+            ))
         return results
 
     def list_entries(
@@ -111,22 +129,47 @@ class KnowledgeService:
 
         Args:
             act_id: Filter by act (None for play level)
-            category: Filter by category
+            category: Filter by memory_type
             limit: Maximum results
 
         Returns:
             List of LearnedEntryInfo
         """
-        kb = self._store.load_learned(act_id)
+        conn = _get_connection()
+
+        conditions = ["status = 'approved'"]
+        params: list[Any] = []
+
+        if act_id is not None:
+            conditions.append("destination_act_id = ?")
+            params.append(act_id)
+        else:
+            conditions.append("(destination_act_id IS NULL OR is_your_story = 1)")
+
+        if category is not None:
+            conditions.append("memory_type = ?")
+            params.append(category)
+
+        params.append(limit)
+        where = " AND ".join(conditions)
+
+        cursor = conn.execute(
+            f"SELECT id, memory_type, narrative, created_at, source "
+            f"FROM memories WHERE {where} ORDER BY created_at DESC LIMIT ?",
+            params,
+        )
 
         results = []
-        for entry in kb.entries:
-            if category and entry.category != category:
-                continue
-            results.append(LearnedEntryInfo.from_learned_entry(entry))
-            if len(results) >= limit:
-                break
-
+        for row in cursor.fetchall():
+            source = row["source"] or ""
+            source_archive_id = source.split(":")[-1] if source.startswith("archive_service:") else None
+            results.append(LearnedEntryInfo(
+                entry_id=row["id"],
+                category=row["memory_type"] or "observation",
+                content=row["narrative"],
+                learned_at=row["created_at"],
+                source_archive_id=source_archive_id,
+            ))
         return results
 
     def add_entry(
@@ -145,18 +188,28 @@ class KnowledgeService:
             source_archive_id: Optional archive this came from
 
         Returns:
-            The added entry, or None if duplicate
+            The added entry, or None on failure
         """
-        entries = self._store.add_learned_entries(
-            entries=[{"category": category, "content": content}],
-            act_id=act_id,
-            source_archive_id=source_archive_id,
-            deduplicate=True,
-        )
-
-        if entries:
-            return LearnedEntryInfo.from_learned_entry(entries[0])
-        return None
+        source = f"archive_service:{source_archive_id}" if source_archive_id else "knowledge_service"
+        try:
+            memory = self._mem_service.store(
+                conversation_id="knowledge_service",
+                narrative=content,
+                destination_act_id=act_id,
+                source=source,
+                memory_type=category,
+                status="approved",
+            )
+            return LearnedEntryInfo(
+                entry_id=memory.id,
+                category=category,
+                content=content,
+                learned_at=memory.created_at,
+                source_archive_id=source_archive_id,
+            )
+        except Exception as e:
+            logger.warning("Failed to add entry: %s", e)
+            return None
 
     def add_entries_batch(
         self,
@@ -172,16 +225,34 @@ class KnowledgeService:
             source_archive_id: Optional archive these came from
 
         Returns:
-            List of actually added entries (after deduplication)
+            List of actually added entries
         """
-        added = self._store.add_learned_entries(
-            entries=entries,
-            act_id=act_id,
-            source_archive_id=source_archive_id,
-            deduplicate=True,
-        )
-
-        return [LearnedEntryInfo.from_learned_entry(e) for e in added]
+        source = f"archive_service:{source_archive_id}" if source_archive_id else "knowledge_service"
+        added = []
+        for entry in entries:
+            content = entry.get("content", "")
+            category = entry.get("category", "observation")
+            if not content:
+                continue
+            try:
+                memory = self._mem_service.store(
+                    conversation_id="knowledge_service",
+                    narrative=content,
+                    destination_act_id=act_id,
+                    source=source,
+                    memory_type=category,
+                    status="approved",
+                )
+                added.append(LearnedEntryInfo(
+                    entry_id=memory.id,
+                    category=category,
+                    content=content,
+                    learned_at=memory.created_at,
+                    source_archive_id=source_archive_id,
+                ))
+            except Exception as e:
+                logger.warning("Failed to add entry: %s", e)
+        return added
 
     def delete_entry(
         self,
@@ -193,15 +264,11 @@ class KnowledgeService:
         Returns:
             True if deleted, False if not found
         """
-        kb = self._store.load_learned(act_id)
-
-        original_count = len(kb.entries)
-        kb.entries = [e for e in kb.entries if e.entry_id != entry_id]
-
-        if len(kb.entries) < original_count:
-            self._store.save_learned(kb)
+        try:
+            self._mem_service.delete(entry_id)
             return True
-        return False
+        except Exception:
+            return False
 
     def get_stats(self, act_id: str | None = None) -> KnowledgeStats:
         """Get statistics about learned knowledge.
@@ -212,26 +279,39 @@ class KnowledgeService:
         Returns:
             KnowledgeStats with counts by category
         """
-        kb = self._store.load_learned(act_id)
+        conn = _get_connection()
 
-        counts = {
-            "fact": 0,
-            "lesson": 0,
-            "decision": 0,
-            "preference": 0,
-            "observation": 0,
-        }
+        if act_id is not None:
+            cursor = conn.execute(
+                """SELECT memory_type, COUNT(*) as cnt
+                   FROM memories
+                   WHERE status = 'approved' AND destination_act_id = ?
+                   GROUP BY memory_type""",
+                (act_id,),
+            )
+        else:
+            cursor = conn.execute(
+                """SELECT memory_type, COUNT(*) as cnt
+                   FROM memories
+                   WHERE status = 'approved'
+                   AND (destination_act_id IS NULL OR is_your_story = 1)
+                   GROUP BY memory_type"""
+            )
 
-        for entry in kb.entries:
-            counts[entry.category] = counts.get(entry.category, 0) + 1
+        counts: dict[str, int] = {}
+        total = 0
+        for row in cursor.fetchall():
+            mtype = row["memory_type"] or "observation"
+            counts[mtype] = row["cnt"]
+            total += row["cnt"]
 
         return KnowledgeStats(
-            total_entries=len(kb.entries),
-            facts=counts["fact"],
-            lessons=counts["lesson"],
-            decisions=counts["decision"],
-            preferences=counts["preference"],
-            observations=counts["observation"],
+            total_entries=total,
+            facts=counts.get("fact", 0),
+            lessons=counts.get("lesson", 0),
+            decisions=counts.get("decision", 0),
+            preferences=counts.get("preference", 0),
+            observations=counts.get("observation", 0),
         )
 
     def get_markdown(self, act_id: str | None = None) -> str:
@@ -243,7 +323,7 @@ class KnowledgeService:
         Returns:
             Markdown-formatted string
         """
-        return self._store.get_learned_markdown(act_id)
+        return self._mem_service.get_learned_markdown_from_db(act_id)
 
     def clear(self, act_id: str | None = None) -> None:
         """Clear all learned knowledge for an act.
@@ -251,13 +331,23 @@ class KnowledgeService:
         Args:
             act_id: The act to clear (None for play level)
         """
-        self._store.clear_learned(act_id)
+        from ..play_db import _transaction
 
-    # --- Archive Integration ---
+        if act_id is not None:
+            with _transaction() as txn:
+                txn.execute(
+                    "DELETE FROM memories WHERE destination_act_id = ?",
+                    (act_id,),
+                )
+        else:
+            with _transaction() as txn:
+                txn.execute(
+                    "DELETE FROM memories WHERE destination_act_id IS NULL OR is_your_story = 1"
+                )
 
     def get_entry_count(self, act_id: str | None = None) -> int:
         """Get count of learned entries."""
-        return self._store.get_learned_entry_count(act_id)
+        return self.get_stats(act_id).total_entries
 
     def get_categories(self) -> list[str]:
         """Get list of valid categories."""
@@ -269,7 +359,7 @@ class KnowledgeService:
         Returns:
             Dict with entries grouped by category
         """
-        kb = self._store.load_learned(act_id)
+        entries = self.list_entries(act_id=act_id, limit=10000)
 
         by_category: dict[str, list[dict[str, Any]]] = {
             "facts": [],
@@ -287,7 +377,7 @@ class KnowledgeService:
             "observation": "observations",
         }
 
-        for entry in kb.entries:
+        for entry in entries:
             key = category_map.get(entry.category, "observations")
             by_category[key].append({
                 "entry_id": entry.entry_id,
@@ -298,8 +388,7 @@ class KnowledgeService:
 
         return {
             "act_id": act_id,
-            "total_entries": len(kb.entries),
-            "last_updated": kb.last_updated,
+            "total_entries": len(entries),
             **by_category,
         }
 
@@ -341,10 +430,5 @@ class KnowledgeService:
                         "content": content,
                     })
 
-        added = self._store.add_learned_entries(
-            entries=entries_to_add,
-            act_id=act_id,
-            deduplicate=True,
-        )
-
+        added = self.add_entries_batch(entries_to_add, act_id=act_id)
         return len(added)

@@ -84,15 +84,15 @@ class TestArchiveServiceDataclasses:
 class TestArchiveServiceInit:
     """Test ArchiveService initialization."""
 
-    def test_init_creates_knowledge_store(self) -> None:
-        """ArchiveService should create a KnowledgeStore."""
+    def test_init_creates_mem_service(self) -> None:
+        """ArchiveService should create a MemoryService."""
         from cairn.services.archive_service import ArchiveService
 
         mock_db = MagicMock()
-        with patch("cairn.services.archive_service.KnowledgeStore"):
+        with patch("cairn.services.archive_service.MemoryService"):
             service = ArchiveService(mock_db)
             assert service._db == mock_db
-            assert service._knowledge_store is not None
+            assert service._mem_service is not None
 
 
 class TestArchiveServicePreview:
@@ -129,7 +129,7 @@ class TestArchiveServicePreview:
 
         mock_db.get_messages.return_value = []
 
-        with patch("cairn.services.archive_service.KnowledgeStore"):
+        with patch("cairn.services.archive_service.MemoryService"):
             service = ArchiveService(mock_db)
             with pytest.raises(ValueError, match="No messages"):
                 service.preview_archive("conv123")
@@ -140,7 +140,7 @@ class TestArchiveServicePreview:
         """Should return ArchivePreview with LLM analysis."""
         from cairn.services.archive_service import ArchiveService, ArchivePreview
 
-        with patch("cairn.services.archive_service.KnowledgeStore"), \
+        with patch("cairn.services.archive_service.MemoryService"), \
              patch("cairn.services.archive_service.get_provider", return_value=mock_provider):
             service = ArchiveService(mock_db)
             # Mock _get_acts_context
@@ -165,28 +165,16 @@ class TestArchiveServiceArchiveWithReview:
         ]
         return db
 
-    @pytest.fixture
-    def mock_archive(self) -> MagicMock:
-        """Create a mock Archive object."""
-        archive = MagicMock()
-        archive.archive_id = "arc123"
-        archive.title = "User Title"
-        archive.summary = "User summary"
-        archive.message_count = 1
-        archive.archived_at = "2024-01-15T10:00:00Z"
-        return archive
-
-    def test_archive_with_review_saves_archive(
-        self, mock_db: MagicMock, mock_archive: MagicMock
+    def test_archive_with_review_returns_result(
+        self, mock_db: MagicMock
     ) -> None:
-        """Should save archive with user-provided data."""
+        """Should return ArchiveResult with user-provided data."""
         from cairn.services.archive_service import ArchiveService
 
-        mock_knowledge_store = MagicMock()
-        mock_knowledge_store.save_archive.return_value = mock_archive
-        mock_knowledge_store.add_learned_entries.return_value = []
+        mock_mem_service = MagicMock()
+        mock_mem_service.store.return_value = MagicMock()
 
-        with patch("cairn.services.archive_service.KnowledgeStore", return_value=mock_knowledge_store):
+        with patch("cairn.services.archive_service.MemoryService", return_value=mock_mem_service):
             service = ArchiveService(mock_db)
             service._store_archive_metadata = MagicMock()
 
@@ -198,21 +186,20 @@ class TestArchiveServiceArchiveWithReview:
                 knowledge_entries=[{"category": "fact", "content": "Test fact"}],
             )
 
-            assert result.archive_id == "arc123"
             assert result.title == "User Title"
-            mock_knowledge_store.save_archive.assert_called_once()
+            assert result.summary == "User summary"
+            assert result.linked_act_id == "act_456"
 
     def test_archive_with_review_adds_knowledge_entries(
-        self, mock_db: MagicMock, mock_archive: MagicMock
+        self, mock_db: MagicMock
     ) -> None:
-        """Should add knowledge entries from user review."""
+        """Should add knowledge entries from user review via MemoryService."""
         from cairn.services.archive_service import ArchiveService
 
-        mock_knowledge_store = MagicMock()
-        mock_knowledge_store.save_archive.return_value = mock_archive
-        mock_knowledge_store.add_learned_entries.return_value = ["entry1", "entry2"]
+        mock_mem_service = MagicMock()
+        mock_mem_service.store.return_value = MagicMock()
 
-        with patch("cairn.services.archive_service.KnowledgeStore", return_value=mock_knowledge_store):
+        with patch("cairn.services.archive_service.MemoryService", return_value=mock_mem_service):
             service = ArchiveService(mock_db)
             service._store_archive_metadata = MagicMock()
 
@@ -227,18 +214,18 @@ class TestArchiveServiceArchiveWithReview:
             )
 
             assert result.knowledge_entries_added == 2
+            assert mock_mem_service.store.call_count == 2
 
     def test_archive_with_review_adds_additional_notes(
-        self, mock_db: MagicMock, mock_archive: MagicMock
+        self, mock_db: MagicMock
     ) -> None:
-        """Should add additional notes as observation."""
+        """Should add additional notes as observation via MemoryService."""
         from cairn.services.archive_service import ArchiveService
 
-        mock_knowledge_store = MagicMock()
-        mock_knowledge_store.save_archive.return_value = mock_archive
-        mock_knowledge_store.add_learned_entries.return_value = []
+        mock_mem_service = MagicMock()
+        mock_mem_service.store.return_value = MagicMock()
 
-        with patch("cairn.services.archive_service.KnowledgeStore", return_value=mock_knowledge_store):
+        with patch("cairn.services.archive_service.MemoryService", return_value=mock_mem_service):
             service = ArchiveService(mock_db)
             service._store_archive_metadata = MagicMock()
 
@@ -250,29 +237,28 @@ class TestArchiveServiceArchiveWithReview:
                 additional_notes="User's additional note",
             )
 
-            # Empty knowledge_entries means only notes call happens
-            assert mock_knowledge_store.add_learned_entries.call_count == 1
-            # Check the notes call
-            notes_call = mock_knowledge_store.add_learned_entries.call_args
-            assert notes_call[1]["entries"][0]["category"] == "observation"
-            assert notes_call[1]["entries"][0]["content"] == "User's additional note"
+            # Notes call adds one more store call
+            assert result.knowledge_entries_added == 1
+            # Verify store was called with observation type
+            call_kwargs = mock_mem_service.store.call_args[1]
+            assert call_kwargs["memory_type"] == "observation"
+            assert call_kwargs["narrative"] == "User's additional note"
 
     def test_archive_with_review_submits_rating(
-        self, mock_db: MagicMock, mock_archive: MagicMock
+        self, mock_db: MagicMock
     ) -> None:
         """Should submit user rating for learning."""
         from cairn.services.archive_service import ArchiveService
 
-        mock_knowledge_store = MagicMock()
-        mock_knowledge_store.save_archive.return_value = mock_archive
-        mock_knowledge_store.add_learned_entries.return_value = []
+        mock_mem_service = MagicMock()
+        mock_mem_service.store.return_value = MagicMock()
 
-        with patch("cairn.services.archive_service.KnowledgeStore", return_value=mock_knowledge_store):
+        with patch("cairn.services.archive_service.MemoryService", return_value=mock_mem_service):
             service = ArchiveService(mock_db)
             service._store_archive_metadata = MagicMock()
             service.submit_user_feedback = MagicMock()
 
-            service.archive_with_review(
+            result = service.archive_with_review(
                 conversation_id="conv123",
                 title="Title",
                 summary="Summary",
@@ -280,7 +266,7 @@ class TestArchiveServiceArchiveWithReview:
                 rating=5,
             )
 
-            service.submit_user_feedback.assert_called_once_with("arc123", 5)
+            service.submit_user_feedback.assert_called_once_with(result.archive_id, 5)
 
 
 class TestArchiveServiceFullArchive:
@@ -302,7 +288,7 @@ class TestArchiveServiceFullArchive:
 
         mock_db.get_messages.return_value = []
 
-        with patch("cairn.services.archive_service.KnowledgeStore"):
+        with patch("cairn.services.archive_service.MemoryService"):
             service = ArchiveService(mock_db)
             with pytest.raises(ValueError, match="No messages"):
                 service.archive_conversation("conv123")
@@ -319,7 +305,7 @@ class TestArchiveServiceMetadata:
         mock_conn = MagicMock()
         mock_db.connect.return_value = mock_conn
 
-        with patch("cairn.services.archive_service.KnowledgeStore"):
+        with patch("cairn.services.archive_service.MemoryService"):
             service = ArchiveService(mock_db)
             service._store_archive_metadata(
                 archive_id="arc123",
@@ -344,7 +330,7 @@ class TestArchiveServiceFeedback:
         mock_conn = MagicMock()
         mock_db.connect.return_value = mock_conn
 
-        with patch("cairn.services.archive_service.KnowledgeStore"):
+        with patch("cairn.services.archive_service.MemoryService"):
             service = ArchiveService(mock_db)
             service.submit_user_feedback("arc123", 5, "Great job!")
 
@@ -365,7 +351,7 @@ class TestArchiveServiceFeedback:
         ]
         mock_conn.execute.return_value = mock_cursor
 
-        with patch("cairn.services.archive_service.KnowledgeStore"):
+        with patch("cairn.services.archive_service.MemoryService"):
             service = ArchiveService(mock_db)
             stats = service.get_learning_stats()
 
@@ -377,45 +363,35 @@ class TestArchiveServiceList:
     """Test archive listing methods."""
 
     def test_list_archives_returns_list(self) -> None:
-        """Should return list of archives."""
-        from cairn.services.archive_service import ArchiveService
-
-        mock_db = MagicMock()
-        mock_knowledge_store = MagicMock()
-        mock_knowledge_store.list_archives.return_value = []
-
-        with patch("cairn.services.archive_service.KnowledgeStore", return_value=mock_knowledge_store):
-            service = ArchiveService(mock_db)
-            archives = service.list_archives()
-
-            assert isinstance(archives, list)
-
-    def test_get_archive_returns_archive(self) -> None:
-        """Should return archive by ID."""
+        """Should return list of archives from DB."""
         from cairn.services.archive_service import ArchiveService
 
         mock_db = MagicMock()
         mock_conn = MagicMock()
         mock_db.connect.return_value = mock_conn
-        # Mock metadata query - returns None (no metadata)
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = []
+        mock_conn.execute.return_value = mock_cursor
+
+        with patch("cairn.services.archive_service.MemoryService"):
+            service = ArchiveService(mock_db)
+            archives = service.list_archives()
+
+            assert isinstance(archives, list)
+
+    def test_get_archive_returns_none_when_not_found(self) -> None:
+        """Should return None when archive not in DB."""
+        from cairn.services.archive_service import ArchiveService
+
+        mock_db = MagicMock()
+        mock_conn = MagicMock()
+        mock_db.connect.return_value = mock_conn
         mock_cursor = MagicMock()
         mock_cursor.fetchone.return_value = None
         mock_conn.execute.return_value = mock_cursor
 
-        mock_archive = MagicMock()
-        mock_archive.archive_id = "arc123"
-        mock_archive.title = "Test"
-        mock_archive.summary = "Test summary"
-        mock_archive.message_count = 5
-        mock_archive.archived_at = "2024-01-15T10:00:00Z"
-        mock_archive.messages = []
-        mock_knowledge_store = MagicMock()
-        mock_knowledge_store.get_archive.return_value = mock_archive
-
-        with patch("cairn.services.archive_service.KnowledgeStore", return_value=mock_knowledge_store):
+        with patch("cairn.services.archive_service.MemoryService"):
             service = ArchiveService(mock_db)
-            archive = service.get_archive("arc123")
+            result = service.get_archive("nonexistent")
 
-            # get_archive returns a dict
-            assert archive is not None
-            assert archive["archive_id"] == "arc123"
+            assert result is None

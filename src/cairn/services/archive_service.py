@@ -12,13 +12,13 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from ..db import Database
-from ..knowledge_store import KnowledgeStore, Archive
 from ..providers import get_provider
+from .memory_service import MemoryService
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +186,7 @@ class ArchiveService:
 
     def __init__(self, db: Database):
         self._db = db
-        self._knowledge_store = KnowledgeStore()
+        self._mem_service = MemoryService()
 
     def preview_archive(
         self,
@@ -263,31 +263,18 @@ class ArchiveService:
         Returns:
             ArchiveResult with archive details
         """
-        # Get conversation messages
+        # Get conversation messages (just to validate they exist)
         messages = self._db.get_messages(conversation_id=conversation_id, limit=500)
         if not messages:
             raise ValueError("No messages in conversation")
 
-        formatted_messages = [
-            {
-                "role": m["role"],
-                "content": m["content"],
-                "created_at": m.get("created_at", ""),
-            }
-            for m in messages
-        ]
-
-        # Save the archive with user-provided title and summary
-        archive = self._knowledge_store.save_archive(
-            messages=formatted_messages,
-            act_id=act_id,
-            title=title,
-            summary=summary,
-        )
+        # Generate archive_id and metadata (messages already stored in DB)
+        archive_id = uuid.uuid4().hex[:12]
+        now = datetime.now(UTC).isoformat()
 
         # Store archive metadata in database
         self._store_archive_metadata(
-            archive_id=archive.archive_id,
+            archive_id=archive_id,
             conversation_id=conversation_id,
             act_id=act_id,
             linking_reason=None,  # User approved, no need for reason
@@ -295,41 +282,56 @@ class ArchiveService:
             sentiment="neutral",
         )
 
-        # Add user-approved knowledge entries
+        # Add user-approved knowledge entries as memories
         knowledge_added = 0
+        source_tag = f"archive_service:{archive_id}"
         if knowledge_entries:
-            added = self._knowledge_store.add_learned_entries(
-                entries=knowledge_entries,
-                act_id=act_id,
-                source_archive_id=archive.archive_id,
-                deduplicate=True,
-            )
-            knowledge_added = len(added)
+            for entry in knowledge_entries:
+                try:
+                    self._mem_service.store(
+                        conversation_id=conversation_id,
+                        narrative=entry["content"],
+                        destination_act_id=act_id,
+                        source=source_tag,
+                        memory_type=entry.get("category", "observation"),
+                        status="approved",
+                    )
+                    knowledge_added += 1
+                except Exception:
+                    logger.debug(
+                        "Failed to store learned entry: %s",
+                        entry.get("content", "")[:50],
+                    )
 
         # If user provided additional notes, add them as observations
         if additional_notes.strip():
-            self._knowledge_store.add_learned_entries(
-                entries=[{"category": "observation", "content": additional_notes.strip()}],
-                act_id=act_id,
-                source_archive_id=archive.archive_id,
-                deduplicate=False,  # User explicitly added this
-            )
-            knowledge_added += 1
+            try:
+                self._mem_service.store(
+                    conversation_id=conversation_id,
+                    narrative=additional_notes.strip(),
+                    destination_act_id=act_id,
+                    source=source_tag,
+                    memory_type="observation",
+                    status="approved",
+                )
+                knowledge_added += 1
+            except Exception:
+                logger.debug("Failed to store additional notes as memory")
 
         # If user provided a rating, store it for learning
         if rating is not None:
-            self.submit_user_feedback(archive.archive_id, rating)
+            self.submit_user_feedback(archive_id, rating)
 
         return ArchiveResult(
-            archive_id=archive.archive_id,
-            title=archive.title,
-            summary=archive.summary,
-            message_count=archive.message_count,
+            archive_id=archive_id,
+            title=title,
+            summary=summary,
+            message_count=len(messages),
             linked_act_id=act_id,
             linking_reason=None,
             knowledge_entries_added=knowledge_added,
             topics=[],
-            archived_at=archive.archived_at,
+            archived_at=now,
         )
 
     def archive_conversation(
@@ -378,17 +380,15 @@ class ArchiveService:
             final_act_id = analysis["linked_act_id"]
             linking_reason = analysis.get("linking_reason")
 
-        # Save the archive
-        archive = self._knowledge_store.save_archive(
-            messages=formatted_messages,
-            act_id=final_act_id,
-            title=analysis.get("title", f"Conversation {datetime.now(UTC).isoformat()[:10]}"),
-            summary=analysis.get("summary", ""),
-        )
+        # Generate archive_id and metadata (messages already stored in DB)
+        archive_id = uuid.uuid4().hex[:12]
+        archive_title = analysis.get("title", f"Conversation {datetime.now(UTC).isoformat()[:10]}")
+        archive_summary = analysis.get("summary", "")
+        now = datetime.now(UTC).isoformat()
 
         # Store archive metadata in database
         self._store_archive_metadata(
-            archive_id=archive.archive_id,
+            archive_id=archive_id,
             conversation_id=conversation_id,
             act_id=final_act_id,
             linking_reason=linking_reason,
@@ -398,26 +398,35 @@ class ArchiveService:
 
         # Extract and store knowledge if enabled
         knowledge_added = 0
+        source_tag = f"archive_service:{archive_id}"
         if extract_knowledge and analysis.get("knowledge_entries"):
-            entries = analysis["knowledge_entries"]
-            added = self._knowledge_store.add_learned_entries(
-                entries=entries,
-                act_id=final_act_id,
-                source_archive_id=archive.archive_id,
-                deduplicate=True,
-            )
-            knowledge_added = len(added)
+            for entry in analysis["knowledge_entries"]:
+                try:
+                    self._mem_service.store(
+                        conversation_id=conversation_id,
+                        narrative=entry["content"],
+                        destination_act_id=final_act_id,
+                        source=source_tag,
+                        memory_type=entry.get("category", "observation"),
+                        status="approved",
+                    )
+                    knowledge_added += 1
+                except Exception:
+                    logger.debug(
+                        "Failed to store learned entry: %s",
+                        entry.get("content", "")[:50],
+                    )
 
         return ArchiveResult(
-            archive_id=archive.archive_id,
-            title=archive.title,
-            summary=archive.summary,
-            message_count=archive.message_count,
+            archive_id=archive_id,
+            title=archive_title,
+            summary=archive_summary,
+            message_count=len(messages),
             linked_act_id=final_act_id,
             linking_reason=linking_reason,
             knowledge_entries_added=knowledge_added,
             topics=analysis.get("topics", []),
-            archived_at=archive.archived_at,
+            archived_at=now,
         )
 
     def delete_conversation(
@@ -472,38 +481,68 @@ class ArchiveService:
         Returns:
             ArchiveQualityAssessment with scores and suggestions
         """
-        archive = self._knowledge_store.get_archive(archive_id, act_id)
-        if not archive:
+        archive_meta = self._get_archive_metadata(archive_id)
+        if not archive_meta:
             raise ValueError(f"Archive not found: {archive_id}")
 
+        # Get messages for this archive via the linked conversation
+        linked_conv_id = archive_meta.get("conversation_id")
+        messages: list[dict[str, Any]] = []
+        if linked_conv_id:
+            raw_messages = self._db.get_messages(conversation_id=linked_conv_id, limit=500)
+            messages = [
+                {"role": m["role"], "content": m["content"]}
+                for m in raw_messages
+            ]
+
         # Format conversation for assessment
-        conversation_text = self._format_messages(archive.messages)
+        conversation_text = self._format_messages(messages)
+
+        # Determine act from metadata
+        resolved_act_id = archive_meta.get("act_id") or act_id
 
         # Get linked act name
         linked_act = "None"
-        if archive.act_id:
+        if resolved_act_id:
             from ..play_fs import list_acts
-            acts = list_acts()
-            for act in acts:
-                if act.get("act_id") == archive.act_id:
-                    linked_act = act.get("title", archive.act_id)
+            acts_list = list_acts()
+            for act in acts_list:
+                if act.get("act_id") == resolved_act_id:
+                    linked_act = act.get("title", resolved_act_id)
                     break
 
-        # Get knowledge entries for this archive
-        kb = self._knowledge_store.load_learned(archive.act_id)
-        related_entries = [
-            e for e in kb.entries
-            if e.source_archive_id == archive_id
-        ]
+        # Get knowledge entries stored for this archive (source tagged with archive_id)
+        source_tag = f"archive_service:{archive_id}"
+        conn = self._db.connect()
+        cursor = conn.execute(
+            "SELECT memory_type, narrative FROM memories WHERE source = ?",
+            (source_tag,),
+        )
+        related_rows = cursor.fetchall()
         knowledge_text = "\n".join(
-            f"- [{e.category}] {e.content}" for e in related_entries
+            f"- [{row['memory_type'] or 'observation'}] {row['narrative']}"
+            for row in related_rows
         ) or "None extracted"
+
+        # Get title and summary from archive_metadata (stored as JSON topics/linking_reason)
+        # Title and summary are not stored in archive_metadata — use archive_id as fallback
+        archive_title = archive_id
+        archive_summary = ""
+        # Try to get title/summary from the assessment context (best effort)
+        conn2 = self._db.connect()
+        cur2 = conn2.execute(
+            "SELECT linking_reason FROM archive_metadata WHERE archive_id = ?",
+            (archive_id,),
+        )
+        row2 = cur2.fetchone()
+        if row2 and row2["linking_reason"]:
+            archive_summary = row2["linking_reason"]
 
         # Run LLM assessment
         prompt = ASSESS_ARCHIVE_PROMPT.format(
             conversation=conversation_text[:4000],  # Truncate for context
-            title=archive.title,
-            summary=archive.summary,
+            title=archive_title,
+            summary=archive_summary,
             linked_act=linked_act,
             knowledge_entries=knowledge_text,
         )
@@ -646,23 +685,55 @@ class ArchiveService:
         Returns:
             List of archive metadata dicts
         """
-        archives = self._knowledge_store.list_archives(act_id)[:limit]
+        conn = self._db.connect()
+        if act_id is not None:
+            cursor = conn.execute(
+                """SELECT
+                       m.archive_id, m.act_id, m.conversation_id,
+                       m.linking_reason, m.topics, m.sentiment, m.created_at,
+                       (SELECT AVG(rating) FROM archive_feedback WHERE archive_id = m.archive_id) as avg_rating
+                   FROM archive_metadata m
+                   WHERE m.act_id = ?
+                   ORDER BY m.created_at DESC
+                   LIMIT ?""",
+                (act_id, limit),
+            )
+        else:
+            cursor = conn.execute(
+                """SELECT
+                       m.archive_id, m.act_id, m.conversation_id,
+                       m.linking_reason, m.topics, m.sentiment, m.created_at,
+                       (SELECT AVG(rating) FROM archive_feedback WHERE archive_id = m.archive_id) as avg_rating
+                   FROM archive_metadata m
+                   ORDER BY m.created_at DESC
+                   LIMIT ?""",
+                (limit,),
+            )
 
-        # Enrich with database metadata
         results = []
-        for archive in archives:
-            metadata = self._get_archive_metadata(archive.archive_id)
+        for row in cursor.fetchall():
+            # Get message count from the linked conversation
+            msg_count = 0
+            if row["conversation_id"]:
+                cur2 = conn.execute(
+                    "SELECT COUNT(*) as cnt FROM messages WHERE conversation_id = ?",
+                    (row["conversation_id"],),
+                )
+                cnt_row = cur2.fetchone()
+                if cnt_row:
+                    msg_count = cnt_row["cnt"]
+
             results.append({
-                "archive_id": archive.archive_id,
-                "act_id": archive.act_id,
-                "title": archive.title,
-                "summary": archive.summary,
-                "message_count": archive.message_count,
-                "created_at": archive.created_at,
-                "archived_at": archive.archived_at,
-                "topics": metadata.get("topics", []) if metadata else [],
-                "sentiment": metadata.get("sentiment") if metadata else None,
-                "user_rating": metadata.get("avg_rating") if metadata else None,
+                "archive_id": row["archive_id"],
+                "act_id": row["act_id"],
+                "title": row["archive_id"],  # title not stored in metadata
+                "summary": row["linking_reason"] or "",
+                "message_count": msg_count,
+                "created_at": row["created_at"],
+                "archived_at": row["created_at"],
+                "topics": json.loads(row["topics"]) if row["topics"] else [],
+                "sentiment": row["sentiment"],
+                "user_rating": row["avg_rating"],
             })
 
         return results
@@ -681,24 +752,36 @@ class ArchiveService:
         Returns:
             Archive dict with messages, or None if not found
         """
-        archive = self._knowledge_store.get_archive(archive_id, act_id)
-        if not archive:
+        metadata = self._get_archive_metadata(archive_id)
+        if not metadata:
             return None
 
-        metadata = self._get_archive_metadata(archive_id)
+        # Get messages via the linked conversation
+        messages: list[dict[str, Any]] = []
+        linked_conv_id = metadata.get("conversation_id")
+        if linked_conv_id:
+            raw_messages = self._db.get_messages(conversation_id=linked_conv_id, limit=500)
+            messages = [
+                {
+                    "role": m["role"],
+                    "content": m["content"],
+                    "created_at": m.get("created_at", ""),
+                }
+                for m in raw_messages
+            ]
 
         return {
-            "archive_id": archive.archive_id,
-            "act_id": archive.act_id,
-            "title": archive.title,
-            "summary": archive.summary,
-            "message_count": archive.message_count,
-            "messages": archive.messages,
-            "created_at": archive.created_at,
-            "archived_at": archive.archived_at,
-            "topics": metadata.get("topics", []) if metadata else [],
-            "sentiment": metadata.get("sentiment") if metadata else None,
-            "linking_reason": metadata.get("linking_reason") if metadata else None,
+            "archive_id": archive_id,
+            "act_id": metadata.get("act_id"),
+            "title": archive_id,  # title not stored in metadata
+            "summary": metadata.get("linking_reason") or "",
+            "message_count": len(messages),
+            "messages": messages,
+            "created_at": metadata.get("created_at") or "",
+            "archived_at": metadata.get("created_at") or "",
+            "topics": metadata.get("topics", []),
+            "sentiment": metadata.get("sentiment"),
+            "linking_reason": metadata.get("linking_reason"),
         }
 
     # --- Private Methods ---

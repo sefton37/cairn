@@ -10,14 +10,12 @@ import logging
 from typing import Any
 
 from cairn.context_meter import calculate_context_stats
-from cairn.context_sources import VALID_SOURCE_NAMES, DISABLEABLE_SOURCES
+from cairn.context_sources import DISABLEABLE_SOURCES, VALID_SOURCE_NAMES
 from cairn.db import Database
-from cairn.knowledge_store import KnowledgeStore
 from cairn.play_fs import list_acts as play_list_acts
-from cairn.play_fs import read_me_markdown as play_read_me_markdown
+from cairn.services.memory_service import MemoryService
 
 from . import RpcError
-
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +44,12 @@ def handle_context_stats(
     # Get active act for learned KB
     acts, active_act_id = play_list_acts()
     learned_kb = ""
-    store = KnowledgeStore()
     if active_act_id:
-        learned_kb = store.get_learned_markdown(active_act_id)
+        try:
+            mem_service = MemoryService()
+            learned_kb = mem_service.get_learned_markdown_from_db(active_act_id)
+        except Exception:
+            pass
 
     # system_state context source removed (system_state module no longer available)
     system_state = ""
