@@ -1842,8 +1842,9 @@ export function createCairnView(
             })()
           : '';
 
+        // Score is available in tooltip only — not displayed as visible text
         const importanceDisplay = (item.importance_score !== null && item.importance_score !== undefined)
-          ? `<span class="email-score-display" title="${item.importance_reason ? escapeHtml(item.importance_reason) : 'Importance score'}" style="font-size: 10px; color: rgba(255,255,255,0.35); margin-left: 6px;">score: ${(item.importance_score as number).toFixed(2)}</span>`
+          ? `<span class="email-score-display" style="display:none;" data-score="${(item.importance_score as number).toFixed(2)}"></span>`
           : '';
 
         itemEl.innerHTML = `
