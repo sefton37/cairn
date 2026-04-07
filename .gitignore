@@ -53,3 +53,6 @@ yarn-error.log*
 # direnv
 .direnv/
 .envrc
+
+# Playwright test output
+apps/cairn-tauri/test-results/
