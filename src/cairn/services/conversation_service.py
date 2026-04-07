@@ -155,6 +155,7 @@ class ConversationService:
         """Start a new conversation.
 
         Enforces singleton constraint — raises if an active conversation exists.
+        Uses BEGIN IMMEDIATE to prevent TOCTOU races between the check and insert.
 
         Returns:
             The new active Conversation.
@@ -162,19 +163,29 @@ class ConversationService:
         Raises:
             ConversationError: If an active conversation already exists.
         """
-        existing = self.get_active()
-        if existing:
-            raise ConversationError(
-                f"Cannot start a new conversation while one is active "
-                f"(id={existing.id}, started={existing.started_at}). "
-                f"Close the active conversation first."
-            )
-
         conv_id = _new_id()
         block_id = f"block-{_new_id()}"
         now = _now_iso()
 
-        with _transaction() as conn:
+        conn = _get_connection()
+        try:
+            # BEGIN IMMEDIATE acquires a write lock before the read,
+            # preventing a race where two threads both see no active
+            # conversation and both insert.
+            conn.execute("BEGIN IMMEDIATE")
+
+            cursor = conn.execute(
+                "SELECT id, started_at FROM conversations WHERE status = 'active' LIMIT 1"
+            )
+            existing = cursor.fetchone()
+            if existing:
+                conn.rollback()
+                raise ConversationError(
+                    f"Cannot start a new conversation while one is active "
+                    f"(id={existing['id']}, started={existing['started_at']}). "
+                    f"Close the active conversation first."
+                )
+
             # Create block for the conversation
             conn.execute(
                 """INSERT INTO blocks (id, type, act_id, parent_id, page_id, scene_id,
@@ -190,6 +201,13 @@ class ConversationService:
                    VALUES (?, ?, 'active', ?, 0, 0)""",
                 (conv_id, block_id, now),
             )
+
+            conn.commit()
+        except ConversationError:
+            raise
+        except Exception:
+            conn.rollback()
+            raise
 
         logger.info("Started conversation %s", conv_id)
         return Conversation(

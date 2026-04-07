@@ -34,6 +34,9 @@ logger = logging.getLogger(__name__)
 # Thread-local storage for connections
 _local = threading.local()
 
+# Lock to prevent concurrent init_db() races
+_init_lock = threading.Lock()
+
 # Schema version for migrations
 # v1: Initial schema
 # v2: Added color column to acts table
@@ -2208,10 +2211,16 @@ def _migrate_from_json(conn: sqlite3.Connection) -> None:
 
 
 def init_db() -> None:
-    """Initialize the database and run migrations."""
-    with _transaction() as conn:
-        _init_schema(conn)
-        _migrate_from_json(conn)
+    """Initialize the database and run migrations.
+
+    Thread-safe: uses a lock to prevent concurrent first-time initialization
+    races where two threads could both see no schema_version table and both
+    try to INSERT, causing an IntegrityError.
+    """
+    with _init_lock:
+        with _transaction() as conn:
+            _init_schema(conn)
+            _migrate_from_json(conn)
 
 
 # =============================================================================

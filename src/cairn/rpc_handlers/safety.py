@@ -46,6 +46,11 @@ def handle_safety_settings(_db: Database) -> dict[str, Any]:
         "max_package_name_length": MAX_PACKAGE_NAME_LEN,
         "dangerous_pattern_count": len(DANGEROUS_PATTERNS),
         "injection_pattern_count": len(INJECTION_PATTERNS),
+        # Fields expected by frontend SafetySettings interface
+        "max_sudo_escalations": 10,  # Default; linux_tools removed
+        "current_sudo_count": 0,
+        "max_iterations": 50,  # Default; code_mode removed
+        "wall_clock_timeout_seconds": 300,  # Default; code_mode removed
     }
 
 

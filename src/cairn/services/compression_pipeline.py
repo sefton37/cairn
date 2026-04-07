@@ -342,7 +342,11 @@ class CompressionPipeline:
                 logger.warning("sentence-transformers not available, skipping embedding")
                 return None
 
-        return self._embedding_service.embed(narrative)
+        try:
+            return self._embedding_service.embed(narrative)
+        except Exception as e:
+            logger.warning("Embedding generation failed, storing memory without embedding: %s", e)
+            return None
 
     def _estimate_confidence(
         self, entities: dict[str, Any], narrative: str

@@ -128,8 +128,10 @@ def handle_play_me_write(_db: Database, *, text: str) -> dict[str, Any]:
 
 
 def handle_play_acts_list(_db: Database) -> dict[str, Any]:
-    """List all acts."""
+    """List all acts, excluding system-only acts."""
     acts, active_id = play_list_acts()
+    # Filter out system acts that should not be user-facing
+    _HIDDEN_ACTS = {"archived-conversations"}
     return {
         "active_act_id": active_id,
         "acts": [
@@ -142,6 +144,7 @@ def handle_play_acts_list(_db: Database) -> dict[str, Any]:
                 "color": a.color,
             }
             for a in acts
+            if a.act_id not in _HIDDEN_ACTS
         ],
     }
 
